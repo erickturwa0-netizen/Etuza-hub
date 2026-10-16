@@ -23,6 +23,7 @@ export default function SignupPage() {
 
     try {
       if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+        document.cookie = "etuza_session=1; path=/; max-age=2592000; SameSite=Lax";
         localStorage.setItem(
           "etuza_user",
           JSON.stringify({ email, name: fullName || email.split("@")[0] })
@@ -31,7 +32,7 @@ export default function SignupPage() {
         setTimeout(() => {
           router.push("/");
           router.refresh();
-        }, 1000);
+        }, 800);
         return;
       }
 
@@ -39,9 +40,7 @@ export default function SignupPage() {
       const { error: err } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: { full_name: fullName },
-        },
+        options: { data: { full_name: fullName } },
       });
 
       if (err) {
@@ -50,11 +49,13 @@ export default function SignupPage() {
         return;
       }
 
+      // Also set demo cookie as backup while session hydrates
+      document.cookie = "etuza_session=1; path=/; max-age=2592000; SameSite=Lax";
       setSuccess(true);
       setTimeout(() => {
         router.push("/");
         router.refresh();
-      }, 1500);
+      }, 1200);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup failed");
       setLoading(false);
@@ -62,19 +63,19 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="flex-1 flex items-center justify-center px-4 py-12">
+    <main className="min-h-screen flex items-center justify-center px-4 py-12 bg-[#0a0a0f]">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 mb-6">
+          <div className="inline-flex items-center gap-2 mb-6">
             <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-sm font-black shadow-lg shadow-violet-500/30">
               E
             </span>
             <span className="text-xl font-extrabold bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">
               ETUZA HUB
             </span>
-          </Link>
+          </div>
           <h1 className="text-2xl font-bold">Fungua account</h1>
-          <p className="text-sm text-slate-500 mt-1">Jisajili bure · sekunde chache</p>
+          <p className="text-sm text-slate-500 mt-1">Jisajili ili uanze kutumia ETUZA HUB</p>
         </div>
 
         {success ? (
@@ -159,10 +160,6 @@ export default function SignupPage() {
             </p>
           </form>
         )}
-
-        <p className="text-center text-xs text-slate-600 mt-6">
-          <Link href="/" className="hover:text-slate-400">← Rudi nyumbani</Link>
-        </p>
       </div>
     </main>
   );

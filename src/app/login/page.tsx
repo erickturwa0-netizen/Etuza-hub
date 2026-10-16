@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { LogIn, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") || "/";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
@@ -21,21 +24,28 @@ export default function LoginPage() {
 
     try {
       if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-        // Demo mode – no Supabase yet
-        localStorage.setItem("etuza_user", JSON.stringify({ email, name: email.split("@")[0] }));
-        router.push("/");
+        // Demo mode – set cookie so middleware allows access
+        document.cookie = "etuza_session=1; path=/; max-age=2592000; SameSite=Lax";
+        localStorage.setItem(
+          "etuza_user",
+          JSON.stringify({ email, name: email.split("@")[0] })
+        );
+        router.push(next);
         router.refresh();
         return;
       }
 
       const supabase = createClient();
-      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      const { error: err } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
       if (err) {
         setError(err.message);
         setLoading(false);
         return;
       }
-      router.push("/");
+      router.push(next);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -44,19 +54,19 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex-1 flex items-center justify-center px-4 py-12">
+    <main className="min-h-screen flex items-center justify-center px-4 py-12 bg-[#0a0a0f]">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 mb-6">
+          <div className="inline-flex items-center gap-2 mb-6">
             <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-sm font-black shadow-lg shadow-violet-500/30">
               E
             </span>
             <span className="text-xl font-extrabold bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">
               ETUZA HUB
             </span>
-          </Link>
+          </div>
           <h1 className="text-2xl font-bold">Karibu tena</h1>
-          <p className="text-sm text-slate-500 mt-1">Ingia kwenye account yako</p>
+          <p className="text-sm text-slate-500 mt-1">Ingia ili uendelee kutumia platform</p>
         </div>
 
         <form onSubmit={handleSubmit} className="glass-card p-6 sm:p-8 space-y-4">
@@ -120,11 +130,15 @@ export default function LoginPage() {
             </Link>
           </p>
         </form>
-
-        <p className="text-center text-xs text-slate-600 mt-6">
-          <Link href="/" className="hover:text-slate-400">← Rudi nyumbani</Link>
-        </p>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0a0a0f]" />}>
+      <LoginForm />
+    </Suspense>
   );
 }
