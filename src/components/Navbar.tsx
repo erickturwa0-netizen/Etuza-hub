@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, LogIn } from "lucide-react";
+import { LogIn } from "lucide-react";
+import LogoutButton from "./LogoutButton";
 
 const links = [
   { href: "/", label: "Home" },
@@ -13,18 +14,16 @@ const links = [
 
 export default function Navbar() {
   const pathname = usePathname();
-  const isAuth = pathname === "/login" || pathname === "/signup";
-
-  if (isAuth) return null;
+  if (pathname === "/login" || pathname === "/signup") return null;
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#0a0a0f]">
-      <div className="max-w-6xl mx-auto px-4 h-14 sm:h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2.5 font-extrabold tracking-tight">
-          <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-sm font-black">
+    <header className="border-b border-slate-800 bg-[#0a0a0f]">
+      <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-2 font-extrabold">
+          <span className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center text-sm font-black text-white">
             E
           </span>
-          <span className="text-base sm:text-lg text-violet-300">ETUZA HUB</span>
+          <span className="text-violet-300">ETUZA HUB</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-1">
@@ -34,39 +33,29 @@ export default function Navbar() {
               <Link
                 key={l.href}
                 href={l.href}
-                className={`px-3.5 py-2 rounded-lg text-sm font-medium transition ${
-                  active
-                    ? "bg-violet-600/20 text-violet-300"
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                  active ? "bg-violet-950 text-violet-300" : "text-slate-400"
                 }`}
               >
                 {l.label}
               </Link>
             );
           })}
-          <Link
-            href="/admin"
-            className="ml-1 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-white/5 transition"
-          >
-            <LayoutDashboard className="w-4 h-4" />
+          <Link href="/admin" className="px-3 py-2 rounded-lg text-sm text-slate-400">
             Admin
           </Link>
+          <LogoutButton />
+        </nav>
+
+        <div className="md:hidden flex items-center gap-2">
           <Link
             href="/login"
-            className="ml-2 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium bg-violet-600 hover:bg-violet-500 text-white transition"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm bg-violet-600 text-white"
           >
             <LogIn className="w-4 h-4" />
             Ingia
           </Link>
-        </nav>
-
-        <Link
-          href="/login"
-          className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-violet-600 text-white"
-        >
-          <LogIn className="w-4 h-4" />
-          Ingia
-        </Link>
+        </div>
       </div>
     </header>
   );

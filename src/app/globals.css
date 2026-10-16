@@ -3,49 +3,37 @@
 @theme {
   --color-background: #0a0a0f;
   --color-foreground: #f1f5f9;
-  --color-card: #0f172a;
+  --color-card: #111827;
   --color-accent: #7c3aed;
   --color-muted: #94a3b8;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), monospace;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 html {
-  scroll-behavior: smooth;
-  /* Prevent overscroll paint glitches on Android browsers */
   overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
+  margin: 0;
   background: #0a0a0f;
   color: #f1f5f9;
-  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   min-height: 100vh;
-  min-height: 100dvh;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
-  /* Avoid GPU layer thrashing on some mobile browsers */
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Solid cards – no backdrop-filter (causes glitches on Firefox/Samsung/UC) */
+/* Solid only – no blur, no backdrop-filter, no filters */
 .glass-card {
-  background: #0f172a;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 1rem;
-  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.5);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.glass-card:hover {
-  border-color: rgba(124, 58, 237, 0.35);
-  box-shadow: 0 16px 40px -10px rgba(124, 58, 237, 0.2);
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 16px;
 }
 
 .line-clamp-2 {
@@ -55,25 +43,20 @@ body {
   overflow: hidden;
 }
 
-/* Safer gradient text fallback */
-.gradient-text {
-  color: #a78bfa;
-  background: linear-gradient(90deg, #a78bfa, #e879f9, #60a5fa);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+a {
+  color: inherit;
+  text-decoration: none;
 }
 
-@supports not ((-webkit-background-clip: text) or (background-clip: text)) {
-  .gradient-text {
-    color: #a78bfa;
-    -webkit-text-fill-color: unset;
-    background: none;
-  }
+img {
+  max-width: 100%;
+  display: block;
 }
 
+button,
 input,
 select,
 textarea {
+  font: inherit;
   color-scheme: dark;
 }
