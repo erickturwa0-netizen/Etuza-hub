@@ -46,29 +46,29 @@ export default function ContentCard({
     `/${type === "movie" ? "movies" : type === "game" ? "games" : "vpn"}`;
 
   return (
-    <Link href={link} className="group block">
-      <div className="relative aspect-[2/3] rounded-2xl overflow-hidden border border-white/8 bg-slate-900 shadow-xl shadow-black/40 transition duration-300 group-hover:-translate-y-1 group-hover:shadow-2xl group-hover:shadow-violet-900/30 group-hover:border-violet-500/30">
+    <Link href={link} className="block">
+      <div className="relative aspect-[2/3] rounded-2xl overflow-hidden border border-white/10 bg-slate-900 shadow-lg">
         {coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={coverUrl}
             alt={title}
-            className="absolute inset-0 w-full h-full object-cover transition duration-500 group-hover:scale-105"
+            className="absolute inset-0 w-full h-full object-cover"
           />
         ) : (
           <div className={`absolute inset-0 bg-gradient-to-br ${meta.gradient}`}>
             <div className="absolute inset-0 flex items-center justify-center">
-              <Icon className="w-14 h-14 text-white/20" />
+              <Icon className="w-12 h-12 text-white/25" />
             </div>
             <div className="absolute top-3 left-3">
-              <span className={`w-2 h-2 rounded-full ${meta.accent} block shadow-lg`} />
+              <span className={`w-2 h-2 rounded-full ${meta.accent} block`} />
             </div>
           </div>
         )}
 
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
 
-        <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-3.5">
+        <div className="absolute bottom-0 left-0 right-0 p-3">
           <p className="font-semibold text-[13px] sm:text-sm leading-snug line-clamp-2 text-white">
             {title}
           </p>
@@ -79,12 +79,12 @@ export default function ContentCard({
           )}
         </div>
 
-        <div className="absolute top-2.5 right-2.5 opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 transition duration-200">
-          <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-violet-600 text-white shadow-lg shadow-violet-600/40">
+        <div className="absolute top-2.5 right-2.5">
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-violet-600/90 text-white">
             {linkType === "download" ? (
-              <Download className="w-4 h-4" />
+              <Download className="w-3.5 h-3.5" />
             ) : (
-              <Play className="w-4 h-4 fill-current" />
+              <Play className="w-3.5 h-3.5 fill-current" />
             )}
           </span>
         </div>

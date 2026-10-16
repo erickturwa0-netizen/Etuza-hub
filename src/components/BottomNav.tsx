@@ -15,8 +15,10 @@ const tabs = [
 export default function BottomNav() {
   const pathname = usePathname();
 
+  if (pathname === "/login" || pathname === "/signup") return null;
+
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-white/5 bg-[#0a0a0f]/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
+    <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-white/10 bg-[#0a0a0f] pb-[env(safe-area-inset-bottom)]">
       <div className="flex items-center justify-around h-16 px-1">
         {tabs.map((t) => {
           const active =
@@ -27,11 +29,11 @@ export default function BottomNav() {
             <Link
               key={t.href}
               href={t.href}
-              className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-[10px] font-medium transition ${
+              className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full text-[10px] font-medium ${
                 active ? "text-violet-400" : "text-slate-500"
               }`}
             >
-              <t.icon className={`w-5 h-5 ${active ? "stroke-[2.5]" : ""}`} />
+              <t.icon className="w-5 h-5" />
               {t.label}
             </Link>
           );

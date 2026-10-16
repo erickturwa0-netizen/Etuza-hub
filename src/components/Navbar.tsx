@@ -18,15 +18,13 @@ export default function Navbar() {
   if (isAuth) return null;
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/5 bg-[#0a0a0f]/85 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#0a0a0f]">
       <div className="max-w-6xl mx-auto px-4 h-14 sm:h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5 font-extrabold tracking-tight">
-          <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-sm font-black shadow-lg shadow-violet-500/30">
+          <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-sm font-black">
             E
           </span>
-          <span className="text-base sm:text-lg bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">
-            ETUZA HUB
-          </span>
+          <span className="text-base sm:text-lg text-violet-300">ETUZA HUB</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-1">
@@ -64,7 +62,7 @@ export default function Navbar() {
 
         <Link
           href="/login"
-          className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-violet-600/20 text-violet-300 border border-violet-500/20"
+          className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-violet-600 text-white"
         >
           <LogIn className="w-4 h-4" />
           Ingia

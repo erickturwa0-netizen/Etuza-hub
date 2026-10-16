@@ -17,6 +17,8 @@
 
 html {
   scroll-behavior: smooth;
+  /* Prevent overscroll paint glitches on Android browsers */
+  overflow-x: hidden;
 }
 
 body {
@@ -24,22 +26,26 @@ body {
   color: #f1f5f9;
   font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
   min-height: 100vh;
+  min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  /* Avoid GPU layer thrashing on some mobile browsers */
+  -webkit-tap-highlight-color: transparent;
 }
 
+/* Solid cards – no backdrop-filter (causes glitches on Firefox/Samsung/UC) */
 .glass-card {
-  background: rgba(15, 23, 42, 0.85);
+  background: #0f172a;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border-radius: 1rem;
-  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.55);
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .glass-card:hover {
-  box-shadow: 0 24px 48px -12px rgba(124, 58, 237, 0.2);
+  border-color: rgba(124, 58, 237, 0.35);
+  box-shadow: 0 16px 40px -10px rgba(124, 58, 237, 0.2);
 }
 
 .line-clamp-2 {
@@ -49,19 +55,21 @@ body {
   overflow: hidden;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Safer gradient text fallback */
+.gradient-text {
+  color: #a78bfa;
+  background: linear-gradient(90deg, #a78bfa, #e879f9, #60a5fa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #7c3aed;
+
+@supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+  .gradient-text {
+    color: #a78bfa;
+    -webkit-text-fill-color: unset;
+    background: none;
+  }
 }
 
 input,
