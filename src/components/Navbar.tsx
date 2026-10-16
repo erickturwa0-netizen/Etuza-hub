@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard } from "lucide-react";
+import { LayoutDashboard, LogIn } from "lucide-react";
 
 const links = [
   { href: "/", label: "Home" },
@@ -13,6 +13,9 @@ const links = [
 
 export default function Navbar() {
   const pathname = usePathname();
+  const isAuth = pathname === "/login" || pathname === "/signup";
+
+  if (isAuth) return null;
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/5 bg-[#0a0a0f]/85 backdrop-blur-xl">
@@ -45,12 +48,27 @@ export default function Navbar() {
           })}
           <Link
             href="/admin"
-            className="ml-2 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition"
+            className="ml-1 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-white/5 transition"
           >
             <LayoutDashboard className="w-4 h-4" />
             Admin
           </Link>
+          <Link
+            href="/login"
+            className="ml-2 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium bg-violet-600 hover:bg-violet-500 text-white transition"
+          >
+            <LogIn className="w-4 h-4" />
+            Ingia
+          </Link>
         </nav>
+
+        <Link
+          href="/login"
+          className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-violet-600/20 text-violet-300 border border-violet-500/20"
+        >
+          <LogIn className="w-4 h-4" />
+          Ingia
+        </Link>
       </div>
     </header>
   );
