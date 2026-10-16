@@ -4,7 +4,6 @@ import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LogIn, Mail, Lock, Eye, EyeOff } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 
 function LoginForm() {
   const router = useRouter();
@@ -23,32 +22,21 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-        // Demo mode – set cookie so middleware allows access
-        document.cookie = "etuza_session=1; path=/; max-age=2592000; SameSite=Lax";
-        localStorage.setItem(
-          "etuza_user",
-          JSON.stringify({ email, name: email.split("@")[0] })
-        );
-        router.push(next);
-        router.refresh();
-        return;
-      }
-
-      const supabase = createClient();
-      const { error: err } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
       });
-      if (err) {
-        setError(err.message);
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Imeshindikana kuingia");
         setLoading(false);
         return;
       }
       router.push(next);
       router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+    } catch {
+      setError("Tatizo la mtandao. Jaribu tena.");
       setLoading(false);
     }
   }
@@ -58,12 +46,10 @@ function LoginForm() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-6">
-            <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-sm font-black shadow-lg shadow-violet-500/30">
+            <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-sm font-black">
               E
             </span>
-            <span className="text-xl font-extrabold bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">
-              ETUZA HUB
-            </span>
+            <span className="text-xl font-extrabold text-violet-300">ETUZA HUB</span>
           </div>
           <h1 className="text-2xl font-bold">Karibu tena</h1>
           <p className="text-sm text-slate-500 mt-1">Ingia ili uendelee kutumia platform</p>
@@ -85,7 +71,7 @@ function LoginForm() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-3.5 py-3 rounded-xl bg-slate-900/80 border border-white/10 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/30 text-sm"
+                className="w-full pl-10 pr-3.5 py-3 rounded-xl bg-slate-900 border border-white/10 focus:border-violet-500/50 focus:outline-none text-sm"
                 placeholder="wewe@email.com"
               />
             </div>
@@ -101,13 +87,13 @@ function LoginForm() {
                 minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-900/80 border border-white/10 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/30 text-sm"
+                className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-900 border border-white/10 focus:border-violet-500/50 focus:outline-none text-sm"
                 placeholder="••••••••"
               />
               <button
                 type="button"
                 onClick={() => setShow(!show)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500"
               >
                 {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -117,7 +103,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-60 font-semibold text-sm shadow-lg shadow-violet-600/25 transition"
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-60 font-semibold text-sm transition"
           >
             <LogIn className="w-4 h-4" />
             {loading ? "Inaingia…" : "Ingia"}
