@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { detectSocial } from "@/lib/social-embed";
 
 type Props = {
   src: string;
@@ -25,6 +26,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
   const [playUrl, setPlayUrl] = useState<string | null>(null);
   const [embedUrl, setEmbedUrl] = useState<string | null>(null);
   const [mode, setMode] = useState<"loading" | "video" | "embed" | "fail">("loading");
+  const [embedKind, setEmbedKind] = useState<string>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -32,10 +34,20 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     setMode("loading");
     setStatus("Inatafuta video…");
 
+    const social = detectSocial(src);
+    if (social.embedUrl) {
+      if (!cancelled) {
+        setEmbedUrl(social.embedUrl);
+        setEmbedKind(social.kind || "social");
+        setMode("embed");
+        setStatus("");
+      }
+      return;
+    }
+
     const archiveId = extractArchiveId(src);
 
     async function run() {
-      // Direct mp4/m3u8 already
       if (/\.(mp4|webm|ogg|mov)(\?|$)/i.test(src) && !archiveId) {
         if (!cancelled) {
           setPlayUrl(src);
@@ -48,6 +60,14 @@ export default function StreamPlayer({ src, poster, title }: Props) {
         if (!cancelled) {
           setPlayUrl(src);
           setMode("video");
+        }
+        return;
+      }
+
+      if (/\.(mp3|aac|m4a)(\?|$)/i.test(src)) {
+        if (!cancelled) {
+          setPlayUrl(src);
+          setMode("video"); // audio via video tag works too, or we handle below
         }
         return;
       }
@@ -68,38 +88,27 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             setStatus("");
             return;
           }
-
-          // No direct file – try embed
           if (data.embedUrl) {
             setEmbedUrl(data.embedUrl);
+            setEmbedKind("archive");
             setMode("embed");
             setStatus("");
             return;
           }
-
           setMode("fail");
           setError(data.error || "Hakuna video file");
         } catch {
           if (!cancelled) {
             setEmbedUrl(`https://archive.org/embed/${archiveId}`);
+            setEmbedKind("archive");
             setMode("embed");
           }
         }
         return;
       }
 
-      // YouTube
-      const yt =
-        src.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{6,})/i) ||
-        src.match(/youtube\.com\/embed\/([\w-]{6,})/i);
-      if (yt) {
-        setEmbedUrl(`https://www.youtube.com/embed/${yt[1]}`);
-        setMode("embed");
-        return;
-      }
-
       setMode("fail");
-      setError("Link hii haitambuliwi kama video.");
+      setError("Link hii haitambuliwi. Tumia YouTube, Facebook, Archive, .mp4 au .m3u8");
     }
 
     run();
@@ -108,7 +117,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     };
   }, [src]);
 
-  // HLS attach when needed
   useEffect(() => {
     const el = videoRef.current;
     if (!el || !playUrl || mode !== "video") return;
@@ -149,7 +157,46 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     );
   }
 
+  if (mode === "embed" && embedUrl) {
+    return (
+      <div className="space-y-2">
+        <div
+          className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black"
+          style={{ aspectRatio: "16/9" }}
+        >
+          <iframe
+            key={embedUrl}
+            src={embedUrl}
+            title={title || "Video"}
+            className="absolute inset-0 w-full h-full border-0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+            // sandbox limited – social players need scripts
+          />
+        </div>
+        <p className="text-[11px] text-slate-500">
+          {embedKind === "youtube"
+            ? "YouTube embed (branding kidogo inaweza kuonekana – sheria za YouTube)"
+            : embedKind === "facebook"
+              ? "Facebook embed"
+              : embedKind === "archive"
+                ? "Internet Archive"
+                : "Embedded player"}
+        </p>
+      </div>
+    );
+  }
+
   if (mode === "video" && playUrl) {
+    const isAudio = /\.(mp3|aac|m4a)(\?|$)/i.test(playUrl);
+    if (isAudio) {
+      return (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+          <audio controls className="w-full" src={playUrl} preload="metadata" />
+        </div>
+      );
+    }
     return (
       <div className="space-y-3">
         <div
@@ -164,53 +211,12 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             preload="metadata"
             poster={poster || undefined}
             onError={() => {
-              setError("Direct MP4 imeshindwa – jaribu embed au fungua nje.");
+              setError("Direct play imeshindwa.");
               if (embedUrl) setMode("embed");
             }}
           />
         </div>
         {error && <p className="text-sm text-amber-300">{error}</p>}
-        <div className="flex flex-wrap gap-3 text-xs">
-          <a href={playUrl} target="_blank" rel="noopener noreferrer" className="text-violet-400 underline">
-            Direct file
-          </a>
-          {embedUrl && (
-            <button type="button" onClick={() => setMode("embed")} className="text-slate-400 underline">
-              Switch to Archive embed
-            </button>
-          )}
-          <a href={src} target="_blank" rel="noopener noreferrer" className="text-slate-500 underline">
-            Original link
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  if (mode === "embed" && embedUrl) {
-    return (
-      <div className="space-y-3">
-        <div
-          className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black"
-          style={{ aspectRatio: "16/9" }}
-        >
-          <iframe
-            key={embedUrl}
-            src={embedUrl}
-            title={title || "Video"}
-            className="absolute inset-0 w-full h-full border-0"
-            allow="encrypted-media; fullscreen; picture-in-picture; autoplay"
-            allowFullScreen
-          />
-        </div>
-        <a
-          href={src.includes("archive.org") ? src : embedUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-violet-400 underline"
-        >
-          Fungua kwenye Archive.org (kama iframe haichezi) →
-        </a>
       </div>
     );
   }
