@@ -8,33 +8,33 @@ type Props = {
   title?: string;
 };
 
-/** Convert common URLs into something playable */
 function normalizeSrc(raw: string): {
   kind: "archive-embed" | "hls" | "video" | "audio" | "iframe" | "unknown";
   url: string;
+  archiveId?: string;
 } {
   const src = raw.trim();
 
-  // Internet Archive – details page → embed
-  // https://archive.org/details/ITEM
-  // https://archive.org/details/ITEM/path
-  const detailsMatch = src.match(
-    /archive\.org\/details\/([^/?#]+)/i
-  );
+  // https://archive.org/details/the-chinese-connection-1973
+  const detailsMatch = src.match(/archive\.org\/details\/([^/?#]+)/i);
   if (detailsMatch) {
     const id = detailsMatch[1];
     return {
       kind: "archive-embed",
       url: `https://archive.org/embed/${id}`,
+      archiveId: id,
     };
   }
 
-  // Already embed
-  if (/archive\.org\/embed\//i.test(src)) {
-    return { kind: "archive-embed", url: src.split("?")[0] };
+  const embedMatch = src.match(/archive\.org\/embed\/([^/?#]+)/i);
+  if (embedMatch) {
+    return {
+      kind: "archive-embed",
+      url: `https://archive.org/embed/${embedMatch[1]}`,
+      archiveId: embedMatch[1],
+    };
   }
 
-  // archive.org/download/.../file.mp4
   if (/archive\.org\/download\//i.test(src) && /\.(mp4|webm|ogg)(\?|$)/i.test(src)) {
     return { kind: "video", url: src };
   }
@@ -51,7 +51,6 @@ function normalizeSrc(raw: string): {
     return { kind: "audio", url: src };
   }
 
-  // YouTube
   const yt =
     src.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{6,})/i) ||
     src.match(/youtube\.com\/embed\/([\w-]{6,})/i);
@@ -93,9 +92,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
               if (data.fatal) setError("HLS stream imeshindwa.");
             });
             hls = instance;
-          } else {
-            setError("Browser haiauni HLS.");
-          }
+          } else setError("Browser haiauni HLS.");
         } catch {
           setError("HLS player haijapakia.");
         }
@@ -112,41 +109,51 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     }
   }, [normalized.kind, normalized.url]);
 
-  // —— Internet Archive embed ——
+  // Internet Archive embed – your link becomes this automatically
   if (normalized.kind === "archive-embed") {
     return (
       <div className="space-y-3">
-        <div className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black aspect-video">
+        <div className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black" style={{ aspectRatio: "16/9" }}>
           <iframe
-            src={`${normalized.url}?autoplay=0`}
-            title={title || "Archive video"}
-            className="absolute inset-0 w-full h-full"
-            allow="fullscreen; picture-in-picture"
+            key={normalized.url}
+            src={normalized.url}
+            title={title || "Internet Archive"}
+            className="absolute inset-0 w-full h-full border-0"
+            allow="encrypted-media; fullscreen; picture-in-picture"
             allowFullScreen
             referrerPolicy="no-referrer-when-downgrade"
           />
         </div>
-        <p className="text-[11px] text-slate-500">Internet Archive player</p>
-        <a
-          href={src}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-violet-400"
-        >
-          Fungua kwenye Archive.org →
-        </a>
+        <div className="flex flex-wrap gap-3 text-xs">
+          <span className="text-emerald-400">Archive embed active</span>
+          <a
+            href={normalized.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-violet-400 underline"
+          >
+            {normalized.url}
+          </a>
+          <a
+            href={src}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-slate-500 underline"
+          >
+            Original details page
+          </a>
+        </div>
       </div>
     );
   }
 
-  // —— YouTube / generic iframe ——
   if (normalized.kind === "iframe") {
     return (
-      <div className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black aspect-video">
+      <div className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black" style={{ aspectRatio: "16/9" }}>
         <iframe
           src={normalized.url}
           title={title || "Video"}
-          className="absolute inset-0 w-full h-full"
+          className="absolute inset-0 w-full h-full border-0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
           allowFullScreen
         />
@@ -154,7 +161,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     );
   }
 
-  // —— Audio ——
   if (normalized.kind === "audio") {
     return (
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
@@ -163,53 +169,41 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     );
   }
 
-  // —— HLS / MP4 video tag ——
   if (normalized.kind === "hls" || normalized.kind === "video") {
     return (
       <div className="space-y-3">
-        <div className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black aspect-video">
+        <div className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black" style={{ aspectRatio: "16/9" }}>
           <video
             ref={videoRef}
             className="w-full h-full"
             controls
             playsInline
             poster={poster || undefined}
-            onError={() => setError("Video haichezi. Jaribu link nyingine.")}
+            onError={() => setError("Video haichezi.")}
           />
         </div>
         {error && (
-          <div className="px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm">
+          <p className="text-sm text-amber-300">
             {error}{" "}
             <a href={src} target="_blank" rel="noopener noreferrer" className="underline text-violet-400">
               Fungua nje
             </a>
-          </div>
+          </p>
         )}
       </div>
     );
   }
 
-  // —— Unknown URL ——
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-      <p className="text-sm text-slate-300">
-        Link hii si stream ya moja kwa moja (.mp4 / .m3u8 / Archive). Tunajaribu kuifungua kwenye player wa nje.
-      </p>
-      <div className="relative w-full rounded-xl overflow-hidden border border-slate-700 bg-black aspect-video">
-        <iframe
-          src={src}
-          title={title || "Content"}
-          className="absolute inset-0 w-full h-full"
-          sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
-        />
-      </div>
+      <p className="text-sm text-slate-300">Link si stream ya moja kwa moja. Fungua nje au badilisha kuwa Archive details URL.</p>
       <a
         href={src}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex px-4 py-2.5 rounded-xl bg-violet-600 text-sm font-semibold text-white"
       >
-        Fungua link kamili →
+        Fungua link →
       </a>
     </div>
   );
