@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogIn } from "lucide-react";
 import LogoutButton from "./LogoutButton";
 
 const links = [
   { href: "/", label: "Home" },
   { href: "/movies", label: "Movies" },
+  { href: "/tv", label: "TV" },
+  { href: "/radio", label: "Radio" },
   { href: "/games", label: "Games" },
   { href: "/vpn", label: "VPN" },
 ];
@@ -50,7 +51,7 @@ export default function Navbar() {
           <LogoutButton />
         </nav>
 
-        <div className="md:hidden flex items-center gap-2">
+        <div className="md:hidden">
           <LogoutButton />
         </div>
       </div>

@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Film, Gamepad2, Shield } from "lucide-react";
+import { Home, Film, Gamepad2, Tv, Radio } from "lucide-react";
 
 const tabs = [
   { href: "/", label: "Home", icon: Home },
   { href: "/movies", label: "Movies", icon: Film },
+  { href: "/tv", label: "TV", icon: Tv },
+  { href: "/radio", label: "Radio", icon: Radio },
   { href: "/games", label: "Games", icon: Gamepad2 },
-  { href: "/vpn", label: "VPN", icon: Shield },
 ];
 
 export default function BottomNav() {

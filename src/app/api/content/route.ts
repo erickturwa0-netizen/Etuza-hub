@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
 const schema = z.object({
-  type: z.enum(["movie", "game", "vpn"]),
+  type: z.enum(["movie", "game", "vpn", "tv", "radio"]),
   title: z.string().min(1),
   description: z.string().optional().nullable(),
   coverUrl: z.string().optional().nullable(),
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ items });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Failed to load content" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to load content", items: [] }, { status: 500 });
   }
 }
 
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json({ error: "Invalid data" }, { status: 400 });
     }
 
     const d = parsed.data;

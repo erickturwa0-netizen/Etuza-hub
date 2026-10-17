@@ -2,12 +2,22 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Save, ArrowLeft } from "lucide-react";
+import { Save, ArrowLeft, Search } from "lucide-react";
 import Link from "next/link";
+
+type ContentKind = "movie" | "game" | "vpn" | "tv" | "radio";
+
+type TmdbHit = {
+  tmdbId: number;
+  title: string;
+  overview: string;
+  coverUrl: string | null;
+  year: string | null;
+};
 
 export default function NewContentPage() {
   const router = useRouter();
-  const [type, setType] = useState<"movie" | "game" | "vpn">("movie");
+  const [type, setType] = useState<ContentKind>("movie");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
@@ -20,6 +30,33 @@ export default function NewContentPage() {
   const [configText, setConfigText] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [tmdbQ, setTmdbQ] = useState("");
+  const [tmdbResults, setTmdbResults] = useState<TmdbHit[]>([]);
+  const [tmdbLoading, setTmdbLoading] = useState(false);
+
+  async function searchTmdb() {
+    if (tmdbQ.trim().length < 2) return;
+    setTmdbLoading(true);
+    try {
+      const res = await fetch(`/api/tmdb/search?q=${encodeURIComponent(tmdbQ)}`);
+      const data = await res.json();
+      setTmdbResults(data.results || []);
+      if (data.error && !(data.results || []).length) {
+        setError(data.error);
+      }
+    } catch {
+      setError("TMDB search failed");
+    }
+    setTmdbLoading(false);
+  }
+
+  function pickTmdb(m: TmdbHit) {
+    setTitle(m.title + (m.year ? ` (${m.year})` : ""));
+    setDescription(m.overview || "");
+    if (m.coverUrl) setCoverUrl(m.coverUrl);
+    setTmdbResults([]);
+    setTmdbQ("");
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,12 +98,12 @@ export default function NewContentPage() {
   return (
     <div>
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/admin/content" className="p-2 rounded-lg hover:bg-white/5 text-slate-400">
+        <Link href="/admin/content" className="p-2 rounded-lg text-slate-400">
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div>
           <h1 className="text-2xl font-bold">Add Content</h1>
-          <p className="text-sm text-slate-500">Movie · Game · VPN config</p>
+          <p className="text-sm text-slate-500">Movie · TV · Radio · Game · VPN</p>
         </div>
       </div>
 
@@ -79,16 +116,16 @@ export default function NewContentPage() {
 
         <div>
           <label className="block text-sm font-medium text-slate-400 mb-1.5">Type</label>
-          <div className="flex gap-2">
-            {(["movie", "game", "vpn"] as const).map((t) => (
+          <div className="flex flex-wrap gap-2">
+            {(["movie", "tv", "radio", "game", "vpn"] as const).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => {
                   setType(t);
-                  setLinkType(t === "movie" ? "stream" : "download");
+                  setLinkType(t === "game" || t === "vpn" ? "download" : "stream");
                 }}
-                className={`flex-1 py-2.5 rounded-lg text-sm font-medium capitalize border ${
+                className={`px-3 py-2 rounded-lg text-sm font-medium capitalize border ${
                   type === t
                     ? "bg-violet-600/20 border-violet-500/40 text-violet-300"
                     : "border-slate-700 text-slate-400"
@@ -100,14 +137,66 @@ export default function NewContentPage() {
           </div>
         </div>
 
+        {type === "movie" && (
+          <div className="rounded-xl border border-slate-700 p-3 space-y-2">
+            <p className="text-xs text-slate-500 font-medium">TMDB – tafuta cover + title</p>
+            <div className="flex gap-2">
+              <input
+                value={tmdbQ}
+                onChange={(e) => setTmdbQ(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), searchTmdb())}
+                className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm focus:outline-none"
+                placeholder="Search movie name…"
+              />
+              <button
+                type="button"
+                onClick={searchTmdb}
+                disabled={tmdbLoading}
+                className="px-3 py-2 rounded-lg bg-slate-800 text-sm inline-flex items-center gap-1"
+              >
+                <Search className="w-4 h-4" />
+                {tmdbLoading ? "…" : "Search"}
+              </button>
+            </div>
+            {tmdbResults.length > 0 && (
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {tmdbResults.map((m) => (
+                  <button
+                    key={m.tmdbId}
+                    type="button"
+                    onClick={() => pickTmdb(m)}
+                    className="w-full text-left px-2 py-2 rounded-lg hover:bg-slate-800 flex gap-2 items-center text-sm"
+                  >
+                    {m.coverUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={m.coverUrl} alt="" className="w-8 h-12 object-cover rounded" />
+                    ) : (
+                      <div className="w-8 h-12 bg-slate-700 rounded" />
+                    )}
+                    <span>
+                      {m.title} {m.year ? `(${m.year})` : ""}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div>
           <label className="block text-sm font-medium text-slate-400 mb-1.5">Title *</label>
           <input
             required
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:border-violet-500 focus:outline-none text-sm"
-            placeholder="e.g. Black Panther"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm"
+            placeholder={
+              type === "tv"
+                ? "e.g. TBC1 Live"
+                : type === "radio"
+                  ? "e.g. Clouds FM"
+                  : "Title"
+            }
           />
         </div>
 
@@ -116,30 +205,37 @@ export default function NewContentPage() {
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:border-violet-500 focus:outline-none text-sm resize-none"
-            placeholder="Maelezo mafupi…"
+            rows={2}
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm resize-none"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1.5">Link URL *</label>
+          <label className="block text-sm font-medium text-slate-400 mb-1.5">
+            {type === "tv" || type === "radio" ? "Stream URL *" : "Link URL *"}
+          </label>
           <input
             required
             value={linkUrl}
             onChange={(e) => setLinkUrl(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:border-violet-500 focus:outline-none text-sm"
-            placeholder="https://… au m3u8 / APK link"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm"
+            placeholder={
+              type === "tv"
+                ? "https://….m3u8"
+                : type === "radio"
+                  ? "https://….mp3 / .m3u8"
+                  : "https://…"
+            }
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1.5">Cover Image URL</label>
+          <label className="block text-sm font-medium text-slate-400 mb-1.5">Cover / Logo URL</label>
           <input
             value={coverUrl}
             onChange={(e) => setCoverUrl(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:border-violet-500 focus:outline-none text-sm"
-            placeholder="https://… (optional)"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm"
+            placeholder="https://…"
           />
         </div>
 
@@ -149,7 +245,7 @@ export default function NewContentPage() {
             <select
               value={linkType}
               onChange={(e) => setLinkType(e.target.value as "stream" | "download")}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
             >
               <option value="stream">Stream</option>
               <option value="download">Download</option>
@@ -160,7 +256,7 @@ export default function NewContentPage() {
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as "draft" | "published")}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
             >
               <option value="published">Published</option>
               <option value="draft">Draft</option>
@@ -169,14 +265,26 @@ export default function NewContentPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1.5">Category</label>
+          <label className="block text-sm font-medium text-slate-400 mb-1.5">Category / Network</label>
           <input
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm"
-            placeholder="Action, Sci-Fi, Config…"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+            placeholder={type === "tv" ? "News, Sports…" : type === "radio" ? "Bongo, Gospel…" : "Category"}
           />
         </div>
+
+        {(type === "tv" || type === "radio") && (
+          <div>
+            <label className="block text-sm font-medium text-slate-400 mb-1.5">Network / Station</label>
+            <input
+              value={network}
+              onChange={(e) => setNetwork(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+              placeholder="TBC, ITV, Clouds…"
+            />
+          </div>
+        )}
 
         {type === "vpn" && (
           <>
@@ -186,8 +294,8 @@ export default function NewContentPage() {
                 <input
                   value={protocol}
                   onChange={(e) => setProtocol(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm"
-                  placeholder="V2Ray, OpenVPN…"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+                  placeholder="V2Ray…"
                 />
               </div>
               <div>
@@ -195,8 +303,8 @@ export default function NewContentPage() {
                 <input
                   value={network}
                   onChange={(e) => setNetwork(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm"
-                  placeholder="Halotel, Vodacom…"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+                  placeholder="Halotel…"
                 />
               </div>
             </div>
@@ -206,8 +314,7 @@ export default function NewContentPage() {
                 value={configText}
                 onChange={(e) => setConfigText(e.target.value)}
                 rows={4}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm font-mono resize-none"
-                placeholder="Paste VPN config…"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-mono resize-none"
               />
             </div>
           </>
@@ -216,7 +323,7 @@ export default function NewContentPage() {
         <button
           type="submit"
           disabled={saving}
-          className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-60 font-semibold text-sm text-white"
+          className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-violet-600 disabled:opacity-60 font-semibold text-sm text-white"
         >
           <Save className="w-4 h-4" />
           {saving ? "Inahifadhi…" : "Save Content"}
