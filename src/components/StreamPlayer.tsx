@@ -8,202 +8,223 @@ type Props = {
   title?: string;
 };
 
-function normalizeSrc(raw: string): {
-  kind: "archive-embed" | "hls" | "video" | "audio" | "iframe" | "unknown";
-  url: string;
-  archiveId?: string;
-} {
-  const src = raw.trim();
-
-  // https://archive.org/details/the-chinese-connection-1973
-  const detailsMatch = src.match(/archive\.org\/details\/([^/?#]+)/i);
-  if (detailsMatch) {
-    const id = detailsMatch[1];
-    return {
-      kind: "archive-embed",
-      url: `https://archive.org/embed/${id}`,
-      archiveId: id,
-    };
-  }
-
-  const embedMatch = src.match(/archive\.org\/embed\/([^/?#]+)/i);
-  if (embedMatch) {
-    return {
-      kind: "archive-embed",
-      url: `https://archive.org/embed/${embedMatch[1]}`,
-      archiveId: embedMatch[1],
-    };
-  }
-
-  if (/archive\.org\/download\//i.test(src) && /\.(mp4|webm|ogg)(\?|$)/i.test(src)) {
-    return { kind: "video", url: src };
-  }
-
-  if (/\.m3u8(\?|$)/i.test(src) || src.includes("m3u8")) {
-    return { kind: "hls", url: src };
-  }
-
-  if (/\.(mp4|webm|ogg|mov)(\?|$)/i.test(src)) {
-    return { kind: "video", url: src };
-  }
-
-  if (/\.(mp3|aac|m4a)(\?|$)/i.test(src)) {
-    return { kind: "audio", url: src };
-  }
-
-  const yt =
-    src.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{6,})/i) ||
-    src.match(/youtube\.com\/embed\/([\w-]{6,})/i);
-  if (yt) {
-    return { kind: "iframe", url: `https://www.youtube.com/embed/${yt[1]}` };
-  }
-
-  return { kind: "unknown", url: src };
+function extractArchiveId(src: string): string | null {
+  const d = src.match(/archive\.org\/details\/([^/?#]+)/i);
+  if (d) return d[1];
+  const e = src.match(/archive\.org\/embed\/([^/?#]+)/i);
+  if (e) return e[1];
+  const dl = src.match(/archive\.org\/download\/([^/?#]+)/i);
+  if (dl) return dl[1];
+  return null;
 }
 
 export default function StreamPlayer({ src, poster, title }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState("");
-  const normalized = normalizeSrc(src);
+  const [status, setStatus] = useState("Inatafuta video…");
+  const [playUrl, setPlayUrl] = useState<string | null>(null);
+  const [embedUrl, setEmbedUrl] = useState<string | null>(null);
+  const [mode, setMode] = useState<"loading" | "video" | "embed" | "fail">("loading");
 
   useEffect(() => {
+    let cancelled = false;
     setError("");
-    const el = videoRef.current;
-    if (!el) return;
+    setMode("loading");
+    setStatus("Inatafuta video…");
 
-    if (normalized.kind === "hls") {
-      if (el.canPlayType("application/vnd.apple.mpegurl")) {
-        el.src = normalized.url;
+    const archiveId = extractArchiveId(src);
+
+    async function run() {
+      // Direct mp4/m3u8 already
+      if (/\.(mp4|webm|ogg|mov)(\?|$)/i.test(src) && !archiveId) {
+        if (!cancelled) {
+          setPlayUrl(src);
+          setMode("video");
+        }
         return;
       }
 
-      let hls: { destroy: () => void } | null = null;
-      let cancelled = false;
+      if (/\.m3u8/i.test(src) && !archiveId) {
+        if (!cancelled) {
+          setPlayUrl(src);
+          setMode("video");
+        }
+        return;
+      }
 
+      if (archiveId) {
+        try {
+          setStatus("Inapakia kutoka Internet Archive…");
+          const res = await fetch(
+            `/api/archive/resolve?id=${encodeURIComponent(archiveId)}`
+          );
+          const data = await res.json();
+          if (cancelled) return;
+
+          if (data.playUrl) {
+            setPlayUrl(data.playUrl);
+            setEmbedUrl(data.embedUrl || null);
+            setMode("video");
+            setStatus("");
+            return;
+          }
+
+          // No direct file – try embed
+          if (data.embedUrl) {
+            setEmbedUrl(data.embedUrl);
+            setMode("embed");
+            setStatus("");
+            return;
+          }
+
+          setMode("fail");
+          setError(data.error || "Hakuna video file");
+        } catch {
+          if (!cancelled) {
+            setEmbedUrl(`https://archive.org/embed/${archiveId}`);
+            setMode("embed");
+          }
+        }
+        return;
+      }
+
+      // YouTube
+      const yt =
+        src.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{6,})/i) ||
+        src.match(/youtube\.com\/embed\/([\w-]{6,})/i);
+      if (yt) {
+        setEmbedUrl(`https://www.youtube.com/embed/${yt[1]}`);
+        setMode("embed");
+        return;
+      }
+
+      setMode("fail");
+      setError("Link hii haitambuliwi kama video.");
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
+
+  // HLS attach when needed
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !playUrl || mode !== "video") return;
+
+    if (/\.m3u8/i.test(playUrl)) {
+      if (el.canPlayType("application/vnd.apple.mpegurl")) {
+        el.src = playUrl;
+        return;
+      }
+      let hls: { destroy: () => void } | null = null;
       (async () => {
         try {
           const Hls = (await import("hls.js")).default;
-          if (cancelled || !videoRef.current) return;
-          if (Hls.isSupported()) {
-            const instance = new Hls({ enableWorker: true });
-            instance.loadSource(normalized.url);
+          if (Hls.isSupported() && videoRef.current) {
+            const instance = new Hls();
+            instance.loadSource(playUrl);
             instance.attachMedia(videoRef.current);
-            instance.on(Hls.Events.ERROR, (_e, data) => {
-              if (data.fatal) setError("HLS stream imeshindwa.");
-            });
             hls = instance;
-          } else setError("Browser haiauni HLS.");
+          }
         } catch {
-          setError("HLS player haijapakia.");
+          setError("HLS failed");
         }
       })();
-
-      return () => {
-        cancelled = true;
-        hls?.destroy();
-      };
+      return () => hls?.destroy();
     }
 
-    if (normalized.kind === "video") {
-      el.src = normalized.url;
-    }
-  }, [normalized.kind, normalized.url]);
+    el.src = playUrl;
+  }, [playUrl, mode]);
 
-  // Internet Archive embed – your link becomes this automatically
-  if (normalized.kind === "archive-embed") {
+  if (mode === "loading") {
+    return (
+      <div
+        className="rounded-2xl border border-slate-800 bg-black flex items-center justify-center text-slate-400 text-sm"
+        style={{ aspectRatio: "16/9" }}
+      >
+        {status || "Loading…"}
+      </div>
+    );
+  }
+
+  if (mode === "video" && playUrl) {
     return (
       <div className="space-y-3">
-        <div className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black" style={{ aspectRatio: "16/9" }}>
-          <iframe
-            key={normalized.url}
-            src={normalized.url}
-            title={title || "Internet Archive"}
-            className="absolute inset-0 w-full h-full border-0"
-            allow="encrypted-media; fullscreen; picture-in-picture"
-            allowFullScreen
-            referrerPolicy="no-referrer-when-downgrade"
-          />
-        </div>
-        <div className="flex flex-wrap gap-3 text-xs">
-          <span className="text-emerald-400">Archive embed active</span>
-          <a
-            href={normalized.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-violet-400 underline"
-          >
-            {normalized.url}
-          </a>
-          <a
-            href={src}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-slate-500 underline"
-          >
-            Original details page
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  if (normalized.kind === "iframe") {
-    return (
-      <div className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black" style={{ aspectRatio: "16/9" }}>
-        <iframe
-          src={normalized.url}
-          title={title || "Video"}
-          className="absolute inset-0 w-full h-full border-0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-          allowFullScreen
-        />
-      </div>
-    );
-  }
-
-  if (normalized.kind === "audio") {
-    return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-        <audio controls className="w-full" src={normalized.url} preload="metadata" />
-      </div>
-    );
-  }
-
-  if (normalized.kind === "hls" || normalized.kind === "video") {
-    return (
-      <div className="space-y-3">
-        <div className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black" style={{ aspectRatio: "16/9" }}>
+        <div
+          className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black"
+          style={{ aspectRatio: "16/9" }}
+        >
           <video
             ref={videoRef}
             className="w-full h-full"
             controls
             playsInline
+            preload="metadata"
             poster={poster || undefined}
-            onError={() => setError("Video haichezi.")}
+            onError={() => {
+              setError("Direct MP4 imeshindwa – jaribu embed au fungua nje.");
+              if (embedUrl) setMode("embed");
+            }}
           />
         </div>
-        {error && (
-          <p className="text-sm text-amber-300">
-            {error}{" "}
-            <a href={src} target="_blank" rel="noopener noreferrer" className="underline text-violet-400">
-              Fungua nje
-            </a>
-          </p>
-        )}
+        {error && <p className="text-sm text-amber-300">{error}</p>}
+        <div className="flex flex-wrap gap-3 text-xs">
+          <a href={playUrl} target="_blank" rel="noopener noreferrer" className="text-violet-400 underline">
+            Direct file
+          </a>
+          {embedUrl && (
+            <button type="button" onClick={() => setMode("embed")} className="text-slate-400 underline">
+              Switch to Archive embed
+            </button>
+          )}
+          <a href={src} target="_blank" rel="noopener noreferrer" className="text-slate-500 underline">
+            Original link
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "embed" && embedUrl) {
+    return (
+      <div className="space-y-3">
+        <div
+          className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black"
+          style={{ aspectRatio: "16/9" }}
+        >
+          <iframe
+            key={embedUrl}
+            src={embedUrl}
+            title={title || "Video"}
+            className="absolute inset-0 w-full h-full border-0"
+            allow="encrypted-media; fullscreen; picture-in-picture; autoplay"
+            allowFullScreen
+          />
+        </div>
+        <a
+          href={src.includes("archive.org") ? src : embedUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-violet-400 underline"
+        >
+          Fungua kwenye Archive.org (kama iframe haichezi) →
+        </a>
       </div>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-      <p className="text-sm text-slate-300">Link si stream ya moja kwa moja. Fungua nje au badilisha kuwa Archive details URL.</p>
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
+      <p className="text-sm text-slate-300">{error || "Haiwezi kucheza."}</p>
       <a
         href={src}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex px-4 py-2.5 rounded-xl bg-violet-600 text-sm font-semibold text-white"
       >
-        Fungua link →
+        Fungua link nje →
       </a>
     </div>
   );
