@@ -13,31 +13,27 @@ export default async function WatchPage({
 }) {
   const { id } = await params;
 
-  let item: {
-    id: string;
-    title: string;
-    description: string | null;
-    linkUrl: string;
-    linkType: string;
-    type: string;
-    coverUrl: string | null;
-    category: string | null;
-  } | null = null;
-
+  let item = null;
   try {
-    item = await prisma.content.findUnique({ where: { id } });
-  } catch {
-    item = null;
-  }
-
-  if (!item || item.status === "draft") {
-    // try without status check for admin preview — only published for public
+    item = await prisma.content.findFirst({
+      where: {
+        id,
+        OR: [{ status: "published" }, { status: "draft" }],
+      },
+    });
+  } catch (e) {
+    console.error("watch page", e);
   }
 
   if (!item) notFound();
 
-  if (item.linkType === "download" || item.type === "game" || item.type === "vpn") {
-    // redirect-style: show download link
+  // Download-only types: show button, still try player if URL looks like media
+  const isDownloadOnly =
+    item.linkType === "download" &&
+    (item.type === "game" || item.type === "vpn") &&
+    !/archive\.org|\.mp4|\.m3u8|\.mp3/i.test(item.linkUrl);
+
+  if (isDownloadOnly) {
     return (
       <main className="max-w-3xl mx-auto px-4 py-8">
         <Link href="/" className="inline-flex items-center gap-2 text-sm text-slate-400 mb-6">
@@ -45,7 +41,9 @@ export default async function WatchPage({
           Back
         </Link>
         <h1 className="text-2xl font-bold mb-2">{item.title}</h1>
-        {item.description && <p className="text-slate-400 text-sm mb-6">{item.description}</p>}
+        {item.description && (
+          <p className="text-slate-400 text-sm mb-6">{item.description}</p>
+        )}
         <a
           href={item.linkUrl}
           target="_blank"
@@ -58,25 +56,45 @@ export default async function WatchPage({
     );
   }
 
+  const backHref =
+    item.type === "movie"
+      ? "/movies"
+      : item.type === "tv"
+        ? "/tv"
+        : item.type === "radio"
+          ? "/radio"
+          : item.type === "game"
+            ? "/games"
+            : "/";
+
   return (
     <main className="max-w-4xl mx-auto px-4 py-6">
-      <Link href={`/${item.type === "movie" ? "movies" : item.type === "tv" ? "tv" : item.type === "radio" ? "radio" : ""}`} className="inline-flex items-center gap-2 text-sm text-slate-400 mb-4">
+      <Link
+        href={backHref}
+        className="inline-flex items-center gap-2 text-sm text-slate-400 mb-4"
+      >
         <ArrowLeft className="w-4 h-4" />
         Back
       </Link>
 
       <h1 className="text-xl sm:text-2xl font-bold mb-1">{item.title}</h1>
       {item.category && (
-        <p className="text-xs text-slate-500 mb-4 uppercase tracking-wide">{item.category}</p>
+        <p className="text-xs text-slate-500 mb-4 uppercase tracking-wide">
+          {item.category}
+        </p>
       )}
 
-      <StreamPlayer src={item.linkUrl} poster={item.coverUrl} title={item.title} />
+      <StreamPlayer
+        src={item.linkUrl}
+        poster={item.coverUrl}
+        title={item.title}
+      />
 
       {item.description && (
-        <p className="mt-4 text-sm text-slate-400 leading-relaxed">{item.description}</p>
+        <p className="mt-4 text-sm text-slate-400 leading-relaxed">
+          {item.description}
+        </p>
       )}
-
-      <p className="mt-3 text-[11px] text-slate-600 break-all">Source: {item.linkUrl}</p>
     </main>
   );
 }
