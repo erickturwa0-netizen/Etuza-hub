@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
-const CATEGORIES = ["movie", "tv", "radio", "game", "vpn"] as const;
+const CATEGORIES = ["movie", "tv", "radio", "game", "vpn", "music", "drama"] as const;
 
 const DEFAULTS: {
   category: (typeof CATEGORIES)[number];
@@ -11,36 +11,18 @@ const DEFAULTS: {
   url: string;
   notes: string;
 }[] = [
-  {
-    category: "movie",
-    name: "Movies public API",
-    url: "",
-    notes: "JSON public API bila API key. Lazima irudishe list ya movies.",
-  },
-  {
-    category: "tv",
-    name: "TV public API",
-    url: "",
-    notes: "Public API ya TV channels (JSON).",
-  },
+  { category: "movie", name: "Movies public API", url: "", notes: "Public JSON API bila key" },
+  { category: "tv", name: "TV public API", url: "", notes: "Public API ya channels" },
   {
     category: "radio",
     name: "Radio public API",
     url: "https://de1.api.radio-browser.info/json/stations/bycountrycodeexact/TZ?hidebroken=true&limit=50",
-    notes: "Radio Browser – Tanzania (bila key).",
+    notes: "Radio Browser TZ",
   },
-  {
-    category: "game",
-    name: "Games public API",
-    url: "",
-    notes: "Optional public games catalog API.",
-  },
-  {
-    category: "vpn",
-    name: "VPN public API",
-    url: "",
-    notes: "Optional public VPN list API.",
-  },
+  { category: "music", name: "Miziki public API", url: "", notes: "Public music catalog API" },
+  { category: "drama", name: "Tamthilia public API", url: "", notes: "Public drama/series API" },
+  { category: "game", name: "Games public API", url: "", notes: "" },
+  { category: "vpn", name: "VPN public API", url: "", notes: "" },
 ];
 
 async function ensureDefaults() {
@@ -67,9 +49,7 @@ export async function GET() {
     }
 
     await ensureDefaults();
-    const sources = await prisma.apiSource.findMany({
-      orderBy: { category: "asc" },
-    });
+    const sources = await prisma.apiSource.findMany({ orderBy: { category: "asc" } });
     return NextResponse.json({ sources });
   } catch (err) {
     console.error(err);
@@ -103,10 +83,9 @@ export async function PUT(req: Request) {
     }
 
     const body = await req.json();
-    // allow batch: { sources: [...] } or single
     const list = Array.isArray(body.sources) ? body.sources : [body];
-
     const updated = [];
+
     for (const raw of list) {
       const parsed = patchSchema.safeParse(raw);
       if (!parsed.success) continue;

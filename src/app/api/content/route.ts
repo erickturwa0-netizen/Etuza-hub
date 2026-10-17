@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
 const schema = z.object({
-  type: z.enum(["movie", "game", "vpn", "tv", "radio"]),
+  type: z.enum(["movie", "game", "vpn", "tv", "radio", "music", "drama"]),
   title: z.string().min(1),
   description: z.string().optional().nullable(),
   coverUrl: z.string().optional().nullable(),
@@ -85,16 +85,6 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error("POST /api/content", err);
     const message = err instanceof Error ? err.message : "Failed to create content";
-    // Common: table does not exist
-    if (message.includes("does not exist") || message.includes("Content")) {
-      return NextResponse.json(
-        {
-          error:
-            "Jedwali Content halipo bado. Approve Prisma schema / hakikisha DATABASE_URL kwenye Vercel.",
-        },
-        { status: 500 }
-      );
-    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

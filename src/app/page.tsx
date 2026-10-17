@@ -1,17 +1,28 @@
 import Link from "next/link";
-import { Film, Gamepad2, Shield, Tv, Radio, ArrowRight } from "lucide-react";
+import {
+  Film,
+  Gamepad2,
+  Shield,
+  Tv,
+  Radio,
+  Music,
+  Clapperboard,
+  ArrowRight,
+} from "lucide-react";
 import ContentCard from "@/components/ContentCard";
 import { getPublishedContent } from "@/lib/content";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [movies, games, vpns, tvs, radios] = await Promise.all([
+  const [movies, games, vpns, tvs, radios, music, drama] = await Promise.all([
     getPublishedContent("movie"),
     getPublishedContent("game"),
     getPublishedContent("vpn"),
     getPublishedContent("tv"),
     getPublishedContent("radio"),
+    getPublishedContent("music"),
+    getPublishedContent("drama"),
   ]);
 
   return (
@@ -21,8 +32,8 @@ export default async function HomePage() {
           Premium · Tanzania
         </p>
         <h1 className="text-4xl sm:text-5xl font-extrabold text-violet-300 mb-4">ETUZA HUB</h1>
-        <p className="text-sm sm:text-base text-slate-400 max-w-md mx-auto mb-8">
-          Movies, TV, Radio, Games &amp; VPN — yote mahali pamoja.
+        <p className="text-sm sm:text-base text-slate-400 max-w-lg mx-auto mb-8">
+          Movies, TV, Miziki, Tamthilia, Radio, Games &amp; VPN — yote pamoja.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           <Link
@@ -30,24 +41,26 @@ export default async function HomePage() {
             className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-violet-600 font-semibold text-sm text-white"
           >
             <Film className="w-5 h-5" />
-            Tazama Movies
+            Movies
           </Link>
           <Link
-            href="/tv"
+            href="/music"
             className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-slate-800 border border-slate-700 font-semibold text-sm"
           >
-            <Tv className="w-5 h-5" />
-            Live TV
+            <Music className="w-5 h-5" />
+            Miziki
           </Link>
         </div>
       </section>
 
       <section className="max-w-6xl mx-auto px-4 mb-10">
         <h2 className="text-lg font-bold mb-3">Explore</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {[
             { href: "/movies", icon: Film, title: "Movies", sub: "Stream films" },
             { href: "/tv", icon: Tv, title: "TV", sub: "Live channels" },
+            { href: "/music", icon: Music, title: "Miziki", sub: "Songs & albums" },
+            { href: "/drama", icon: Clapperboard, title: "Tamthilia", sub: "Drama series" },
             { href: "/radio", icon: Radio, title: "Radio", sub: "Live stations" },
             { href: "/games", icon: Gamepad2, title: "Games", sub: "Android APKs" },
             { href: "/vpn", icon: Shield, title: "VPN", sub: "Zero-rated" },
@@ -72,14 +85,20 @@ export default async function HomePage() {
       {movies.length > 0 && (
         <Section title="Featured Movies" href="/movies" items={movies.slice(0, 4)} />
       )}
-      {tvs.length > 0 && <Section title="TV Channels" href="/tv" items={tvs.slice(0, 4)} />}
+      {music.length > 0 && (
+        <Section title="Miziki" href="/music" items={music.slice(0, 4)} />
+      )}
+      {drama.length > 0 && (
+        <Section title="Tamthilia" href="/drama" items={drama.slice(0, 4)} />
+      )}
+      {tvs.length > 0 && <Section title="TV" href="/tv" items={tvs.slice(0, 4)} />}
       {radios.length > 0 && (
         <Section title="Radio" href="/radio" items={radios.slice(0, 4)} />
       )}
       {games.length > 0 && (
-        <Section title="Popular Games" href="/games" items={games.slice(0, 4)} />
+        <Section title="Games" href="/games" items={games.slice(0, 4)} />
       )}
-      {vpns.length > 0 && <Section title="VPN Configs" href="/vpn" items={vpns.slice(0, 4)} />}
+      {vpns.length > 0 && <Section title="VPN" href="/vpn" items={vpns.slice(0, 4)} />}
     </main>
   );
 }

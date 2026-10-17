@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
 const schema = z.object({
-  type: z.enum(["movie", "game", "vpn"]).optional(),
+  type: z.enum(["movie", "game", "vpn", "tv", "radio", "music", "drama"]).optional(),
   title: z.string().min(1).optional(),
   description: z.string().optional().nullable(),
   coverUrl: z.string().optional().nullable(),

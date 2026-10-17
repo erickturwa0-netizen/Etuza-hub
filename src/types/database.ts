@@ -1,16 +1,14 @@
-export type ContentType = "movie" | "game" | "vpn" | "tv" | "radio";
+export type ContentType =
+  | "movie"
+  | "game"
+  | "vpn"
+  | "tv"
+  | "radio"
+  | "music"
+  | "drama";
 export type LinkType = "download" | "stream";
 export type ContentStatus = "draft" | "published";
 export type UserRole = "user" | "admin";
-
-export interface Profile {
-  id: string;
-  email: string | null;
-  full_name: string | null;
-  role: UserRole;
-  preferred_language: "sw" | "en";
-  created_at: string;
-}
 
 export interface Content {
   id: string;

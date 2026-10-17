@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Film, Gamepad2, Shield, Tv, Radio } from "lucide-react";
+import { Film, Gamepad2, Shield, Tv, Radio, Music, Clapperboard } from "lucide-react";
 import type { ContentType } from "@/types/database";
 
 interface ContentCardProps {
@@ -12,20 +12,24 @@ interface ContentCardProps {
   href?: string;
 }
 
-const icons = {
+const icons: Record<string, typeof Film> = {
   movie: Film,
   game: Gamepad2,
   vpn: Shield,
   tv: Tv,
   radio: Radio,
+  music: Music,
+  drama: Clapperboard,
 };
 
-const bg: Record<ContentType, string> = {
+const bg: Record<string, string> = {
   movie: "#4c1d95",
   game: "#064e3b",
   vpn: "#1e3a8a",
   tv: "#7f1d1d",
   radio: "#831843",
+  music: "#5b21b6",
+  drama: "#9a3412",
 };
 
 export default function ContentCard({
@@ -37,7 +41,6 @@ export default function ContentCard({
   href,
 }: ContentCardProps) {
   const Icon = icons[type] || Film;
-  // Always open watch page so stream can play in-app
   const link = href ?? `/watch/${id}`;
 
   return (
@@ -54,11 +57,7 @@ export default function ContentCard({
             <Icon className="w-12 h-12 text-white opacity-30" />
           </div>
         )}
-
-        <div
-          className="absolute bottom-0 left-0 right-0 p-3"
-          style={{ background: "rgba(0,0,0,0.75)" }}
-        >
+        <div className="absolute bottom-0 left-0 right-0 p-3" style={{ background: "rgba(0,0,0,0.75)" }}>
           <p className="font-semibold text-[13px] leading-snug line-clamp-2 text-white">{title}</p>
           {category && (
             <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wide">{category}</p>
