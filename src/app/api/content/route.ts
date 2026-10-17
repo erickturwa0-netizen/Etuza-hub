@@ -11,7 +11,7 @@ const schema = z.object({
   linkUrl: z.string().min(1),
   linkType: z.enum(["stream", "download"]).default("stream"),
   category: z.string().optional().nullable(),
-  status: z.enum(["draft", "published"]).default("draft"),
+  status: z.enum(["draft", "published"]).default("published"),
   protocol: z.string().optional().nullable(),
   country: z.string().optional().nullable(),
   network: z.string().optional().nullable(),
@@ -23,12 +23,10 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
-    const status = searchParams.get("status");
     const publishedOnly = searchParams.get("published") === "1";
 
     const where: Record<string, string> = {};
     if (type) where.type = type;
-    if (status) where.status = status;
     if (publishedOnly) where.status = "published";
 
     const items = await prisma.content.findMany({
@@ -38,22 +36,29 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ items });
   } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Failed to load content", items: [] }, { status: 500 });
+    console.error("GET /api/content", err);
+    const message = err instanceof Error ? err.message : "Failed to load content";
+    return NextResponse.json({ error: message, items: [] }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
   try {
     const session = await getSession();
-    if (!session || session.role !== "admin") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!session) {
+      return NextResponse.json({ error: "Login required" }, { status: 401 });
+    }
+    if (session.role !== "admin") {
+      return NextResponse.json({ error: "Admin only" }, { status: 403 });
     }
 
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid data" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Data si sahihi", details: parsed.error.flatten() },
+        { status: 400 }
+      );
     }
 
     const d = parsed.data;
@@ -78,7 +83,18 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ item }, { status: 201 });
   } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Failed to create content" }, { status: 500 });
+    console.error("POST /api/content", err);
+    const message = err instanceof Error ? err.message : "Failed to create content";
+    // Common: table does not exist
+    if (message.includes("does not exist") || message.includes("Content")) {
+      return NextResponse.json(
+        {
+          error:
+            "Jedwali Content halipo bado. Approve Prisma schema / hakikisha DATABASE_URL kwenye Vercel.",
+        },
+        { status: 500 }
+      );
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Film, Gamepad2, Shield, Plus, Eye, Trash2, ToggleLeft } from "lucide-react";
+import { Film, Gamepad2, Shield, Tv, Radio, Plus, Eye, Trash2, ToggleLeft } from "lucide-react";
 
 type Item = {
   id: string;
@@ -12,21 +12,27 @@ type Item = {
   category: string | null;
   status: string;
   viewsCount: number;
-  linkType: string;
 };
 
-export default function AdminContentPage() {
+function ContentList() {
   const searchParams = useSearchParams();
   const typeFilter = searchParams.get("type");
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   async function load() {
     setLoading(true);
-    const q = typeFilter ? `?type=${typeFilter}` : "";
-    const res = await fetch(`/api/content${q}`);
-    const data = await res.json();
-    setItems(data.items || []);
+    setError("");
+    try {
+      const q = typeFilter ? `?type=${typeFilter}` : "";
+      const res = await fetch(`/api/content${q}`, { credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) setError(data.error || "Failed to load");
+      setItems(data.items || []);
+    } catch {
+      setError("Tatizo la mtandao");
+    }
     setLoading(false);
   }
 
@@ -40,6 +46,7 @@ export default function AdminContentPage() {
     await fetch(`/api/content/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ status: next }),
     });
     load();
@@ -47,9 +54,17 @@ export default function AdminContentPage() {
 
   async function remove(id: string) {
     if (!confirm("Futa content hii?")) return;
-    await fetch(`/api/content/${id}`, { method: "DELETE" });
+    await fetch(`/api/content/${id}`, { method: "DELETE", credentials: "include" });
     load();
   }
+
+  const icon = (type: string) => {
+    if (type === "movie") return <Film className="w-3.5 h-3.5" />;
+    if (type === "game") return <Gamepad2 className="w-3.5 h-3.5" />;
+    if (type === "tv") return <Tv className="w-3.5 h-3.5" />;
+    if (type === "radio") return <Radio className="w-3.5 h-3.5" />;
+    return <Shield className="w-3.5 h-3.5" />;
+  };
 
   return (
     <div>
@@ -57,7 +72,7 @@ export default function AdminContentPage() {
         <div>
           <h1 className="text-2xl font-bold">Content</h1>
           <p className="text-sm text-slate-500 mt-1">
-            {loading ? "…" : `${items.length} items`}{typeFilter ? ` · ${typeFilter}` : ""}
+            {loading ? "…" : `${items.length} items`}
           </p>
         </div>
         <Link
@@ -73,6 +88,8 @@ export default function AdminContentPage() {
         {[
           { label: "All", href: "/admin/content" },
           { label: "Movies", href: "/admin/content?type=movie" },
+          { label: "TV", href: "/admin/content?type=tv" },
+          { label: "Radio", href: "/admin/content?type=radio" },
           { label: "Games", href: "/admin/content?type=game" },
           { label: "VPN", href: "/admin/content?type=vpn" },
         ].map((f) => (
@@ -91,6 +108,12 @@ export default function AdminContentPage() {
         ))}
       </div>
 
+      {error && (
+        <div className="mb-4 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+
       <div className="glass-card overflow-hidden">
         {loading ? (
           <p className="p-6 text-slate-500 text-sm">Inapakia…</p>
@@ -98,7 +121,7 @@ export default function AdminContentPage() {
           <div className="p-8 text-center">
             <p className="text-slate-400 mb-3">Hakuna content bado</p>
             <Link href="/admin/content/new" className="text-violet-400 text-sm">
-              + Ongeza ya kwanza
+              + Ongeza
             </Link>
           </div>
         ) : (
@@ -106,11 +129,10 @@ export default function AdminContentPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-800 text-left text-slate-500">
-                  <th className="px-4 py-3 font-medium">Title</th>
-                  <th className="px-4 py-3 font-medium hidden sm:table-cell">Type</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium hidden sm:table-cell">Views</th>
-                  <th className="px-4 py-3 font-medium">Actions</th>
+                  <th className="px-4 py-3">Title</th>
+                  <th className="px-4 py-3 hidden sm:table-cell">Type</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
@@ -119,13 +141,7 @@ export default function AdminContentPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
-                          {c.type === "movie" ? (
-                            <Film className="w-3.5 h-3.5" />
-                          ) : c.type === "game" ? (
-                            <Gamepad2 className="w-3.5 h-3.5" />
-                          ) : (
-                            <Shield className="w-3.5 h-3.5" />
-                          )}
+                          {icon(c.type)}
                         </div>
                         <span className="font-medium truncate max-w-[160px]">{c.title}</span>
                       </div>
@@ -142,28 +158,12 @@ export default function AdminContentPage() {
                         {c.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-400 hidden sm:table-cell">
-                      <span className="inline-flex items-center gap-1">
-                        <Eye className="w-3.5 h-3.5" />
-                        {c.viewsCount}
-                      </span>
-                    </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleStatus(c.id, c.status)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-violet-300 hover:bg-white/5"
-                          title="Toggle publish"
-                        >
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => toggleStatus(c.id, c.status)} className="p-1.5 text-slate-400 hover:text-violet-300">
                           <ToggleLeft className="w-4 h-4" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => remove(c.id)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-white/5"
-                          title="Delete"
-                        >
+                        <button type="button" onClick={() => remove(c.id)} className="p-1.5 text-slate-400 hover:text-red-400">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -176,5 +176,13 @@ export default function AdminContentPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AdminContentPage() {
+  return (
+    <Suspense fallback={<p className="text-slate-500">…</p>}>
+      <ContentList />
+    </Suspense>
   );
 }

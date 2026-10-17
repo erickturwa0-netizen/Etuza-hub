@@ -1,12 +1,18 @@
 import Link from "next/link";
-import { Film, Gamepad2, Shield, ArrowRight } from "lucide-react";
+import { Film, Gamepad2, Shield, Tv, Radio, ArrowRight } from "lucide-react";
 import ContentCard from "@/components/ContentCard";
-import { getPublished } from "@/lib/mock-data";
+import { getPublishedContent } from "@/lib/content";
 
-export default function HomePage() {
-  const movies = getPublished("movie").slice(0, 4);
-  const games = getPublished("game").slice(0, 4);
-  const vpns = getPublished("vpn").slice(0, 4);
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const [movies, games, vpns, tvs, radios] = await Promise.all([
+    getPublishedContent("movie"),
+    getPublishedContent("game"),
+    getPublishedContent("vpn"),
+    getPublishedContent("tv"),
+    getPublishedContent("radio"),
+  ]);
 
   return (
     <main className="flex-1">
@@ -14,11 +20,9 @@ export default function HomePage() {
         <p className="inline-block text-xs font-medium text-violet-300 bg-violet-950 border border-violet-800 rounded-full px-3 py-1 mb-5">
           Premium · Tanzania
         </p>
-        <h1 className="text-4xl sm:text-5xl font-extrabold text-violet-300 mb-4">
-          ETUZA HUB
-        </h1>
+        <h1 className="text-4xl sm:text-5xl font-extrabold text-violet-300 mb-4">ETUZA HUB</h1>
         <p className="text-sm sm:text-base text-slate-400 max-w-md mx-auto mb-8">
-          Movies, Games &amp; VPN configs — yote mahali pamoja.
+          Movies, TV, Radio, Games &amp; VPN — yote mahali pamoja.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           <Link
@@ -29,20 +33,22 @@ export default function HomePage() {
             Tazama Movies
           </Link>
           <Link
-            href="/games"
+            href="/tv"
             className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-slate-800 border border-slate-700 font-semibold text-sm"
           >
-            <Gamepad2 className="w-5 h-5" />
-            Download Games
+            <Tv className="w-5 h-5" />
+            Live TV
           </Link>
         </div>
       </section>
 
       <section className="max-w-6xl mx-auto px-4 mb-10">
         <h2 className="text-lg font-bold mb-3">Explore</h2>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
           {[
             { href: "/movies", icon: Film, title: "Movies", sub: "Stream films" },
+            { href: "/tv", icon: Tv, title: "TV", sub: "Live channels" },
+            { href: "/radio", icon: Radio, title: "Radio", sub: "Live stations" },
             { href: "/games", icon: Gamepad2, title: "Games", sub: "Android APKs" },
             { href: "/vpn", icon: Shield, title: "VPN", sub: "Zero-rated" },
           ].map((c) => (
@@ -63,9 +69,17 @@ export default function HomePage() {
         </div>
       </section>
 
-      <Section title="Featured Movies" href="/movies" items={movies} />
-      <Section title="Popular Games" href="/games" items={games} />
-      <Section title="VPN Configs" href="/vpn" items={vpns} />
+      {movies.length > 0 && (
+        <Section title="Featured Movies" href="/movies" items={movies.slice(0, 4)} />
+      )}
+      {tvs.length > 0 && <Section title="TV Channels" href="/tv" items={tvs.slice(0, 4)} />}
+      {radios.length > 0 && (
+        <Section title="Radio" href="/radio" items={radios.slice(0, 4)} />
+      )}
+      {games.length > 0 && (
+        <Section title="Popular Games" href="/games" items={games.slice(0, 4)} />
+      )}
+      {vpns.length > 0 && <Section title="VPN Configs" href="/vpn" items={vpns.slice(0, 4)} />}
     </main>
   );
 }
@@ -77,7 +91,7 @@ function Section({
 }: {
   title: string;
   href: string;
-  items: ReturnType<typeof getPublished>;
+  items: Awaited<ReturnType<typeof getPublishedContent>>;
 }) {
   return (
     <section className="max-w-6xl mx-auto px-4 pb-10">

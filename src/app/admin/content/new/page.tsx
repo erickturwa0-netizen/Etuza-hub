@@ -41,9 +41,7 @@ export default function NewContentPage() {
       const res = await fetch(`/api/tmdb/search?q=${encodeURIComponent(tmdbQ)}`);
       const data = await res.json();
       setTmdbResults(data.results || []);
-      if (data.error && !(data.results || []).length) {
-        setError(data.error);
-      }
+      if (data.error && !(data.results || []).length) setError(data.error);
     } catch {
       setError("TMDB search failed");
     }
@@ -67,6 +65,7 @@ export default function NewContentPage() {
       const res = await fetch("/api/content", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           type,
           title,
@@ -81,16 +80,24 @@ export default function NewContentPage() {
           configText: configText || null,
         }),
       });
-      const data = await res.json();
+
+      const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        setError(data.error || "Imeshindikana kuhifadhi");
+        setError(
+          data.error ||
+            (res.status === 401
+              ? "Session imeisha – login tena kama admin"
+              : `Imeshindikana kuhifadhi (${res.status})`)
+        );
         setSaving(false);
         return;
       }
+
       router.push("/admin/content");
       router.refresh();
-    } catch {
-      setError("Tatizo la mtandao");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Tatizo la mtandao");
       setSaving(false);
     }
   }
@@ -158,28 +165,24 @@ export default function NewContentPage() {
                 {tmdbLoading ? "…" : "Search"}
               </button>
             </div>
-            {tmdbResults.length > 0 && (
-              <div className="space-y-1 max-h-48 overflow-y-auto">
-                {tmdbResults.map((m) => (
-                  <button
-                    key={m.tmdbId}
-                    type="button"
-                    onClick={() => pickTmdb(m)}
-                    className="w-full text-left px-2 py-2 rounded-lg hover:bg-slate-800 flex gap-2 items-center text-sm"
-                  >
-                    {m.coverUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={m.coverUrl} alt="" className="w-8 h-12 object-cover rounded" />
-                    ) : (
-                      <div className="w-8 h-12 bg-slate-700 rounded" />
-                    )}
-                    <span>
-                      {m.title} {m.year ? `(${m.year})` : ""}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
+            {tmdbResults.map((m) => (
+              <button
+                key={m.tmdbId}
+                type="button"
+                onClick={() => pickTmdb(m)}
+                className="w-full text-left px-2 py-2 rounded-lg hover:bg-slate-800 flex gap-2 items-center text-sm"
+              >
+                {m.coverUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={m.coverUrl} alt="" className="w-8 h-12 object-cover rounded" />
+                ) : (
+                  <div className="w-8 h-12 bg-slate-700 rounded" />
+                )}
+                <span>
+                  {m.title} {m.year ? `(${m.year})` : ""}
+                </span>
+              </button>
+            ))}
           </div>
         )}
 
@@ -189,14 +192,7 @@ export default function NewContentPage() {
             required
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm"
-            placeholder={
-              type === "tv"
-                ? "e.g. TBC1 Live"
-                : type === "radio"
-                  ? "e.g. Clouds FM"
-                  : "Title"
-            }
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:outline-none"
           />
         </div>
 
@@ -206,36 +202,27 @@ export default function NewContentPage() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={2}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm resize-none"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm resize-none focus:outline-none"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1.5">
-            {type === "tv" || type === "radio" ? "Stream URL *" : "Link URL *"}
-          </label>
+          <label className="block text-sm font-medium text-slate-400 mb-1.5">Link / Stream URL *</label>
           <input
             required
             value={linkUrl}
             onChange={(e) => setLinkUrl(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm"
-            placeholder={
-              type === "tv"
-                ? "https://….m3u8"
-                : type === "radio"
-                  ? "https://….mp3 / .m3u8"
-                  : "https://…"
-            }
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:outline-none"
+            placeholder="https://…"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1.5">Cover / Logo URL</label>
+          <label className="block text-sm font-medium text-slate-400 mb-1.5">Cover URL</label>
           <input
             value={coverUrl}
             onChange={(e) => setCoverUrl(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 focus:outline-none text-sm"
-            placeholder="https://…"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:outline-none"
           />
         </div>
 
@@ -265,48 +252,35 @@ export default function NewContentPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1.5">Category / Network</label>
+          <label className="block text-sm font-medium text-slate-400 mb-1.5">Category</label>
           <input
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-            placeholder={type === "tv" ? "News, Sports…" : type === "radio" ? "Bongo, Gospel…" : "Category"}
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:outline-none"
           />
         </div>
 
-        {(type === "tv" || type === "radio") && (
+        {(type === "tv" || type === "radio" || type === "vpn") && (
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1.5">Network / Station</label>
+            <label className="block text-sm font-medium text-slate-400 mb-1.5">Network</label>
             <input
               value={network}
               onChange={(e) => setNetwork(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-              placeholder="TBC, ITV, Clouds…"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:outline-none"
+              placeholder="Halotel, TBC…"
             />
           </div>
         )}
 
         {type === "vpn" && (
           <>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1.5">Protocol</label>
-                <input
-                  value={protocol}
-                  onChange={(e) => setProtocol(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-                  placeholder="V2Ray…"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1.5">Network</label>
-                <input
-                  value={network}
-                  onChange={(e) => setNetwork(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-                  placeholder="Halotel…"
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-1.5">Protocol</label>
+              <input
+                value={protocol}
+                onChange={(e) => setProtocol(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:outline-none"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-400 mb-1.5">Config Text</label>
@@ -314,7 +288,7 @@ export default function NewContentPage() {
                 value={configText}
                 onChange={(e) => setConfigText(e.target.value)}
                 rows={4}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-mono resize-none"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-mono resize-none focus:outline-none"
               />
             </div>
           </>
@@ -326,7 +300,7 @@ export default function NewContentPage() {
           className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-violet-600 disabled:opacity-60 font-semibold text-sm text-white"
         >
           <Save className="w-4 h-4" />
-          {saving ? "Inahifadhi…" : "Save Content"}
+          {saving ? "Inahifadhi…" : "Save & Publish"}
         </button>
       </form>
     </div>
