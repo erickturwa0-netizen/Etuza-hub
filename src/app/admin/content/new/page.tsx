@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Save, ArrowLeft, Search } from "lucide-react";
+import { Save, ArrowLeft, Search, Image as ImageIcon } from "lucide-react";
 import Link from "next/link";
 
 type ContentKind = "movie" | "game" | "vpn" | "tv" | "radio";
@@ -33,25 +33,48 @@ export default function NewContentPage() {
   const [tmdbQ, setTmdbQ] = useState("");
   const [tmdbResults, setTmdbResults] = useState<TmdbHit[]>([]);
   const [tmdbLoading, setTmdbLoading] = useState(false);
+  const [autoCoverMsg, setAutoCoverMsg] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function searchTmdb() {
-    if (tmdbQ.trim().length < 2) return;
+  async function searchTmdb(query: string) {
+    if (query.trim().length < 2) return;
     setTmdbLoading(true);
+    setAutoCoverMsg("");
     try {
-      const res = await fetch(`/api/tmdb/search?q=${encodeURIComponent(tmdbQ)}`);
+      const res = await fetch(`/api/tmdb/search?q=${encodeURIComponent(query)}`);
       const data = await res.json();
       setTmdbResults(data.results || []);
-      if (data.error && !(data.results || []).length) setError(data.error);
+      if (data.error && !(data.results || []).length) {
+        setError(data.error);
+        setAutoCoverMsg(data.error);
+      }
     } catch {
       setError("TMDB search failed");
     }
     setTmdbLoading(false);
   }
 
+  // Auto-search TMDB when typing movie title (debounce 700ms)
+  useEffect(() => {
+    if (type !== "movie") return;
+    if (title.trim().length < 3) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      searchTmdb(title);
+    }, 700);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, type]);
+
   function pickTmdb(m: TmdbHit) {
     setTitle(m.title + (m.year ? ` (${m.year})` : ""));
     setDescription(m.overview || "");
-    if (m.coverUrl) setCoverUrl(m.coverUrl);
+    if (m.coverUrl) {
+      setCoverUrl(m.coverUrl);
+      setAutoCoverMsg("Cover imepatikana kutoka TMDB ✓");
+    }
     setTmdbResults([]);
     setTmdbQ("");
   }
@@ -145,19 +168,22 @@ export default function NewContentPage() {
         </div>
 
         {type === "movie" && (
-          <div className="rounded-xl border border-slate-700 p-3 space-y-2">
-            <p className="text-xs text-slate-500 font-medium">TMDB – tafuta cover + title</p>
+          <div className="rounded-xl border border-violet-800/40 bg-violet-950/20 p-3 space-y-2">
+            <p className="text-xs text-violet-300 font-medium flex items-center gap-1">
+              <ImageIcon className="w-3.5 h-3.5" />
+              Cover automatic (TMDB) – andika title chini, au tafuta hapa
+            </p>
             <div className="flex gap-2">
               <input
                 value={tmdbQ}
                 onChange={(e) => setTmdbQ(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), searchTmdb())}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), searchTmdb(tmdbQ))}
                 className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm focus:outline-none"
-                placeholder="Search movie name…"
+                placeholder="Search movie…"
               />
               <button
                 type="button"
-                onClick={searchTmdb}
+                onClick={() => searchTmdb(tmdbQ || title)}
                 disabled={tmdbLoading}
                 className="px-3 py-2 rounded-lg bg-slate-800 text-sm inline-flex items-center gap-1"
               >
@@ -165,24 +191,29 @@ export default function NewContentPage() {
                 {tmdbLoading ? "…" : "Search"}
               </button>
             </div>
-            {tmdbResults.map((m) => (
-              <button
-                key={m.tmdbId}
-                type="button"
-                onClick={() => pickTmdb(m)}
-                className="w-full text-left px-2 py-2 rounded-lg hover:bg-slate-800 flex gap-2 items-center text-sm"
-              >
-                {m.coverUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={m.coverUrl} alt="" className="w-8 h-12 object-cover rounded" />
-                ) : (
-                  <div className="w-8 h-12 bg-slate-700 rounded" />
-                )}
-                <span>
-                  {m.title} {m.year ? `(${m.year})` : ""}
-                </span>
-              </button>
-            ))}
+            {autoCoverMsg && <p className="text-xs text-emerald-400">{autoCoverMsg}</p>}
+            {tmdbResults.length > 0 && (
+              <div className="space-y-1 max-h-52 overflow-y-auto">
+                {tmdbResults.map((m) => (
+                  <button
+                    key={m.tmdbId}
+                    type="button"
+                    onClick={() => pickTmdb(m)}
+                    className="w-full text-left px-2 py-2 rounded-lg hover:bg-slate-800 flex gap-2 items-center text-sm"
+                  >
+                    {m.coverUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={m.coverUrl} alt="" className="w-8 h-12 object-cover rounded" />
+                    ) : (
+                      <div className="w-8 h-12 bg-slate-700 rounded" />
+                    )}
+                    <span>
+                      {m.title} {m.year ? `(${m.year})` : ""}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -193,6 +224,7 @@ export default function NewContentPage() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:outline-none"
+            placeholder="e.g. Dune Part Two"
           />
         </div>
 
@@ -207,14 +239,19 @@ export default function NewContentPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1.5">Link / Stream URL *</label>
+          <label className="block text-sm font-medium text-slate-400 mb-1.5">
+            Stream / Link URL *
+          </label>
           <input
             required
             value={linkUrl}
             onChange={(e) => setLinkUrl(e.target.value)}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:outline-none"
-            placeholder="https://…"
+            placeholder="https://….m3u8 au .mp4"
           />
+          <p className="text-[11px] text-slate-600 mt-1">
+            Bora: .mp4 au .m3u8 — HTML page haitacheza ndani ya player
+          </p>
         </div>
 
         <div>
@@ -224,6 +261,10 @@ export default function NewContentPage() {
             onChange={(e) => setCoverUrl(e.target.value)}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:outline-none"
           />
+          {coverUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={coverUrl} alt="cover" className="mt-2 h-24 rounded-lg object-cover" />
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -267,7 +308,6 @@ export default function NewContentPage() {
               value={network}
               onChange={(e) => setNetwork(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:outline-none"
-              placeholder="Halotel, TBC…"
             />
           </div>
         )}

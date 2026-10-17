@@ -28,14 +28,6 @@ const bg: Record<ContentType, string> = {
   radio: "#831843",
 };
 
-const paths: Record<ContentType, string> = {
-  movie: "/movies",
-  game: "/games",
-  vpn: "/vpn",
-  tv: "/tv",
-  radio: "/radio",
-};
-
 export default function ContentCard({
   id,
   title,
@@ -45,7 +37,8 @@ export default function ContentCard({
   href,
 }: ContentCardProps) {
   const Icon = icons[type] || Film;
-  const link = href ?? paths[type] ?? "/";
+  // Always open watch page so stream can play in-app
+  const link = href ?? `/watch/${id}`;
 
   return (
     <Link href={link} className="block">
