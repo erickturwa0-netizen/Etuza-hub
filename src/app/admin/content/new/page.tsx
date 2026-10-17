@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Save, ArrowLeft, Search, Image as ImageIcon } from "lucide-react";
+import { Save, ArrowLeft, Search, Image as ImageIcon, Link2, Download } from "lucide-react";
 import Link from "next/link";
 
 type ContentKind = "movie" | "game" | "vpn" | "tv" | "radio" | "music" | "drama";
@@ -31,6 +31,7 @@ export default function NewContentPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
+  const [apiUrl, setApiUrl] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
   const [linkType, setLinkType] = useState<"stream" | "download">("stream");
   const [category, setCategory] = useState("");
@@ -39,7 +40,9 @@ export default function NewContentPage() {
   const [network, setNetwork] = useState("");
   const [configText, setConfigText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [tmdbQ, setTmdbQ] = useState("");
   const [tmdbResults, setTmdbResults] = useState<TmdbHit[]>([]);
   const [tmdbLoading, setTmdbLoading] = useState(false);
@@ -86,19 +89,130 @@ export default function NewContentPage() {
     setTmdbQ("");
   }
 
+  /** Hifadhi API URL kwenye Settings za category hii */
+  async function saveApiToSettings() {
+    if (!apiUrl.trim()) return;
+    await fetch("/api/admin/api-sources", {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category: type,
+        url: apiUrl.trim(),
+        enabled: true,
+        name: `${TYPE_LABELS[type]} public API`,
+      }),
+    });
+  }
+
+  /** Pakia orodha kutoka API na import items */
+  async function importFromApi() {
+    if (!apiUrl.trim()) {
+      setError("Weka Public API URL kwanza");
+      return;
+    }
+    setImporting(true);
+    setError("");
+    setInfo("");
+    try {
+      await saveApiToSettings();
+
+      // Fetch API directly through our normalizer via temporary public-feed
+      // First save API, then call public-feed
+      const feedRes = await fetch(
+        `/api/public-feed?category=${encodeURIComponent(type)}`,
+        { credentials: "include" }
+      );
+      let feed = await feedRes.json();
+
+      // If feed empty, try fetch API URL directly and normalize client-side for first item fill
+      if (!feed.items?.length) {
+        const rawRes = await fetch(
+          `/api/proxy-json?url=${encodeURIComponent(apiUrl.trim())}`
+        ).catch(() => null);
+
+        if (rawRes?.ok) {
+          const raw = await rawRes.json();
+          // use server import endpoint instead
+        }
+
+        // Direct import endpoint
+        const imp = await fetch("/api/admin/import-api", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ category: type, apiUrl: apiUrl.trim() }),
+        });
+        const impData = await imp.json();
+        if (!imp.ok) {
+          setError(impData.error || "Import imeshindikana");
+          setImporting(false);
+          return;
+        }
+        setInfo(`${impData.count || 0} items zimeingizwa kutoka API ✓`);
+        setTimeout(() => {
+          router.push("/admin/content");
+          router.refresh();
+        }, 1000);
+        setImporting(false);
+        return;
+      }
+
+      // Import via dedicated endpoint
+      const imp = await fetch("/api/admin/import-api", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: type, apiUrl: apiUrl.trim() }),
+      });
+      const impData = await imp.json();
+      if (!imp.ok) {
+        setError(impData.error || "Import imeshindikana");
+      } else {
+        setInfo(`${impData.count || 0} items zimeingizwa ✓`);
+        setTimeout(() => {
+          router.push("/admin/content");
+          router.refresh();
+        }, 1000);
+      }
+    } catch {
+      setError("Tatizo la mtandao wakati wa import");
+    }
+    setImporting(false);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setInfo("");
     setSaving(true);
 
     try {
+      // Save API to settings if provided
+      if (apiUrl.trim()) {
+        await saveApiToSettings();
+      }
+
+      // Need at least stream link for single item
+      if (!linkUrl.trim()) {
+        if (apiUrl.trim()) {
+          // only API – run import instead
+          setSaving(false);
+          await importFromApi();
+          return;
+        }
+        setError("Weka Stream link au Public API URL");
+        setSaving(false);
+        return;
+      }
+
       const res = await fetch("/api/content", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           type,
-          title,
+          title: title || "Untitled",
           description: description || null,
           linkUrl,
           coverUrl: coverUrl || null,
@@ -136,7 +250,9 @@ export default function NewContentPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold">Add Content</h1>
-          <p className="text-sm text-slate-500">Movie · TV · Miziki · Tamthilia · Radio · Game · VPN</p>
+          <p className="text-sm text-slate-500">
+            Movie · TV · Miziki · Tamthilia · Radio · Game · VPN
+          </p>
         </div>
       </div>
 
@@ -144,6 +260,11 @@ export default function NewContentPage() {
         {error && (
           <div className="px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
             {error}
+          </div>
+        )}
+        {info && (
+          <div className="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
+            {info}
           </div>
         )}
 
@@ -216,14 +337,17 @@ export default function NewContentPage() {
         )}
 
         <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1.5">Title *</label>
+          <label className="block text-sm font-medium text-slate-400 mb-1.5">Title</label>
           <input
-            required
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:outline-none"
             placeholder={
-              type === "music" ? "Jina la wimbo / album" : type === "drama" ? "Jina la tamthilia" : "Title"
+              type === "music"
+                ? "Jina la wimbo"
+                : type === "drama"
+                  ? "Jina la tamthilia"
+                  : "Title"
             }
           />
         </div>
@@ -238,15 +362,45 @@ export default function NewContentPage() {
           />
         </div>
 
+        {/* —— Stream / Download link —— */}
         <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1.5">Stream / Link URL *</label>
+          <label className="block text-sm font-medium text-slate-400 mb-1.5">
+            Stream / Download link
+          </label>
           <input
-            required
             value={linkUrl}
             onChange={(e) => setLinkUrl(e.target.value)}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:outline-none"
-            placeholder={type === "music" ? "https://….mp3" : "https://….mp4 / .m3u8"}
+            placeholder="https://….mp4 / .m3u8 / .mp3 / archive.org/details/…"
           />
+          <p className="text-[11px] text-slate-600 mt-1">Link ya item moja</p>
+        </div>
+
+        {/* —— Public API (chini ya stream link) —— */}
+        <div className="rounded-xl border border-slate-700 bg-slate-900/50 p-3 space-y-2">
+          <label className="flex items-center gap-1.5 text-sm font-medium text-violet-300">
+            <Link2 className="w-4 h-4" />
+            Public API URL (bila key)
+          </label>
+          <input
+            value={apiUrl}
+            onChange={(e) => setApiUrl(e.target.value)}
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm font-mono focus:outline-none"
+            placeholder="https://…api…/list.json"
+          />
+          <p className="text-[11px] text-slate-500">
+            API ya orodha kwa <strong className="text-slate-400">{TYPE_LABELS[type]}</strong>.
+            Inahifadhiwa kwenye Settings pia. Unaweza ku-import items nyingi.
+          </p>
+          <button
+            type="button"
+            onClick={importFromApi}
+            disabled={importing || !apiUrl.trim()}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 text-sm text-slate-200 disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" />
+            {importing ? "Inapakia…" : "Pakia / Import kutoka API"}
+          </button>
         </div>
 
         <div>
@@ -289,7 +443,6 @@ export default function NewContentPage() {
             value={category}
             onChange={(e) => setCategory(e.target.value)}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:outline-none"
-            placeholder={type === "music" ? "Bongo, Gospel…" : type === "drama" ? "Series, Soap…" : "Category"}
           />
         </div>
 
