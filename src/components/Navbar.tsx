@@ -8,8 +8,8 @@ const links = [
   { href: "/", label: "Home" },
   { href: "/movies", label: "Movies" },
   { href: "/tv", label: "TV" },
-  { href: "/music", label: "Miziki" },
   { href: "/drama", label: "Tamthilia" },
+  { href: "/music", label: "Miziki" },
   { href: "/radio", label: "Radio" },
   { href: "/games", label: "Games" },
   { href: "/vpn", label: "VPN" },
@@ -32,7 +32,7 @@ export default function Navbar() {
           <span className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center text-sm font-black text-white">
             E
           </span>
-          <span className="text-violet-300">ETUZA HUB</span>
+          <span className="text-violet-300 hidden xs:inline">ETUZA HUB</span>
         </Link>
 
         <nav className="hidden lg:flex items-center gap-0.5 flex-wrap justify-end">

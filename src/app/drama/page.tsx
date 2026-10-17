@@ -19,15 +19,10 @@ export default async function DramaPage() {
           <p className="text-sm text-slate-500">{items.length} available</p>
         </div>
       </div>
-
       {items.length === 0 ? (
-        <div className="glass-card p-10 text-center">
-          <Clapperboard className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400">Hakuna tamthilia bado</p>
-          <p className="text-xs text-slate-600 mt-2">
-            Admin → Add Content → Type = Drama
-          </p>
-        </div>
+        <p className="text-slate-500 text-sm">
+          Hakuna tamthilia bado. Admin → Add Content → Type = drama
+        </p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {items.map((c) => (

@@ -11,16 +11,16 @@ const DEFAULTS: {
   url: string;
   notes: string;
 }[] = [
-  { category: "movie", name: "Movies public API", url: "", notes: "Public JSON API bila key" },
-  { category: "tv", name: "TV public API", url: "", notes: "Public API ya channels" },
+  { category: "movie", name: "Movies public API", url: "", notes: "JSON public API bila key" },
+  { category: "tv", name: "TV public API", url: "", notes: "TV channels API" },
+  { category: "drama", name: "Tamthilia public API", url: "", notes: "Drama / series catalog" },
+  { category: "music", name: "Miziki public API", url: "", notes: "Music tracks / albums API" },
   {
     category: "radio",
     name: "Radio public API",
     url: "https://de1.api.radio-browser.info/json/stations/bycountrycodeexact/TZ?hidebroken=true&limit=50",
     notes: "Radio Browser TZ",
   },
-  { category: "music", name: "Miziki public API", url: "", notes: "Public music catalog API" },
-  { category: "drama", name: "Tamthilia public API", url: "", notes: "Public drama/series API" },
   { category: "game", name: "Games public API", url: "", notes: "" },
   { category: "vpn", name: "VPN public API", url: "", notes: "" },
 ];
@@ -47,23 +47,12 @@ export async function GET() {
     if (!session || session.role !== "admin") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
     await ensureDefaults();
     const sources = await prisma.apiSource.findMany({ orderBy: { category: "asc" } });
     return NextResponse.json({ sources });
   } catch (err) {
     console.error(err);
-    const message = err instanceof Error ? err.message : "Failed";
-    return NextResponse.json(
-      {
-        error:
-          message.includes("ApiSource") || message.includes("does not exist")
-            ? "Jedwali ApiSource halipo – approve Prisma schema"
-            : message,
-        sources: [],
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed", sources: [] }, { status: 500 });
   }
 }
 
@@ -81,11 +70,9 @@ export async function PUT(req: Request) {
     if (!session || session.role !== "admin") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
     const body = await req.json();
     const list = Array.isArray(body.sources) ? body.sources : [body];
     const updated = [];
-
     for (const raw of list) {
       const parsed = patchSchema.safeParse(raw);
       if (!parsed.success) continue;
@@ -108,7 +95,6 @@ export async function PUT(req: Request) {
       });
       updated.push(row);
     }
-
     return NextResponse.json({ sources: updated });
   } catch (err) {
     console.error(err);

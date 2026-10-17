@@ -12,7 +12,7 @@ interface ContentCardProps {
   href?: string;
 }
 
-const icons: Record<string, typeof Film> = {
+const icons = {
   movie: Film,
   game: Gamepad2,
   vpn: Shield,
@@ -57,7 +57,10 @@ export default function ContentCard({
             <Icon className="w-12 h-12 text-white opacity-30" />
           </div>
         )}
-        <div className="absolute bottom-0 left-0 right-0 p-3" style={{ background: "rgba(0,0,0,0.75)" }}>
+        <div
+          className="absolute bottom-0 left-0 right-0 p-3"
+          style={{ background: "rgba(0,0,0,0.75)" }}
+        >
           <p className="font-semibold text-[13px] leading-snug line-clamp-2 text-white">{title}</p>
           {category && (
             <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wide">{category}</p>
