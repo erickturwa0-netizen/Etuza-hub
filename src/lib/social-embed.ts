@@ -1,65 +1,95 @@
-/** Detect social / video page URLs and map to embeddable iframe src */
-
 export type SocialKind =
   | "youtube"
   | "facebook"
   | "vimeo"
   | "dailymotion"
   | "tiktok"
+  | "instagram"
   | null;
 
-export function detectSocial(url: string): { kind: SocialKind; embedUrl: string | null; id: string | null } {
+function ytId(u: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?(?:.*&)?v=)([\w-]{11})/i,
+    /youtu\.be\/([\w-]{11})/i,
+    /youtube\.com\/embed\/([\w-]{11})/i,
+    /youtube\.com\/shorts\/([\w-]{11})/i,
+    /youtube\.com\/live\/([\w-]{11})/i,
+    /youtube\.com\/v\/([\w-]{11})/i,
+    /m\.youtube\.com\/watch\?(?:.*&)?v=([\w-]{11})/i,
+  ];
+  for (const p of patterns) {
+    const m = u.match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+export function detectSocial(url: string): {
+  kind: SocialKind;
+  embedUrl: string | null;
+  id: string | null;
+} {
   const u = url.trim();
 
-  // YouTube
-  const yt =
-    u.match(/(?:youtube\.com\/watch\?[^#]*v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{6,})/i) ||
-    u.match(/youtube\.com\/live\/([\w-]{6,})/i);
-  if (yt) {
-    const id = yt[1];
-    // modestbranding + privacy domain – still shows some YT UI (ToS); best we can do legally
-    const embedUrl =
-      `https://www.youtube-nocookie.com/embed/${id}` +
-      `?modestbranding=1&rel=0&playsinline=1&controls=1&fs=1&iv_load_policy=3&disablekb=0`;
-    return { kind: "youtube", embedUrl, id };
+  const id = ytId(u);
+  if (id) {
+    return {
+      kind: "youtube",
+      id,
+      embedUrl:
+        `https://www.youtube-nocookie.com/embed/${id}` +
+        `?autoplay=0&modestbranding=1&rel=0&playsinline=1&controls=1&fs=1&iv_load_policy=3`,
+    };
   }
 
-  // Vimeo
   const vm = u.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
   if (vm) {
     return {
       kind: "vimeo",
-      embedUrl: `https://player.vimeo.com/video/${vm[1]}?title=0&byline=0&portrait=0`,
       id: vm[1],
+      embedUrl: `https://player.vimeo.com/video/${vm[1]}?title=0&byline=0&portrait=0`,
     };
   }
 
-  // Dailymotion
   const dm = u.match(/dailymotion\.com\/video\/([\w]+)/i);
   if (dm) {
     return {
       kind: "dailymotion",
-      embedUrl: `https://www.dailymotion.com/embed/video/${dm[1]}`,
       id: dm[1],
+      embedUrl: `https://www.dailymotion.com/embed/video/${dm[1]}`,
     };
   }
 
-  // Facebook – official video embed
-  if (/facebook\.com\/.+\/videos\//i.test(u) || /fb\.watch\//i.test(u) || /facebook\.com\/watch/i.test(u)) {
-    const embedUrl =
-      "https://www.facebook.com/plugins/video.php?href=" +
-      encodeURIComponent(u) +
-      "&show_text=false&width=auto";
-    return { kind: "facebook", embedUrl, id: null };
+  if (
+    /facebook\.com\//i.test(u) ||
+    /fb\.watch\//i.test(u) ||
+    /fb\.com\//i.test(u)
+  ) {
+    return {
+      kind: "facebook",
+      id: null,
+      embedUrl:
+        "https://www.facebook.com/plugins/video.php?href=" +
+        encodeURIComponent(u.split("?")[0]) +
+        "&show_text=false&width=auto&t=0",
+    };
   }
 
-  // TikTok
   const tt = u.match(/tiktok\.com\/@[\w.-]+\/video\/(\d+)/i);
   if (tt) {
     return {
       kind: "tiktok",
-      embedUrl: `https://www.tiktok.com/embed/v2/${tt[1]}`,
       id: tt[1],
+      embedUrl: `https://www.tiktok.com/embed/v2/${tt[1]}`,
+    };
+  }
+
+  // Instagram reel/post – official embed is limited; still try
+  if (/instagram\.com\/(p|reel|tv)\//i.test(u)) {
+    return {
+      kind: "instagram",
+      id: null,
+      embedUrl: u.replace(/\/?$/, "/") + "embed",
     };
   }
 

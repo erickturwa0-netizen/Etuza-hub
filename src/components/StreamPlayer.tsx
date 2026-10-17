@@ -19,6 +19,14 @@ function extractArchiveId(src: string): string | null {
   return null;
 }
 
+function isDirectMedia(src: string) {
+  return /\.(mp4|webm|ogg|mov|mp3|aac|m4a)(\?|$)/i.test(src);
+}
+
+function isHls(src: string) {
+  return /\.m3u8(\?|$)/i.test(src) || src.includes("m3u8");
+}
+
 export default function StreamPlayer({ src, poster, title }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState("");
@@ -26,15 +34,25 @@ export default function StreamPlayer({ src, poster, title }: Props) {
   const [playUrl, setPlayUrl] = useState<string | null>(null);
   const [embedUrl, setEmbedUrl] = useState<string | null>(null);
   const [mode, setMode] = useState<"loading" | "video" | "embed" | "fail">("loading");
-  const [embedKind, setEmbedKind] = useState<string>("");
+  const [embedKind, setEmbedKind] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     setError("");
     setMode("loading");
     setStatus("Inatafuta video…");
+    setPlayUrl(null);
+    setEmbedUrl(null);
 
-    const social = detectSocial(src);
+    const raw = (src || "").trim();
+    if (!raw) {
+      setMode("fail");
+      setError("Hakuna link.");
+      return;
+    }
+
+    // 1) Social media → in-app embed (no navigate away)
+    const social = detectSocial(raw);
     if (social.embedUrl) {
       if (!cancelled) {
         setEmbedUrl(social.embedUrl);
@@ -45,58 +63,38 @@ export default function StreamPlayer({ src, poster, title }: Props) {
       return;
     }
 
-    const archiveId = extractArchiveId(src);
-
-    async function run() {
-      if (/\.(mp4|webm|ogg|mov)(\?|$)/i.test(src) && !archiveId) {
-        if (!cancelled) {
-          setPlayUrl(src);
-          setMode("video");
-        }
-        return;
+    // 2) Direct file
+    if (isDirectMedia(raw) || isHls(raw)) {
+      if (!cancelled) {
+        setPlayUrl(raw);
+        setMode("video");
+        setStatus("");
       }
+      return;
+    }
 
-      if (/\.m3u8/i.test(src) && !archiveId) {
-        if (!cancelled) {
-          setPlayUrl(src);
-          setMode("video");
-        }
-        return;
-      }
-
-      if (/\.(mp3|aac|m4a)(\?|$)/i.test(src)) {
-        if (!cancelled) {
-          setPlayUrl(src);
-          setMode("video"); // audio via video tag works too, or we handle below
-        }
-        return;
-      }
-
-      if (archiveId) {
+    // 3) Internet Archive
+    const archiveId = extractArchiveId(raw);
+    if (archiveId) {
+      (async () => {
         try {
-          setStatus("Inapakia kutoka Internet Archive…");
+          setStatus("Inapakia Archive…");
           const res = await fetch(
             `/api/archive/resolve?id=${encodeURIComponent(archiveId)}`
           );
           const data = await res.json();
           if (cancelled) return;
-
           if (data.playUrl) {
             setPlayUrl(data.playUrl);
-            setEmbedUrl(data.embedUrl || null);
+            setEmbedUrl(data.embedUrl || `https://archive.org/embed/${archiveId}`);
             setMode("video");
             setStatus("");
             return;
           }
-          if (data.embedUrl) {
-            setEmbedUrl(data.embedUrl);
-            setEmbedKind("archive");
-            setMode("embed");
-            setStatus("");
-            return;
-          }
-          setMode("fail");
-          setError(data.error || "Hakuna video file");
+          setEmbedUrl(data.embedUrl || `https://archive.org/embed/${archiveId}`);
+          setEmbedKind("archive");
+          setMode("embed");
+          setStatus("");
         } catch {
           if (!cancelled) {
             setEmbedUrl(`https://archive.org/embed/${archiveId}`);
@@ -104,14 +102,24 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             setMode("embed");
           }
         }
-        return;
-      }
-
-      setMode("fail");
-      setError("Link hii haitambuliwi. Tumia YouTube, Facebook, Archive, .mp4 au .m3u8");
+      })();
+      return;
     }
 
-    run();
+    // 4) Any other https URL → try iframe in-app (generic page/player)
+    if (/^https?:\/\//i.test(raw)) {
+      if (!cancelled) {
+        setEmbedUrl(raw);
+        setEmbedKind("page");
+        setMode("embed");
+        setStatus("");
+      }
+      return;
+    }
+
+    setMode("fail");
+    setError("Link haitambuliwi.");
+
     return () => {
       cancelled = true;
     };
@@ -121,7 +129,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     const el = videoRef.current;
     if (!el || !playUrl || mode !== "video") return;
 
-    if (/\.m3u8/i.test(playUrl)) {
+    if (isHls(playUrl)) {
       if (el.canPlayType("application/vnd.apple.mpegurl")) {
         el.src = playUrl;
         return;
@@ -138,13 +146,14 @@ export default function StreamPlayer({ src, poster, title }: Props) {
           }
         } catch {
           setError("HLS failed");
+          if (embedUrl) setMode("embed");
         }
       })();
       return () => hls?.destroy();
     }
 
     el.src = playUrl;
-  }, [playUrl, mode]);
+  }, [playUrl, mode, embedUrl]);
 
   if (mode === "loading") {
     return (
@@ -167,38 +176,36 @@ export default function StreamPlayer({ src, poster, title }: Props) {
           <iframe
             key={embedUrl}
             src={embedUrl}
-            title={title || "Video"}
+            title={title || "Player"}
             className="absolute inset-0 w-full h-full border-0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
             referrerPolicy="strict-origin-when-cross-origin"
-            // sandbox limited – social players need scripts
           />
         </div>
         <p className="text-[11px] text-slate-500">
           {embedKind === "youtube"
-            ? "YouTube embed (branding kidogo inaweza kuonekana – sheria za YouTube)"
+            ? "Inacheza ndani ya app (YouTube embed)"
             : embedKind === "facebook"
-              ? "Facebook embed"
+              ? "Inacheza ndani ya app (Facebook)"
               : embedKind === "archive"
                 ? "Internet Archive"
-                : "Embedded player"}
+                : "Inacheza ndani ya player"}
         </p>
       </div>
     );
   }
 
   if (mode === "video" && playUrl) {
-    const isAudio = /\.(mp3|aac|m4a)(\?|$)/i.test(playUrl);
-    if (isAudio) {
+    if (/\.(mp3|aac|m4a)(\?|$)/i.test(playUrl)) {
       return (
         <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-          <audio controls className="w-full" src={playUrl} preload="metadata" />
+          <audio controls className="w-full" src={playUrl} preload="auto" />
         </div>
       );
     }
     return (
-      <div className="space-y-3">
+      <div className="space-y-2">
         <div
           className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-black"
           style={{ aspectRatio: "16/9" }}
@@ -208,10 +215,10 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             className="w-full h-full"
             controls
             playsInline
-            preload="metadata"
+            preload="auto"
             poster={poster || undefined}
             onError={() => {
-              setError("Direct play imeshindwa.");
+              setError("Direct play imeshindwa – jaribu embed.");
               if (embedUrl) setMode("embed");
             }}
           />
