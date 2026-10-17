@@ -4,6 +4,7 @@ import {
   Film,
   Plus,
   Settings,
+  Users,
   ArrowLeft,
 } from "lucide-react";
 import LogoutButton from "@/components/LogoutButton";
@@ -12,6 +13,7 @@ const nav = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/content", label: "Content", icon: Film },
   { href: "/admin/content/new", label: "Add Content", icon: Plus },
+  { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
@@ -36,7 +38,7 @@ export default function AdminLayout({
           <div className="flex items-center gap-2">
             <Link
               href="/"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-slate-400 hover:text-white"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-slate-400"
             >
               <ArrowLeft className="w-4 h-4" />
               Site

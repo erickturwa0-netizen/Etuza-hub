@@ -18,3 +18,28 @@ model User {
 
   @@map("User")
 }
+
+model Content {
+  id          String   @id @default(cuid())
+  type        String
+  title       String
+  description String?
+  coverUrl    String?  @map("cover_url")
+  linkUrl     String   @map("link_url")
+  linkType    String   @default("stream") @map("link_type")
+  category    String?
+  status      String   @default("draft")
+  protocol    String?
+  country     String?
+  network     String?
+  configText  String?  @map("config_text")
+  fileUrl     String?  @map("file_url")
+  viewsCount  Int      @default(0) @map("views_count")
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([type])
+  @@index([status])
+  @@map("Content")
+}

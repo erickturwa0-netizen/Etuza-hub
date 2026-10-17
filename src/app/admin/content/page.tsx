@@ -1,27 +1,54 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Film, Gamepad2, Shield, Plus, Eye } from "lucide-react";
-import { getAllContent } from "@/lib/mock-data";
+import { useSearchParams } from "next/navigation";
+import { Film, Gamepad2, Shield, Plus, Eye, Trash2, ToggleLeft } from "lucide-react";
 
-export const metadata = { title: "Manage Content – ETUZA HUB" };
+type Item = {
+  id: string;
+  type: string;
+  title: string;
+  category: string | null;
+  status: string;
+  viewsCount: number;
+  linkType: string;
+};
 
-export default function AdminContentPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ type?: string }>;
-}) {
-  return <ContentList searchParams={searchParams} />;
-}
+export default function AdminContentPage() {
+  const searchParams = useSearchParams();
+  const typeFilter = searchParams.get("type");
+  const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
 
-async function ContentList({
-  searchParams,
-}: {
-  searchParams: Promise<{ type?: string }>;
-}) {
-  const params = await searchParams;
-  const typeFilter = params.type;
-  let items = getAllContent();
-  if (typeFilter) {
-    items = items.filter((c) => c.type === typeFilter);
+  async function load() {
+    setLoading(true);
+    const q = typeFilter ? `?type=${typeFilter}` : "";
+    const res = await fetch(`/api/content${q}`);
+    const data = await res.json();
+    setItems(data.items || []);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeFilter]);
+
+  async function toggleStatus(id: string, status: string) {
+    const next = status === "published" ? "draft" : "published";
+    await fetch(`/api/content/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: next }),
+    });
+    load();
+  }
+
+  async function remove(id: string) {
+    if (!confirm("Futa content hii?")) return;
+    await fetch(`/api/content/${id}`, { method: "DELETE" });
+    load();
   }
 
   return (
@@ -30,12 +57,12 @@ async function ContentList({
         <div>
           <h1 className="text-2xl font-bold">Content</h1>
           <p className="text-sm text-slate-500 mt-1">
-            {items.length} items{typeFilter ? ` · ${typeFilter}` : ""}
+            {loading ? "…" : `${items.length} items`}{typeFilter ? ` · ${typeFilter}` : ""}
           </p>
         </div>
         <Link
           href="/admin/content/new"
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 font-semibold text-sm transition"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 font-semibold text-sm text-white"
         >
           <Plus className="w-4 h-4" />
           Add Content
@@ -52,11 +79,11 @@ async function ContentList({
           <Link
             key={f.href}
             href={f.href}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
               (f.href === "/admin/content" && !typeFilter) ||
               f.href.includes(`type=${typeFilter}`)
                 ? "bg-violet-600/20 border-violet-500/30 text-violet-300"
-                : "border-white/10 text-slate-400 hover:bg-white/5"
+                : "border-slate-700 text-slate-400"
             }`}
           >
             {f.label}
@@ -65,64 +92,88 @@ async function ContentList({
       </div>
 
       <div className="glass-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/5 text-left text-slate-500">
-                <th className="px-4 py-3 font-medium">Title</th>
-                <th className="px-4 py-3 font-medium hidden sm:table-cell">Type</th>
-                <th className="px-4 py-3 font-medium hidden md:table-cell">Category</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium hidden sm:table-cell">Views</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {items.map((c) => (
-                <tr key={c.id} className="hover:bg-white/[0.02]">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
-                        {c.type === "movie" ? (
-                          <Film className="w-3.5 h-3.5" />
-                        ) : c.type === "game" ? (
-                          <Gamepad2 className="w-3.5 h-3.5" />
-                        ) : (
-                          <Shield className="w-3.5 h-3.5" />
-                        )}
-                      </div>
-                      <span className="font-medium truncate max-w-[180px] sm:max-w-xs">
-                        {c.title}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 capitalize text-slate-400 hidden sm:table-cell">
-                    {c.type}
-                  </td>
-                  <td className="px-4 py-3 text-slate-400 hidden md:table-cell">
-                    {c.category || "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
-                        c.status === "published"
-                          ? "bg-emerald-500/15 text-emerald-400"
-                          : "bg-amber-500/15 text-amber-400"
-                      }`}
-                    >
-                      {c.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-400 hidden sm:table-cell">
-                    <span className="inline-flex items-center gap-1">
-                      <Eye className="w-3.5 h-3.5" />
-                      {c.views_count}
-                    </span>
-                  </td>
+        {loading ? (
+          <p className="p-6 text-slate-500 text-sm">Inapakia…</p>
+        ) : items.length === 0 ? (
+          <div className="p-8 text-center">
+            <p className="text-slate-400 mb-3">Hakuna content bado</p>
+            <Link href="/admin/content/new" className="text-violet-400 text-sm">
+              + Ongeza ya kwanza
+            </Link>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-800 text-left text-slate-500">
+                  <th className="px-4 py-3 font-medium">Title</th>
+                  <th className="px-4 py-3 font-medium hidden sm:table-cell">Type</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium hidden sm:table-cell">Views</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {items.map((c) => (
+                  <tr key={c.id}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
+                          {c.type === "movie" ? (
+                            <Film className="w-3.5 h-3.5" />
+                          ) : c.type === "game" ? (
+                            <Gamepad2 className="w-3.5 h-3.5" />
+                          ) : (
+                            <Shield className="w-3.5 h-3.5" />
+                          )}
+                        </div>
+                        <span className="font-medium truncate max-w-[160px]">{c.title}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 capitalize text-slate-400 hidden sm:table-cell">{c.type}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                          c.status === "published"
+                            ? "bg-emerald-500/15 text-emerald-400"
+                            : "bg-amber-500/15 text-amber-400"
+                        }`}
+                      >
+                        {c.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-400 hidden sm:table-cell">
+                      <span className="inline-flex items-center gap-1">
+                        <Eye className="w-3.5 h-3.5" />
+                        {c.viewsCount}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleStatus(c.id, c.status)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-violet-300 hover:bg-white/5"
+                          title="Toggle publish"
+                        >
+                          <ToggleLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => remove(c.id)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-white/5"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
