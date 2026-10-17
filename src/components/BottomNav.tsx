@@ -2,19 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Film, Gamepad2, Shield, LayoutDashboard } from "lucide-react";
+import { Home, Film, Gamepad2, Shield } from "lucide-react";
 
 const tabs = [
   { href: "/", label: "Home", icon: Home },
   { href: "/movies", label: "Movies", icon: Film },
   { href: "/games", label: "Games", icon: Gamepad2 },
   { href: "/vpn", label: "VPN", icon: Shield },
-  { href: "/admin", label: "Admin", icon: LayoutDashboard },
 ];
 
 export default function BottomNav() {
   const pathname = usePathname();
-  if (pathname === "/login" || pathname === "/signup") return null;
+  if (
+    pathname === "/login" ||
+    pathname === "/signup" ||
+    pathname.startsWith("/admin")
+  ) {
+    return null;
+  }
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-slate-800 bg-[#0a0a0f]">

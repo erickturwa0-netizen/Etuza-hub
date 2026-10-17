@@ -8,7 +8,7 @@ import { LogIn, Mail, Lock, Eye, EyeOff } from "lucide-react";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/";
+  const next = searchParams.get("next");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -33,7 +33,13 @@ function LoginForm() {
         setLoading(false);
         return;
       }
-      router.push(next);
+
+      // Admin → admin panel, user → home (or next if set)
+      if (data.user?.role === "admin") {
+        router.push(next?.startsWith("/admin") ? next : "/admin");
+      } else {
+        router.push(next && !next.startsWith("/admin") ? next : "/");
+      }
       router.refresh();
     } catch {
       setError("Tatizo la mtandao. Jaribu tena.");
@@ -46,13 +52,15 @@ function LoginForm() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-6">
-            <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-sm font-black">
+            <span className="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center text-sm font-black text-white">
               E
             </span>
             <span className="text-xl font-extrabold text-violet-300">ETUZA HUB</span>
           </div>
           <h1 className="text-2xl font-bold">Karibu tena</h1>
-          <p className="text-sm text-slate-500 mt-1">Ingia ili uendelee kutumia platform</p>
+          <p className="text-sm text-slate-500 mt-1">
+            Ingia kama mtumiaji au admin
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="glass-card p-6 sm:p-8 space-y-4">
@@ -71,7 +79,7 @@ function LoginForm() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-3.5 py-3 rounded-xl bg-slate-900 border border-white/10 focus:border-violet-500/50 focus:outline-none text-sm"
+                className="w-full pl-10 pr-3.5 py-3 rounded-xl bg-slate-900 border border-slate-700 focus:border-violet-500 focus:outline-none text-sm"
                 placeholder="wewe@email.com"
               />
             </div>
@@ -87,7 +95,7 @@ function LoginForm() {
                 minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-900 border border-white/10 focus:border-violet-500/50 focus:outline-none text-sm"
+                className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-900 border border-slate-700 focus:border-violet-500 focus:outline-none text-sm"
                 placeholder="••••••••"
               />
               <button
@@ -103,7 +111,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-60 font-semibold text-sm transition"
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-60 font-semibold text-sm text-white"
           >
             <LogIn className="w-4 h-4" />
             {loading ? "Inaingia…" : "Ingia"}
@@ -111,7 +119,7 @@ function LoginForm() {
 
           <p className="text-center text-sm text-slate-500 pt-2">
             Huna account?{" "}
-            <Link href="/signup" className="text-violet-400 hover:text-violet-300 font-medium">
+            <Link href="/signup" className="text-violet-400 font-medium">
               Jisajili
             </Link>
           </p>

@@ -11,13 +11,20 @@ function getSecret() {
   return new TextEncoder().encode(secret.slice(0, 64));
 }
 
-async function isValidSession(token: string | undefined) {
-  if (!token) return false;
+type Session = { userId: string; email: string; role: string };
+
+async function getSession(token: string | undefined): Promise<Session | null> {
+  if (!token) return null;
   try {
-    await jwtVerify(token, getSecret());
-    return true;
+    const { payload } = await jwtVerify(token, getSecret());
+    if (!payload.userId || !payload.email) return null;
+    return {
+      userId: String(payload.userId),
+      email: String(payload.email),
+      role: String(payload.role || "user"),
+    };
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -28,26 +35,35 @@ export async function middleware(request: NextRequest) {
     (p) => pathname === p || pathname.startsWith(p + "/")
   );
   const isPublicApi = PUBLIC_API.some((p) => pathname === p);
-  const isApiAuth = pathname.startsWith("/api/auth/");
 
   if (isPublicApi || pathname === "/api/auth/logout" || pathname === "/api/auth/me") {
     return NextResponse.next();
   }
 
   const token = request.cookies.get(COOKIE_NAME)?.value;
-  const loggedIn = await isValidSession(token);
+  const session = await getSession(token);
+  const loggedIn = !!session;
 
-  if (!isPublicPage && !isApiAuth && !loggedIn) {
+  // Must login for all non-public pages
+  if (!isPublicPage && !pathname.startsWith("/api/auth/") && !loggedIn) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  if (isPublicPage && loggedIn) {
+  // Admin routes – admin role only
+  if (pathname.startsWith("/admin") && session?.role !== "admin") {
     const home = request.nextUrl.clone();
     home.pathname = "/";
     return NextResponse.redirect(home);
+  }
+
+  // Already logged in on login/signup → role-based redirect
+  if (isPublicPage && loggedIn) {
+    const dest = request.nextUrl.clone();
+    dest.pathname = session?.role === "admin" ? "/admin" : "/";
+    return NextResponse.redirect(dest);
   }
 
   return NextResponse.next();

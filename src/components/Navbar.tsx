@@ -14,7 +14,13 @@ const links = [
 
 export default function Navbar() {
   const pathname = usePathname();
-  if (pathname === "/login" || pathname === "/signup") return null;
+  if (
+    pathname === "/login" ||
+    pathname === "/signup" ||
+    pathname.startsWith("/admin")
+  ) {
+    return null;
+  }
 
   return (
     <header className="border-b border-slate-800 bg-[#0a0a0f]">
@@ -41,20 +47,11 @@ export default function Navbar() {
               </Link>
             );
           })}
-          <Link href="/admin" className="px-3 py-2 rounded-lg text-sm text-slate-400">
-            Admin
-          </Link>
           <LogoutButton />
         </nav>
 
         <div className="md:hidden flex items-center gap-2">
-          <Link
-            href="/login"
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm bg-violet-600 text-white"
-          >
-            <LogIn className="w-4 h-4" />
-            Ingia
-          </Link>
+          <LogoutButton />
         </div>
       </div>
     </header>

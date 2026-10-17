@@ -23,13 +23,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email hii tayari inatumika" }, { status: 409 });
     }
 
+    // First user OR email matches ADMIN_EMAIL → admin
+    const userCount = await prisma.user.count();
+    const adminEmail = (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
+    const isAdmin =
+      userCount === 0 || (adminEmail.length > 0 && email === adminEmail);
+
     const passwordHash = await hashPassword(parsed.data.password);
     const user = await prisma.user.create({
       data: {
         email,
         passwordHash,
         fullName: parsed.data.fullName?.trim() || null,
-        role: "user",
+        role: isAdmin ? "admin" : "user",
       },
     });
 

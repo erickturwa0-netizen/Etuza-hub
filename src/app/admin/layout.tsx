@@ -2,12 +2,11 @@ import Link from "next/link";
 import {
   LayoutDashboard,
   Film,
-  Gamepad2,
-  Shield,
-  Settings,
   Plus,
+  Settings,
   ArrowLeft,
 } from "lucide-react";
+import LogoutButton from "@/components/LogoutButton";
 
 const nav = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -22,50 +21,48 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 flex flex-col lg:flex-row gap-8">
-      <aside className="lg:w-56 shrink-0">
-        <div className="glass-card p-4 sticky top-24">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-sm uppercase tracking-wider text-slate-400">
-              Admin
-            </h2>
+    <div className="min-h-screen bg-[#0a0a0f]">
+      <header className="border-b border-slate-800 bg-[#0a0a0f]">
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center text-sm font-black text-white">
+              E
+            </span>
+            <div>
+              <p className="font-bold text-sm text-violet-300">ETUZA HUB</p>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Admin Panel</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
             <Link
               href="/"
-              className="text-slate-500 hover:text-slate-300"
-              title="Back to site"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-slate-400 hover:text-white"
             >
               <ArrowLeft className="w-4 h-4" />
+              Site
             </Link>
+            <LogoutButton />
           </div>
-          <nav className="space-y-1">
+        </div>
+      </header>
+
+      <div className="max-w-6xl mx-auto px-4 py-6 flex flex-col lg:flex-row gap-6">
+        <aside className="lg:w-52 shrink-0">
+          <nav className="glass-card p-3 space-y-1 sticky top-4">
             {nav.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:bg-violet-600/15 hover:text-violet-300 transition"
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:bg-violet-950 hover:text-violet-300"
               >
                 <item.icon className="w-4 h-4" />
                 {item.label}
               </Link>
             ))}
           </nav>
-          <div className="mt-6 pt-4 border-t border-white/5 space-y-1">
-            <p className="text-[11px] uppercase tracking-wider text-slate-600 px-3 mb-2">
-              Quick links
-            </p>
-            <Link href="/movies" className="flex items-center gap-2 px-3 py-2 text-sm text-slate-500 hover:text-slate-300">
-              <Film className="w-3.5 h-3.5" /> Movies
-            </Link>
-            <Link href="/games" className="flex items-center gap-2 px-3 py-2 text-sm text-slate-500 hover:text-slate-300">
-              <Gamepad2 className="w-3.5 h-3.5" /> Games
-            </Link>
-            <Link href="/vpn" className="flex items-center gap-2 px-3 py-2 text-sm text-slate-500 hover:text-slate-300">
-              <Shield className="w-3.5 h-3.5" /> VPN
-            </Link>
-          </div>
-        </div>
-      </aside>
-      <div className="flex-1 min-w-0">{children}</div>
+        </aside>
+        <div className="flex-1 min-w-0">{children}</div>
+      </div>
     </div>
   );
 }
