@@ -56,6 +56,11 @@ export async function POST(req: Request) {
     }
 
     const d = parsed.data;
+
+    // Force download mode for games & VPN
+    const linkType =
+      d.type === "game" || d.type === "vpn" ? "download" : d.linkType;
+
     const item = await prisma.content.create({
       data: {
         type: d.type,
@@ -63,7 +68,7 @@ export async function POST(req: Request) {
         description: d.description || null,
         coverUrl: d.coverUrl || null,
         linkUrl: d.linkUrl,
-        linkType: d.linkType,
+        linkType,
         category: d.category || null,
         status: d.status,
         protocol: d.protocol || null,

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Download } from "lucide-react";
+import { ArrowLeft, Download, ExternalLink } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import StreamPlayer from "@/components/StreamPlayer";
 
@@ -18,7 +18,6 @@ function getBackHref(type: string) {
   return "/";
 }
 
-/** True when the URL looks like a direct downloadable file */
 function isDirectFile(url: string) {
   return /\.(zip|rar|7z|apk|ipa|iso|cso|mp4|mkv|avi|mov|webm|mp3|flac|pdf|exe|dmg|tar|gz)(\?|$)/i.test(
     url
@@ -55,10 +54,15 @@ export default async function WatchPage({
   const link = (item.linkUrl || "").trim();
   const backHref = getBackHref(item.type);
 
-  // When admin chose "download", always show download UI instead of player
-  if (item.linkType === "download") {
-    const forceDownload = isDirectFile(link);
-    const filename = forceDownload
+  // Games + VPN + anything marked download → always download UI (never player)
+  const forceDownloadUi =
+    item.linkType === "download" ||
+    item.type === "game" ||
+    item.type === "vpn";
+
+  if (forceDownloadUi) {
+    const direct = isDirectFile(link);
+    const filename = direct
       ? decodeURIComponent(link.split("/").pop()?.split("?")[0] || "file")
       : undefined;
 
@@ -98,18 +102,31 @@ export default async function WatchPage({
               href={link}
               target="_blank"
               rel="noopener noreferrer"
-              {...(forceDownload && filename
-                ? { download: filename }
-                : {})}
+              {...(direct && filename ? { download: filename } : {})}
               className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-violet-600 hover:bg-violet-500 font-semibold text-sm text-white transition"
             >
-              <Download className="w-5 h-5" />
-              {forceDownload ? "Download Direct" : "Download / Open Link"}
+              {direct ? (
+                <>
+                  <Download className="w-5 h-5" />
+                  Download Direct
+                </>
+              ) : (
+                <>
+                  <ExternalLink className="w-5 h-5" />
+                  Open Download Page
+                </>
+              )}
             </a>
 
-            <p className="text-[11px] text-slate-500 break-all">
-              {link}
-            </p>
+            <p className="text-[11px] text-slate-500 break-all">{link}</p>
+
+            {!direct && (
+              <p className="text-xs text-amber-400/90 leading-relaxed">
+                Link hii ni ukurasa (si file moja kwa moja kama .zip / .iso).
+                Bofya button hapo juu kufungua ukurasa wa download. Kwa Direct
+                Download, weka link ya MediaFire / file (.zip, .iso, .apk).
+              </p>
+            )}
           </div>
         )}
 
@@ -122,7 +139,6 @@ export default async function WatchPage({
     );
   }
 
-  // Stream mode (default)
   return (
     <main className="max-w-4xl mx-auto px-4 py-6 pb-24">
       <Link
@@ -142,8 +158,7 @@ export default async function WatchPage({
 
       {!link ? (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-          Content hii haina stream link kwenye database. Hariri tena kwenye Admin
-          na weka YouTube URL.
+          Content hii haina stream link. Hariri tena kwenye Admin.
         </div>
       ) : (
         <StreamPlayer src={link} poster={item.coverUrl} title={item.title} />
