@@ -27,6 +27,7 @@ function normalize(data: unknown, category: string) {
       linkUrl: s.url_resolved || s.url || "",
       coverUrl: s.favicon || null,
       category: s.tags || category,
+      description: null as string | null,
     }));
   }
 
