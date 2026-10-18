@@ -15,29 +15,46 @@ const DEFAULTS: {
   { category: "tv", name: "TV public API", url: "", notes: "TV channels API" },
   { category: "drama", name: "Tamthilia public API", url: "", notes: "Drama / series catalog" },
   { category: "music", name: "Miziki public API", url: "", notes: "Music tracks / albums API" },
-  {
-    category: "radio",
-    name: "Radio public API",
-    url: "https://de1.api.radio-browser.info/json/stations/bycountrycodeexact/TZ?hidebroken=true&limit=50",
-    notes: "Radio Browser TZ",
-  },
+  { category: "radio", name: "Radio public API", url: "", notes: "Radio stations API" },
   { category: "game", name: "Games public API", url: "", notes: "" },
   { category: "vpn", name: "VPN public API", url: "", notes: "" },
 ];
 
+/** Categories whose stored URL should be wiped once (old defaults) */
+const CLEAR_URL_CATEGORIES = new Set(["movie", "radio"]);
+
 async function ensureDefaults() {
   for (const d of DEFAULTS) {
-    await prisma.apiSource.upsert({
+    const existing = await prisma.apiSource.findUnique({
       where: { category: d.category },
-      create: {
-        category: d.category,
-        name: d.name,
-        url: d.url,
-        notes: d.notes,
-        enabled: true,
-      },
-      update: {},
     });
+
+    if (!existing) {
+      await prisma.apiSource.create({
+        data: {
+          category: d.category,
+          name: d.name,
+          url: d.url,
+          notes: d.notes,
+          enabled: true,
+        },
+      });
+      continue;
+    }
+
+    // One-time clear of old movie/radio API URLs so admin can paste new ones
+    if (
+      CLEAR_URL_CATEGORIES.has(d.category) &&
+      existing.url &&
+      (existing.url.includes("radio-browser.info") ||
+        existing.url.includes("api.themoviedb.org") ||
+        existing.notes?.includes("Radio Browser"))
+    ) {
+      await prisma.apiSource.update({
+        where: { category: d.category },
+        data: { url: "", notes: d.notes },
+      });
+    }
   }
 }
 
