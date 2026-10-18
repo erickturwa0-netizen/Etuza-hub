@@ -9,6 +9,7 @@ import {
   Image as ImageIcon,
   Link2,
   Download,
+  Wand2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -21,6 +22,8 @@ type TmdbHit = {
   coverUrl: string | null;
   year: string | null;
 };
+
+type ResolvedLink = { url: string; host: string; label: string };
 
 const TYPE_LABELS: Record<ContentKind, string> = {
   movie: "Movie",
@@ -47,17 +50,17 @@ export default function NewContentPage() {
   const [configText, setConfigText] = useState("");
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const [resolved, setResolved] = useState<ResolvedLink[]>([]);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [tmdbQ, setTmdbQ] = useState("");
   const [tmdbResults, setTmdbResults] = useState<TmdbHit[]>([]);
-  const [tmdbLoading, setTmdbLoading] = useState(false);
   const [autoCoverMsg, setAutoCoverMsg] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function searchTmdb(query: string) {
     if (query.trim().length < 2) return;
-    setTmdbLoading(true);
     try {
       const res = await fetch(`/api/tmdb/search?q=${encodeURIComponent(query)}`);
       const data = await res.json();
@@ -66,7 +69,6 @@ export default function NewContentPage() {
     } catch {
       setError("TMDB failed");
     }
-    setTmdbLoading(false);
   }
 
   useEffect(() => {
@@ -87,6 +89,44 @@ export default function NewContentPage() {
       setAutoCoverMsg("Cover ✓");
     }
     setTmdbResults([]);
+  }
+
+  async function chimbaLinks() {
+    if (!linkUrl.trim()) {
+      setError("Weka link ya ukurasa kwanza (mf. dzgurus)");
+      return;
+    }
+    setResolving(true);
+    setError("");
+    setInfo("");
+    setResolved([]);
+    try {
+      const res = await fetch("/api/admin/resolve-downloads", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: linkUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Chimba imeshindikana");
+      } else if (!(data.links || []).length) {
+        setError("Hakuna MediaFire / file host iliyopatikana kwenye ukurasa huu");
+      } else {
+        setResolved(data.links);
+        // Auto-pick first MediaFire as main link
+        const first = data.links[0] as ResolvedLink;
+        setLinkUrl(first.url);
+        setLinkType("download");
+        if (!title.trim() && data.title) {
+          setTitle(String(data.title).replace(/\s*[|–-].*$/, "").slice(0, 120));
+        }
+        setInfo(`${data.links.length} download link(s) ✓ — umechagua: ${first.label}`);
+      }
+    } catch {
+      setError("Tatizo la mtandao");
+    }
+    setResolving(false);
   }
 
   async function saveApiToSettings() {
@@ -149,7 +189,7 @@ export default function NewContentPage() {
           await importFromApi();
           return;
         }
-        setError("Weka Stream link au Public API");
+        setError("Weka Stream/Download link au Public API");
         setSaving(false);
         return;
       }
@@ -199,7 +239,7 @@ export default function NewContentPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold">Add Content</h1>
-          <p className="text-sm text-slate-500">Stream link au Public API</p>
+          <p className="text-sm text-slate-500">Stream link, Download, au chimba MediaFire</p>
         </div>
       </div>
 
@@ -288,23 +328,58 @@ export default function NewContentPage() {
           />
         </div>
 
-        {/* Stream link */}
         <div>
           <label className="block text-sm font-medium text-slate-400 mb-1.5">
-            Stream / Download / Social link
+            Stream / Download / Page link
           </label>
           <input
             value={linkUrl}
             onChange={(e) => setLinkUrl(e.target.value)}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-            placeholder="YouTube, Facebook, Archive, .mp4, .m3u8…"
+            placeholder="https://www.dzgurus.com/... au MediaFire..."
           />
+          <div className="flex flex-wrap gap-2 mt-2">
+            <button
+              type="button"
+              onClick={chimbaLinks}
+              disabled={resolving || !linkUrl.trim()}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-sm font-medium text-white disabled:opacity-50"
+            >
+              <Wand2 className="w-4 h-4" />
+              {resolving ? "Inachimba…" : "Chimba MediaFire"}
+            </button>
+          </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            YouTube / Facebook / Vimeo / Archive / mp4 — inacheza ndani ya player
+            Weka link ya blog (dzgurus n.k.) kisha bofya <b>Chimba MediaFire</b> —
+            itatoa file links moja kwa moja.
           </p>
         </div>
 
-        {/* Public API – chini ya stream */}
+        {resolved.length > 0 && (
+          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-3 space-y-2">
+            <p className="text-xs text-emerald-300 font-medium">Chagua file:</p>
+            {resolved.map((l) => (
+              <button
+                key={l.url}
+                type="button"
+                onClick={() => {
+                  setLinkUrl(l.url);
+                  setLinkType("download");
+                  setInfo(`Umechagua: ${l.label}`);
+                }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm border ${
+                  linkUrl === l.url
+                    ? "border-emerald-500 bg-emerald-900/40 text-emerald-200"
+                    : "border-slate-700 text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <span className="font-medium">{l.label}</span>
+                <span className="block text-[10px] text-slate-500 truncate">{l.url}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="rounded-xl border-2 border-violet-600/40 bg-violet-950/30 p-4 space-y-3">
           <label className="flex items-center gap-2 text-sm font-semibold text-violet-300">
             <Link2 className="w-4 h-4" />
@@ -316,10 +391,6 @@ export default function NewContentPage() {
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-violet-800/50 text-sm font-mono"
             placeholder="https://example.com/api/list.json"
           />
-          <p className="text-[11px] text-slate-400">
-            Sehemu hii ni chini ya stream link. API inahifadhiwa kwenye Settings ya{" "}
-            {TYPE_LABELS[type]}.
-          </p>
           <button
             type="button"
             onClick={importFromApi}

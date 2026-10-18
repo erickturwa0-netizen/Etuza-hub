@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Download, ExternalLink } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import StreamPlayer from "@/components/StreamPlayer";
+import GameDownloadPanel from "@/components/GameDownloadPanel";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,12 +17,6 @@ function getBackHref(type: string) {
   if (type === "game") return "/games";
   if (type === "vpn") return "/vpn";
   return "/";
-}
-
-function isDirectFile(url: string) {
-  return /\.(zip|rar|7z|apk|ipa|iso|cso|mp4|mkv|avi|mov|webm|mp3|flac|pdf|exe|dmg|tar|gz)(\?|$)/i.test(
-    url
-  );
 }
 
 export default async function WatchPage({
@@ -54,18 +49,12 @@ export default async function WatchPage({
   const link = (item.linkUrl || "").trim();
   const backHref = getBackHref(item.type);
 
-  // Games + VPN + anything marked download → always download UI (never player)
   const forceDownloadUi =
     item.linkType === "download" ||
     item.type === "game" ||
     item.type === "vpn";
 
   if (forceDownloadUi) {
-    const direct = isDirectFile(link);
-    const filename = direct
-      ? decodeURIComponent(link.split("/").pop()?.split("?")[0] || "file")
-      : undefined;
-
     return (
       <main className="max-w-3xl mx-auto px-4 py-8">
         <Link
@@ -97,37 +86,7 @@ export default async function WatchPage({
             Content hii haina download link. Hariri tena kwenye Admin.
           </div>
         ) : (
-          <div className="space-y-4">
-            <a
-              href={link}
-              target="_blank"
-              rel="noopener noreferrer"
-              {...(direct && filename ? { download: filename } : {})}
-              className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-violet-600 hover:bg-violet-500 font-semibold text-sm text-white transition"
-            >
-              {direct ? (
-                <>
-                  <Download className="w-5 h-5" />
-                  Download Direct
-                </>
-              ) : (
-                <>
-                  <ExternalLink className="w-5 h-5" />
-                  Open Download Page
-                </>
-              )}
-            </a>
-
-            <p className="text-[11px] text-slate-500 break-all">{link}</p>
-
-            {!direct && (
-              <p className="text-xs text-amber-400/90 leading-relaxed">
-                Link hii ni ukurasa (si file moja kwa moja kama .zip / .iso).
-                Bofya button hapo juu kufungua ukurasa wa download. Kwa Direct
-                Download, weka link ya MediaFire / file (.zip, .iso, .apk).
-              </p>
-            )}
-          </div>
+          <GameDownloadPanel linkUrl={link} title={item.title} />
         )}
 
         {item.description && (
