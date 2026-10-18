@@ -5,7 +5,7 @@ import { getSession } from "@/lib/auth";
 
 const CATEGORIES = ["movie", "tv", "radio", "game", "vpn", "music", "drama"] as const;
 
-/** Public APIs (no key) — from media-apis.mjs */
+/** Public APIs (no key) — media-apis.mjs */
 const DEFAULTS: {
   category: (typeof CATEGORIES)[number];
   name: string;
@@ -16,39 +16,44 @@ const DEFAULTS: {
     category: "movie",
     name: "Internet Archive Movies",
     url: "https://archive.org/advancedsearch.php?q=mediatype:movies&fl[]=identifier&fl[]=title&rows=50&output=json",
-    notes: "Public domain movies (Archive.org) — no API key",
+    notes: "Public domain movies (Archive.org)",
   },
   {
     category: "tv",
-    name: "TV public API",
+    name: "iptv-org Channels",
     url: "https://iptv-org.github.io/api/channels.json",
-    notes: "iptv-org channels (pair with streams.json on import if needed)",
+    notes: "iptv-org channel list",
   },
   {
     category: "drama",
-    name: "TVmaze Search",
+    name: "TVmaze Drama",
     url: "https://api.tvmaze.com/search/shows?q=drama",
-    notes: "TVmaze shows — CC BY-SA 4.0, cite TVmaze",
+    notes: "TVmaze — cite TVmaze (CC BY-SA)",
   },
   {
     category: "music",
-    name: "iTunes Music TZ",
+    name: "iTunes Miziki (Bongo/TZ)",
     url: "https://itunes.apple.com/search?term=bongo&media=music&entity=song&country=TZ&limit=50",
-    notes: "iTunes Search (30s previews)",
+    notes: "iTunes Search — 30s previews",
   },
   {
     category: "radio",
     name: "Radio Browser TZ",
     url: "https://de1.api.radio-browser.info/json/stations/search?countrycode=TZ&hidebroken=true&order=clickcount&reverse=true&limit=50",
-    notes: "Radio Browser Tanzania stations",
+    notes: "Radio Browser Tanzania",
   },
   {
     category: "game",
     name: "FreeToGame Browser",
     url: "https://www.freetogame.com/api/games?platform=browser&sort-by=popularity",
-    notes: "Free browser games — attribute freetogame.com",
+    notes: "Free browser games",
   },
-  { category: "vpn", name: "VPN public API", url: "", notes: "" },
+  {
+    category: "vpn",
+    name: "VPN",
+    url: "",
+    notes: "Manual only",
+  },
 ];
 
 async function ensureDefaults() {
@@ -62,11 +67,13 @@ async function ensureDefaults() {
         notes: d.notes,
         enabled: true,
       },
-      // Force-refresh movie + radio to the new public APIs
-      update:
-        d.category === "movie" || d.category === "radio"
-          ? { name: d.name, url: d.url, notes: d.notes, enabled: true }
-          : {},
+      // Always keep official public API URLs in sync (wipe old/empty)
+      update: {
+        name: d.name,
+        url: d.url,
+        notes: d.notes,
+        enabled: true,
+      },
     });
   }
 }

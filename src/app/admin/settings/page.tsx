@@ -11,6 +11,7 @@ import {
   Shield,
   Music,
   Clapperboard,
+  Download,
 } from "lucide-react";
 
 type Source = {
@@ -46,6 +47,7 @@ export default function AdminSettingsPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
 
@@ -101,6 +103,36 @@ export default function AdminSettingsPage() {
     setSaving(false);
   }
 
+  async function importAll() {
+    setImporting(true);
+    setMsg("");
+    setError("");
+    try {
+      // Refresh API URLs first
+      await fetch("/api/admin/api-sources", { credentials: "include" });
+      const res = await fetch("/api/admin/import-all", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Import imeshindikana");
+      } else {
+        const lines = (data.report || [])
+          .map(
+            (r: { category: string; count: number; error?: string }) =>
+              `${LABELS[r.category] || r.category}: ${r.count}${r.error ? ` (${r.error})` : ""}`
+          )
+          .join(" · ");
+        setMsg(`Import ✓ ${data.total || 0} items — ${lines}`);
+        await load();
+      }
+    } catch {
+      setError("Tatizo la mtandao");
+    }
+    setImporting(false);
+  }
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -108,15 +140,26 @@ export default function AdminSettingsPage() {
           <h1 className="text-2xl font-bold">Settings</h1>
           <p className="text-sm text-slate-500 mt-1">Public API kwa kila kipengele</p>
         </div>
-        <button
-          type="button"
-          onClick={save}
-          disabled={saving || loading}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold disabled:opacity-60"
-        >
-          <Save className="w-4 h-4" />
-          {saving ? "…" : "Hifadhi APIs"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={importAll}
+            disabled={importing || loading}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-60"
+          >
+            <Download className="w-4 h-4" />
+            {importing ? "Inapakia…" : "Import APIs zote"}
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving || loading}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold disabled:opacity-60"
+          >
+            <Save className="w-4 h-4" />
+            {saving ? "…" : "Hifadhi APIs"}
+          </button>
+        </div>
       </div>
 
       {msg && (
@@ -139,7 +182,12 @@ export default function AdminSettingsPage() {
                     <div className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center text-violet-400">
                       <Icon className="w-4 h-4" />
                     </div>
-                    <p className="font-semibold text-sm">{LABELS[s.category] || s.category}</p>
+                    <div>
+                      <p className="font-semibold text-sm">{LABELS[s.category] || s.category}</p>
+                      {s.notes && (
+                        <p className="text-[11px] text-slate-500">{s.notes}</p>
+                      )}
+                    </div>
                   </div>
                   <label className="flex items-center gap-2 text-sm text-slate-400">
                     <input
