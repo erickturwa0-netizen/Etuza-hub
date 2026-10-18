@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { fetchPublicSeed, PUBLIC_API } from "@/lib/public-apis";
 import type { Content, ContentType } from "@/types/database";
 
+const SEED_TAG = "media-apis-v2";
+
 function mapRow(c: {
   id: string;
   type: string;
@@ -46,26 +48,20 @@ function mapRow(c: {
   };
 }
 
-/** When a category is empty, pull from public API and save to DB once */
-async function autoSeedIfEmpty(type: ContentType): Promise<Content[]> {
-  if (!PUBLIC_API[type]) return [];
+/** Wipe old rows for this type and insert from media-apis public endpoints */
+async function reseedFromPublicApi(type: ContentType): Promise<Content[]> {
+  const cfg = PUBLIC_API[type];
+  if (!cfg) return [];
+
+  const seeds = await fetchPublicSeed(type);
+  if (seeds.length === 0) {
+    // Still return live list without DB if fetch works but empty filter
+    return [];
+  }
 
   try {
-    const existing = await prisma.content.count({
-      where: { type, status: "published" },
-    });
-    if (existing > 0) {
-      const rows = await prisma.content.findMany({
-        where: { type, status: "published" },
-        orderBy: { createdAt: "desc" },
-      });
-      return rows.map(mapRow);
-    }
+    await prisma.content.deleteMany({ where: { type } });
 
-    const seeds = await fetchPublicSeed(type);
-    if (seeds.length === 0) return [];
-
-    const linkType = PUBLIC_API[type].linkType;
     for (const item of seeds) {
       await prisma.content.create({
         data: {
@@ -74,12 +70,25 @@ async function autoSeedIfEmpty(type: ContentType): Promise<Content[]> {
           description: item.description,
           linkUrl: item.linkUrl,
           coverUrl: item.coverUrl,
-          linkType,
+          linkType: cfg.linkType,
           category: item.category?.slice(0, 100) || null,
           status: "published",
         },
       });
     }
+
+    // Mark this API source as seeded with new APIs
+    await prisma.apiSource.upsert({
+      where: { category: type },
+      create: {
+        category: type,
+        name: type,
+        url: cfg.url,
+        notes: SEED_TAG,
+        enabled: true,
+      },
+      update: { url: cfg.url, notes: SEED_TAG, enabled: true },
+    });
 
     const rows = await prisma.content.findMany({
       where: { type, status: "published" },
@@ -87,18 +96,16 @@ async function autoSeedIfEmpty(type: ContentType): Promise<Content[]> {
     });
     return rows.map(mapRow);
   } catch (e) {
-    console.error("autoSeedIfEmpty", type, e);
-    // Fallback: return live API results without DB (so UI still shows data)
-    const seeds = await fetchPublicSeed(type);
-    const linkType = PUBLIC_API[type]?.linkType || "stream";
+    console.error("reseedFromPublicApi", type, e);
+    // Fallback: show API data without persisting
     return seeds.map((s, i) => ({
-      id: `seed-${type}-${i}`,
+      id: `live-${type}-${i}`,
       type,
       title: s.title,
       description: s.description,
       cover_url: s.coverUrl,
       link_url: s.linkUrl,
-      link_type: linkType,
+      link_type: cfg.linkType,
       category: s.category,
       status: "published" as const,
       protocol: null,
@@ -116,32 +123,50 @@ async function autoSeedIfEmpty(type: ContentType): Promise<Content[]> {
   }
 }
 
+async function needsReseed(type: string): Promise<boolean> {
+  try {
+    const src = await prisma.apiSource.findUnique({ where: { category: type } });
+    if (!src || src.notes !== SEED_TAG) return true;
+    const count = await prisma.content.count({
+      where: { type, status: "published" },
+    });
+    return count === 0;
+  } catch {
+    return true;
+  }
+}
+
 export async function getPublishedContent(type?: ContentType): Promise<Content[]> {
   try {
     if (type) {
+      if (PUBLIC_API[type] && (await needsReseed(type))) {
+        return reseedFromPublicApi(type);
+      }
       const items = await prisma.content.findMany({
         where: { status: "published", type },
         orderBy: { createdAt: "desc" },
       });
       if (items.length > 0) return items.map(mapRow);
-      return autoSeedIfEmpty(type);
+      if (PUBLIC_API[type]) return reseedFromPublicApi(type);
+      return [];
     }
+
+    // Home: ensure each public category is seeded
+    const types = Object.keys(PUBLIC_API) as ContentType[];
+    await Promise.all(
+      types.map(async (t) => {
+        if (await needsReseed(t)) await reseedFromPublicApi(t);
+      })
+    );
 
     const items = await prisma.content.findMany({
       where: { status: "published" },
       orderBy: { createdAt: "desc" },
     });
-    if (items.length > 0) return items.map(mapRow);
-
-    // Seed main categories in parallel
-    const types: ContentType[] = ["movie", "music", "radio", "drama", "game"];
-    const seeded = await Promise.all(types.map((t) => autoSeedIfEmpty(t)));
-    return seeded.flat();
+    return items.map(mapRow);
   } catch (e) {
     console.error("getPublishedContent", e);
-    if (type && PUBLIC_API[type]) {
-      return autoSeedIfEmpty(type);
-    }
+    if (type && PUBLIC_API[type]) return reseedFromPublicApi(type);
     return [];
   }
 }

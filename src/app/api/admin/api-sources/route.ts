@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { PUBLIC_API } from "@/lib/public-apis";
 
 const CATEGORIES = ["movie", "tv", "radio", "game", "vpn", "music", "drama"] as const;
 
-/** Public APIs (no key) — media-apis.mjs */
+/** Exact APIs from media-apis.mjs — old URLs are overwritten */
 const DEFAULTS: {
   category: (typeof CATEGORIES)[number];
   name: string;
@@ -15,38 +16,38 @@ const DEFAULTS: {
   {
     category: "movie",
     name: "Internet Archive Movies",
-    url: "https://archive.org/advancedsearch.php?q=mediatype:movies&fl[]=identifier&fl[]=title&rows=50&output=json",
-    notes: "Public domain movies (Archive.org)",
-  },
-  {
-    category: "tv",
-    name: "iptv-org Channels",
-    url: "https://iptv-org.github.io/api/channels.json",
-    notes: "iptv-org channel list",
-  },
-  {
-    category: "drama",
-    name: "TVmaze Drama",
-    url: "https://api.tvmaze.com/search/shows?q=drama",
-    notes: "TVmaze — cite TVmaze (CC BY-SA)",
+    url: PUBLIC_API.movie.url,
+    notes: "media-apis-v2 · Archive.org public domain",
   },
   {
     category: "music",
     name: "iTunes Miziki (Bongo/TZ)",
-    url: "https://itunes.apple.com/search?term=bongo&media=music&entity=song&country=TZ&limit=50",
-    notes: "iTunes Search — 30s previews",
+    url: PUBLIC_API.music.url,
+    notes: "media-apis-v2 · iTunes Search TZ",
   },
   {
     category: "radio",
     name: "Radio Browser TZ",
-    url: "https://de1.api.radio-browser.info/json/stations/search?countrycode=TZ&hidebroken=true&order=clickcount&reverse=true&limit=50",
-    notes: "Radio Browser Tanzania",
+    url: PUBLIC_API.radio.url,
+    notes: "media-apis-v2 · Radio Browser Tanzania",
+  },
+  {
+    category: "drama",
+    name: "TVmaze",
+    url: PUBLIC_API.drama.url,
+    notes: "media-apis-v2 · TVmaze",
   },
   {
     category: "game",
-    name: "FreeToGame Browser",
-    url: "https://www.freetogame.com/api/games?platform=browser&sort-by=popularity",
-    notes: "Free browser games",
+    name: "FreeToGame",
+    url: PUBLIC_API.game.url,
+    notes: "media-apis-v2 · FreeToGame browser",
+  },
+  {
+    category: "tv",
+    name: "iptv-org",
+    url: "https://iptv-org.github.io/api/channels.json",
+    notes: "media-apis-v2 · iptv-org",
   },
   {
     category: "vpn",
@@ -67,7 +68,6 @@ async function ensureDefaults() {
         notes: d.notes,
         enabled: true,
       },
-      // Always keep official public API URLs in sync (wipe old/empty)
       update: {
         name: d.name,
         url: d.url,
