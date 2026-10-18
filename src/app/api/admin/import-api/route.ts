@@ -8,7 +8,16 @@ const schema = z.object({
   apiUrl: z.string().url(),
 });
 
-function normalize(data: unknown, category: string) {
+type NormItem = {
+  title: string;
+  linkUrl: string;
+  coverUrl: string | null;
+  category: string;
+  description: string | null;
+};
+
+function normalize(data: unknown, category: string): NormItem[] {
+  // Radio Browser stations
   if (
     Array.isArray(data) &&
     data[0] &&
@@ -23,11 +32,92 @@ function normalize(data: unknown, category: string) {
       favicon?: string;
       tags?: string;
     }[]).map((s) => ({
-      title: s.name,
+      title: (s.name || "").trim() || "Radio",
       linkUrl: s.url_resolved || s.url || "",
       coverUrl: s.favicon || null,
       category: s.tags || category,
-      description: null as string | null,
+      description: null,
+    }));
+  }
+
+  // Internet Archive advancedsearch
+  const archiveDocs = (data as { response?: { docs?: unknown[] } })?.response?.docs;
+  if (Array.isArray(archiveDocs)) {
+    return (archiveDocs as { identifier?: string; title?: string }[]).map((d) => {
+      const id = d.identifier || "";
+      return {
+        title: String(d.title || id),
+        linkUrl: id ? `https://archive.org/embed/${id}` : "",
+        coverUrl: id ? `https://archive.org/services/img/${id}` : null,
+        category,
+        description: null,
+      };
+    });
+  }
+
+  // iTunes Search (movies / music)
+  const itunes = (data as { results?: Record<string, unknown>[] })?.results;
+  if (Array.isArray(itunes) && itunes[0] && ("trackId" in itunes[0] || "collectionId" in itunes[0])) {
+    return itunes.map((m) => {
+      const art = String(m.artworkUrl100 || "");
+      const poster = art ? art.replace("100x100", "600x600") : null;
+      const link = String(
+        m.previewUrl || m.trackViewUrl || m.collectionViewUrl || ""
+      );
+      return {
+        title: String(m.trackName || m.collectionName || "Untitled"),
+        linkUrl: link,
+        coverUrl: poster,
+        category: String(m.primaryGenreName || category),
+        description: (m.longDescription || m.shortDescription || null) as string | null,
+      };
+    });
+  }
+
+  // TVmaze search: [{ score, show }]
+  if (
+    Array.isArray(data) &&
+    data[0] &&
+    typeof data[0] === "object" &&
+    "show" in (data[0] as object)
+  ) {
+    return (data as { show: {
+      id: number;
+      name: string;
+      genres?: string[];
+      image?: { medium?: string } | null;
+      summary?: string | null;
+      url?: string;
+    } }[]).map(({ show }) => ({
+      title: show.name,
+      linkUrl: show.url || `https://www.tvmaze.com/shows/${show.id}`,
+      coverUrl: show.image?.medium || null,
+      category: (show.genres || []).join(", ") || category,
+      description: show.summary
+        ? show.summary.replace(/<[^>]+>/g, "").slice(0, 500)
+        : null,
+    }));
+  }
+
+  // FreeToGame
+  if (
+    Array.isArray(data) &&
+    data[0] &&
+    typeof data[0] === "object" &&
+    "game_url" in (data[0] as object)
+  ) {
+    return (data as {
+      title: string;
+      thumbnail?: string;
+      short_description?: string;
+      genre?: string;
+      game_url: string;
+    }[]).map((g) => ({
+      title: g.title,
+      linkUrl: g.game_url,
+      coverUrl: g.thumbnail || null,
+      category: g.genre || category,
+      description: g.short_description || null,
     }));
   }
 
@@ -51,6 +141,8 @@ function normalize(data: unknown, category: string) {
         row.url ||
         row.stream ||
         row.stream_url ||
+        row.previewUrl ||
+        row.game_url ||
         (Array.isArray(row.embed_urls) ? (row.embed_urls as string[])[0] : "") ||
         row.embed ||
         ""
@@ -60,6 +152,7 @@ function normalize(data: unknown, category: string) {
       row.poster_path ||
       row.poster ||
       row.favicon ||
+      row.thumbnail ||
       row.image ||
       null) as string | null;
     if (typeof coverUrl === "string" && coverUrl.startsWith("/")) {
@@ -69,8 +162,10 @@ function normalize(data: unknown, category: string) {
       title,
       linkUrl,
       coverUrl,
-      category: String(row.category || row.tags || category),
-      description: (row.overview || row.description || null) as string | null,
+      category: String(row.category || row.tags || row.genre || category),
+      description: (row.overview || row.description || row.short_description || null) as
+        | string
+        | null,
     };
   });
 }
@@ -90,7 +185,6 @@ export async function POST(req: Request) {
 
     const { category, apiUrl } = parsed.data;
 
-    // Save to ApiSource
     await prisma.apiSource.upsert({
       where: { category },
       create: {
@@ -127,7 +221,7 @@ export async function POST(req: Request) {
     }
 
     let count = 0;
-    for (const item of items) {
+    for (const item of items.slice(0, 50)) {
       await prisma.content.create({
         data: {
           type: category,
@@ -135,7 +229,8 @@ export async function POST(req: Request) {
           description: item.description,
           linkUrl: item.linkUrl,
           coverUrl: item.coverUrl,
-          linkType: category === "game" || category === "vpn" ? "download" : "stream",
+          linkType:
+            category === "game" || category === "vpn" ? "download" : "stream",
           category: item.category?.slice(0, 100) || null,
           status: "published",
           createdBy: session.userId,

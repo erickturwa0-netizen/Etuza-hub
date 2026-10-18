@@ -5,56 +5,69 @@ import { getSession } from "@/lib/auth";
 
 const CATEGORIES = ["movie", "tv", "radio", "game", "vpn", "music", "drama"] as const;
 
+/** Public APIs (no key) — from media-apis.mjs */
 const DEFAULTS: {
   category: (typeof CATEGORIES)[number];
   name: string;
   url: string;
   notes: string;
 }[] = [
-  { category: "movie", name: "Movies public API", url: "", notes: "JSON public API bila key" },
-  { category: "tv", name: "TV public API", url: "", notes: "TV channels API" },
-  { category: "drama", name: "Tamthilia public API", url: "", notes: "Drama / series catalog" },
-  { category: "music", name: "Miziki public API", url: "", notes: "Music tracks / albums API" },
-  { category: "radio", name: "Radio public API", url: "", notes: "Radio stations API" },
-  { category: "game", name: "Games public API", url: "", notes: "" },
+  {
+    category: "movie",
+    name: "Internet Archive Movies",
+    url: "https://archive.org/advancedsearch.php?q=mediatype:movies&fl[]=identifier&fl[]=title&rows=50&output=json",
+    notes: "Public domain movies (Archive.org) — no API key",
+  },
+  {
+    category: "tv",
+    name: "TV public API",
+    url: "https://iptv-org.github.io/api/channels.json",
+    notes: "iptv-org channels (pair with streams.json on import if needed)",
+  },
+  {
+    category: "drama",
+    name: "TVmaze Search",
+    url: "https://api.tvmaze.com/search/shows?q=drama",
+    notes: "TVmaze shows — CC BY-SA 4.0, cite TVmaze",
+  },
+  {
+    category: "music",
+    name: "iTunes Music TZ",
+    url: "https://itunes.apple.com/search?term=bongo&media=music&entity=song&country=TZ&limit=50",
+    notes: "iTunes Search (30s previews)",
+  },
+  {
+    category: "radio",
+    name: "Radio Browser TZ",
+    url: "https://de1.api.radio-browser.info/json/stations/search?countrycode=TZ&hidebroken=true&order=clickcount&reverse=true&limit=50",
+    notes: "Radio Browser Tanzania stations",
+  },
+  {
+    category: "game",
+    name: "FreeToGame Browser",
+    url: "https://www.freetogame.com/api/games?platform=browser&sort-by=popularity",
+    notes: "Free browser games — attribute freetogame.com",
+  },
   { category: "vpn", name: "VPN public API", url: "", notes: "" },
 ];
 
-/** Categories whose stored URL should be wiped once (old defaults) */
-const CLEAR_URL_CATEGORIES = new Set(["movie", "radio"]);
-
 async function ensureDefaults() {
   for (const d of DEFAULTS) {
-    const existing = await prisma.apiSource.findUnique({
+    await prisma.apiSource.upsert({
       where: { category: d.category },
+      create: {
+        category: d.category,
+        name: d.name,
+        url: d.url,
+        notes: d.notes,
+        enabled: true,
+      },
+      // Force-refresh movie + radio to the new public APIs
+      update:
+        d.category === "movie" || d.category === "radio"
+          ? { name: d.name, url: d.url, notes: d.notes, enabled: true }
+          : {},
     });
-
-    if (!existing) {
-      await prisma.apiSource.create({
-        data: {
-          category: d.category,
-          name: d.name,
-          url: d.url,
-          notes: d.notes,
-          enabled: true,
-        },
-      });
-      continue;
-    }
-
-    // One-time clear of old movie/radio API URLs so admin can paste new ones
-    if (
-      CLEAR_URL_CATEGORIES.has(d.category) &&
-      existing.url &&
-      (existing.url.includes("radio-browser.info") ||
-        existing.url.includes("api.themoviedb.org") ||
-        existing.notes?.includes("Radio Browser"))
-    ) {
-      await prisma.apiSource.update({
-        where: { category: d.category },
-        data: { url: "", notes: d.notes },
-      });
-    }
   }
 }
 
