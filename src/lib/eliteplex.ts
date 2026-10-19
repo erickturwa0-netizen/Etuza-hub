@@ -40,7 +40,6 @@ async function fetchPages(
   return out;
 }
 
-/** Import ElitePlex movies into content type=movie. Returns count. */
 export async function importElitePlexMovies(): Promise<number> {
   const items = await fetchPages("/api/movies", [1, 2, 3]);
   if (!items.length) return 0;
@@ -52,6 +51,8 @@ export async function importElitePlexMovies(): Promise<number> {
     const id = String(row.tmdb_id || row.id || "");
     const title = String(row.name || row.title || "").trim();
     if (!id || !title) continue;
+    // Use videasy.to (current domain) — StreamPlayer multi-sources the rest
+    const linkUrl = `https://player.videasy.to/movie/${id}`;
     await prisma.content.create({
       data: {
         type: "movie",
@@ -61,7 +62,7 @@ export async function importElitePlexMovies(): Promise<number> {
           : row.year
             ? `Year ${row.year}`
             : null,
-        linkUrl: `https://player.videasy.net/movie/${id}`,
+        linkUrl,
         coverUrl: row.poster || null,
         linkType: "stream",
         category: row.year ? `Movie · ${row.year}` : "Movie",
@@ -77,13 +78,13 @@ export async function importElitePlexMovies(): Promise<number> {
       category: "movie",
       name: "ElitePlex Movies",
       url: `${BASE}/api/movies`,
-      notes: "eliteplex-v1-active",
+      notes: "eliteplex-v2-play",
       enabled: true,
     },
     update: {
       name: "ElitePlex Movies",
       url: `${BASE}/api/movies`,
-      notes: "eliteplex-v1-active",
+      notes: "eliteplex-v2-play",
       enabled: true,
     },
   });
@@ -91,11 +92,9 @@ export async function importElitePlexMovies(): Promise<number> {
   return total;
 }
 
-/** Import ElitePlex series (+ anime via search fallback) into type=drama (Tamthilia). */
 export async function importElitePlexDrama(): Promise<number> {
   const series = await fetchPages("/api/series", [1, 2, 3]);
 
-  // Anime endpoints are flaky on ElitePlex — also pull TV search for "anime"
   let anime: EliteItem[] = [];
   try {
     const res = await fetch(`${BASE}/api/search?q=anime`, {
@@ -140,7 +139,7 @@ export async function importElitePlexDrama(): Promise<number> {
         description: row.overview
           ? String(row.overview).slice(0, 500)
           : null,
-        linkUrl: `https://player.videasy.net/tv/${id}`,
+        linkUrl: `https://player.videasy.to/tv/${id}`,
         coverUrl: row.poster || null,
         linkType: "stream",
         category: isAnime
@@ -162,13 +161,13 @@ export async function importElitePlexDrama(): Promise<number> {
       category: "drama",
       name: "ElitePlex Series + Anime",
       url: `${BASE}/api/series`,
-      notes: "eliteplex-drama-v1",
+      notes: "eliteplex-drama-v2",
       enabled: true,
     },
     update: {
       name: "ElitePlex Series + Anime",
       url: `${BASE}/api/series`,
-      notes: "eliteplex-drama-v1",
+      notes: "eliteplex-drama-v2",
       enabled: true,
     },
   });
@@ -176,7 +175,6 @@ export async function importElitePlexDrama(): Promise<number> {
   return total;
 }
 
-/** Ensure category has content; import from ElitePlex if empty. */
 export async function ensureElitePlexContent(
   type: "movie" | "drama"
 ): Promise<number> {

@@ -12,6 +12,50 @@ const TZ_M3U = "https://iptv-org.github.io/iptv/countries/tz.m3u";
 const KE_M3U = "https://iptv-org.github.io/iptv/countries/ke.m3u";
 const UG_M3U = "https://iptv-org.github.io/iptv/countries/ug.m3u";
 
+/** Known-stable public streams pinned at top of TV list */
+const PINNED: IptvChannel[] = [
+  {
+    id: "pin-tbc1",
+    title: "TBC1",
+    logo: "https://i.imgur.com/OmiVZ1u.png",
+    group: "Tanzania",
+    url: "https://tbc.maintek.co/LiveApp/streams/YF43nTzH0duMyUA2130641323343587.m3u8",
+    tvgId: "TBC1.tz@SD",
+  },
+  {
+    id: "pin-tbc2",
+    title: "TBC2",
+    logo: "https://i.imgur.com/VkUJt2q.png",
+    group: "Tanzania",
+    url: "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_44ed95e05b6d11f18d5d85805abbdd6f/index.m3u8",
+    tvgId: "TBC2.tz@SD",
+  },
+  {
+    id: "pin-dodoma",
+    title: "Dodoma TV",
+    logo: "https://i.imgur.com/bLq9eFa.png",
+    group: "Tanzania",
+    url: "https://goliveafrica.media:9998/live/625965017ed69/index.m3u8",
+    tvgId: "DodomaTV.tz@SD",
+  },
+  {
+    id: "pin-ibn",
+    title: "IBN TV",
+    logo: "https://i.imgur.com/hkV51ij.png",
+    group: "Tanzania",
+    url: "http://138.68.138.119:8080/live/5a8993709ea19/index.m3u8",
+    tvgId: "IBNTV.tz@SD",
+  },
+  {
+    id: "pin-safari",
+    title: "Tanzania Safari Channel",
+    logo: "https://i.imgur.com/fcLFYhn.png",
+    group: "Tanzania",
+    url: "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_31dabe40323511f08b8efff0016f3b67/index.m3u8",
+    tvgId: "TanzaniaSafariChannel.tz@SD",
+  },
+];
+
 function parseM3u(text: string): IptvChannel[] {
   const lines = text.split(/\r?\n/);
   const out: IptvChannel[] = [];
@@ -61,14 +105,27 @@ function parseM3u(text: string): IptvChannel[] {
 async function fetchM3u(url: string): Promise<IptvChannel[]> {
   const res = await fetch(url, {
     headers: { "User-Agent": "ETUZA-HUB/1.0", Accept: "*/*" },
-    next: { revalidate: 21600 }, // 6h
+    next: { revalidate: 21600 },
   });
   if (!res.ok) return [];
   const text = await res.text();
   return parseM3u(text);
 }
 
-/** TZ + East Africa first, then optional full index slice */
+function scoreChannel(c: IptvChannel): number {
+  let s = 0;
+  const t = (c.title + " " + c.group + " " + (c.tvgId || "")).toLowerCase();
+  if (/\.tz@|tanzania|tbc|dodoma|ibn|zanzibar|azam/i.test(t)) s += 100;
+  if (/\.ke@|kenya|ntv|citizen|ktn|kbc/i.test(t)) s += 60;
+  if (/\.ug@|uganda|ntv uganda|bukedde/i.test(t)) s += 50;
+  if (/news/i.test(t)) s += 20;
+  if (/sport|football|soccer/i.test(t)) s += 15;
+  // Prefer https HLS
+  if (c.url.startsWith("https://") && c.url.includes("m3u8")) s += 10;
+  if (c.url.startsWith("http://")) s -= 5;
+  return s;
+}
+
 export async function loadIptvChannels(opts?: {
   q?: string;
   group?: string;
@@ -85,7 +142,6 @@ export async function loadIptvChannels(opts?: {
   if (source === "full") {
     channels = await fetchM3u(M3U_URL);
   } else {
-    // East Africa focused (fast + relevant)
     const [tz, ke, ug] = await Promise.all([
       fetchM3u(TZ_M3U),
       fetchM3u(KE_M3U),
@@ -93,7 +149,6 @@ export async function loadIptvChannels(opts?: {
     ]);
     channels = [...tz, ...ke, ...ug];
 
-    // Enrich with News/Sports from full index (limited)
     try {
       const full = await fetchM3u(M3U_URL);
       const extra = full
@@ -113,6 +168,12 @@ export async function loadIptvChannels(opts?: {
     }
   }
 
+  // Pin known TZ channels at top
+  const seenUrl = new Set(PINNED.map((p) => p.url));
+  const rest = channels.filter((c) => !seenUrl.has(c.url));
+  rest.sort((a, b) => scoreChannel(b) - scoreChannel(a));
+  channels = [...PINNED, ...rest];
+
   if (q) {
     channels = channels.filter(
       (c) =>
@@ -129,7 +190,7 @@ export async function loadIptvChannels(opts?: {
   return {
     channels: channels.slice(0, limit),
     total,
-    source: source === "full" ? M3U_URL : "tz+ke+ug+highlights",
+    source: source === "full" ? M3U_URL : "pinned-tz+ea+highlights",
   };
 }
 
