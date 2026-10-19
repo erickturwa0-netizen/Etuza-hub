@@ -1,19 +1,33 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
-const PUBLIC_PATHS = ["/login", "/signup"];
+// Pages anyone can open without login
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  "/",
+  "/movies",
+  "/tv",
+  "/music",
+  "/radio",
+  "/drama",
+  "/games",
+  "/vpn",
+  "/watch",
+];
+
 const PUBLIC_API = [
   "/api/auth/login",
   "/api/auth/signup",
   "/api/auth/logout",
   "/api/auth/me",
-  // Read-only public catalog APIs (TV IPTV, published content)
   "/api/tv/channels",
   "/api/content",
   "/api/resolve-downloads",
   "/api/public-feed",
   "/api/radio/stations",
 ];
+
 const COOKIE_NAME = "etuza_session";
 
 function getSecret() {
@@ -39,6 +53,12 @@ async function getSession(token: string | undefined): Promise<Session | null> {
   }
 }
 
+function isPublicPath(pathname: string) {
+  return PUBLIC_PATHS.some(
+    (p) => pathname === p || (p !== "/" && pathname.startsWith(p + "/"))
+  );
+}
+
 function isPublicApi(pathname: string) {
   return PUBLIC_API.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
@@ -48,12 +68,11 @@ function isPublicApi(pathname: string) {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  const isPublicPage = PUBLIC_PATHS.some(
-    (p) => pathname === p || pathname.startsWith(p + "/")
-  );
-
-  // Public APIs always pass (GET catalog)
   if (isPublicApi(pathname)) {
+    return NextResponse.next();
+  }
+
+  if (isPublicPath(pathname)) {
     return NextResponse.next();
   }
 
@@ -61,9 +80,8 @@ export async function middleware(request: NextRequest) {
   const session = await getSession(token);
   const loggedIn = !!session;
 
-  // Must login for all non-public pages
-  if (!isPublicPage && !pathname.startsWith("/api/auth/") && !loggedIn) {
-    // API → JSON 401 instead of HTML redirect
+  // Admin + other private pages need login
+  if (!loggedIn) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -79,7 +97,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(home);
   }
 
-  if (isPublicPage && loggedIn) {
+  // Logged-in user visiting login/signup → home
+  if (
+    (pathname === "/login" || pathname === "/signup") &&
+    loggedIn
+  ) {
     const dest = request.nextUrl.clone();
     dest.pathname = session?.role === "admin" ? "/admin" : "/";
     return NextResponse.redirect(dest);
