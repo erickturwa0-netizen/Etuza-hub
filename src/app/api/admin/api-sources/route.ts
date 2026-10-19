@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth";
 import { PUBLIC_API } from "@/lib/public-apis";
 
 const CATEGORIES = ["movie", "tv", "radio", "game", "vpn", "music", "drama"] as const;
+const MOVIE_CLEAR_TAG = "movies-wiped-awaiting-new-api";
 
 const DEFAULTS: {
   category: (typeof CATEGORIES)[number];
@@ -16,7 +17,7 @@ const DEFAULTS: {
     category: "movie",
     name: "Movies API",
     url: "",
-    notes: "Cleared — awaiting new API from admin",
+    notes: MOVIE_CLEAR_TAG,
   },
   {
     category: "music",
@@ -58,6 +59,34 @@ const DEFAULTS: {
 
 async function ensureDefaults() {
   for (const d of DEFAULTS) {
+    if (d.category === "movie") {
+      const existing = await prisma.apiSource.findUnique({
+        where: { category: "movie" },
+      });
+
+      // One-time wipe of old Archive.org movies
+      if (!existing || existing.notes !== MOVIE_CLEAR_TAG) {
+        await prisma.content.deleteMany({ where: { type: "movie" } });
+        await prisma.apiSource.upsert({
+          where: { category: "movie" },
+          create: {
+            category: "movie",
+            name: d.name,
+            url: "",
+            notes: MOVIE_CLEAR_TAG,
+            enabled: true,
+          },
+          update: {
+            name: d.name,
+            url: "",
+            notes: MOVIE_CLEAR_TAG,
+            enabled: true,
+          },
+        });
+      }
+      continue;
+    }
+
     await prisma.apiSource.upsert({
       where: { category: d.category },
       create: {
@@ -67,15 +96,14 @@ async function ensureDefaults() {
         notes: d.notes,
         enabled: true,
       },
-      update:
-        d.category === "movie"
-          ? { name: d.name, url: "", notes: d.notes, enabled: true }
-          : { name: d.name, url: d.url, notes: d.notes, enabled: true },
+      update: {
+        name: d.name,
+        url: d.url,
+        notes: d.notes,
+        enabled: true,
+      },
     });
   }
-
-  // Wipe ALL movies once API is cleared
-  await prisma.content.deleteMany({ where: { type: "movie" } });
 }
 
 export async function GET() {
