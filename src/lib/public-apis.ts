@@ -4,7 +4,7 @@ export const PUBLIC_API: Record<
   string,
   { url: string; linkType: "stream" | "download" }
 > = {
-  // movie: removed — admin will supply a new API
+  // movie: admin supplies API — no Internet Archive
   music: {
     url: "https://itunes.apple.com/search?term=bongo&media=music&entity=song&country=TZ&limit=40",
     linkType: "stream",
@@ -52,21 +52,6 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
       category: s.tags || type,
       description: null,
     }));
-  }
-
-  // Archive.org (kept for optional future use)
-  const docs = (data as { response?: { docs?: unknown[] } })?.response?.docs;
-  if (Array.isArray(docs)) {
-    return (docs as { identifier?: string; title?: string }[]).map((d) => {
-      const id = d.identifier || "";
-      return {
-        title: String(d.title || id),
-        linkUrl: id ? `https://archive.org/embed/${id}` : "",
-        coverUrl: id ? `https://archive.org/services/img/${id}` : null,
-        category: type,
-        description: null,
-      };
-    });
   }
 
   // iTunes
@@ -123,7 +108,7 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
     }));
   }
 
-  // Generic array of objects with title + url
+  // Generic array
   if (Array.isArray(data)) {
     return (data as Record<string, unknown>[]).slice(0, 50).map((row, i) => ({
       title: String(row.title || row.name || `Item ${i + 1}`),
