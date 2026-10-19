@@ -12,6 +12,7 @@ const CATEGORIES = ["movie", "tv", "radio", "game", "vpn", "music", "drama"] as 
 
 const ELITEPLEX_MOVIES = "https://eliteplex-api.vercel.app/api/movies";
 const ELITEPLEX_SERIES = "https://eliteplex-api.vercel.app/api/series";
+const IPTV_M3U = "https://iptv-org.github.io/iptv/index.m3u";
 const MOVIE_API_TAG = "eliteplex-v1-active";
 const DRAMA_API_TAG = "eliteplex-drama-v1";
 
@@ -34,6 +35,12 @@ const DEFAULTS: {
     notes: DRAMA_API_TAG,
   },
   {
+    category: "tv",
+    name: "IPTV-org (index.m3u)",
+    url: IPTV_M3U,
+    notes: "iptv-org-m3u-v1",
+  },
+  {
     category: "music",
     name: "iTunes Miziki (Bongo/TZ)",
     url: PUBLIC_API.music?.url || "",
@@ -50,12 +57,6 @@ const DEFAULTS: {
     name: "Games",
     url: "",
     notes: "Manual / resolve downloads",
-  },
-  {
-    category: "tv",
-    name: "iptv-org",
-    url: "https://iptv-org.github.io/api/channels.json",
-    notes: "iptv-org",
   },
   {
     category: "vpn",
