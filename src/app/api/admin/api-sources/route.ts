@@ -3,12 +3,17 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { PUBLIC_API } from "@/lib/public-apis";
+import {
+  importElitePlexMovies,
+  importElitePlexDrama,
+} from "@/lib/eliteplex";
 
 const CATEGORIES = ["movie", "tv", "radio", "game", "vpn", "music", "drama"] as const;
 
 const ELITEPLEX_MOVIES = "https://eliteplex-api.vercel.app/api/movies";
-/** Bump to re-import ElitePlex catalog */
+const ELITEPLEX_SERIES = "https://eliteplex-api.vercel.app/api/series";
 const MOVIE_API_TAG = "eliteplex-v1-active";
+const DRAMA_API_TAG = "eliteplex-drama-v1";
 
 const DEFAULTS: {
   category: (typeof CATEGORIES)[number];
@@ -23,6 +28,12 @@ const DEFAULTS: {
     notes: MOVIE_API_TAG,
   },
   {
+    category: "drama",
+    name: "ElitePlex Series + Anime",
+    url: ELITEPLEX_SERIES,
+    notes: DRAMA_API_TAG,
+  },
+  {
     category: "music",
     name: "iTunes Miziki (Bongo/TZ)",
     url: PUBLIC_API.music?.url || "",
@@ -33,12 +44,6 @@ const DEFAULTS: {
     name: "Radio Browser TZ",
     url: PUBLIC_API.radio?.url || "",
     notes: "Radio Browser Tanzania",
-  },
-  {
-    category: "drama",
-    name: "TVmaze",
-    url: PUBLIC_API.drama?.url || "",
-    notes: "TVmaze",
   },
   {
     category: "game",
@@ -60,91 +65,26 @@ const DEFAULTS: {
   },
 ];
 
-async function importElitePlexMovies() {
-  // Wipe old movies first
-  await prisma.content.deleteMany({ where: { type: "movie" } });
-
-  let total = 0;
-  for (const page of [1, 2, 3]) {
-    try {
-      const res = await fetch(`${ELITEPLEX_MOVIES}?page=${page}`, {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "ETUZA-HUB/1.0",
-        },
-        next: { revalidate: 0 },
-      });
-      if (!res.ok) break;
-      const data = await res.json();
-      const items = (data?.items || []) as {
-        id?: string;
-        tmdb_id?: string;
-        name?: string;
-        title?: string;
-        poster?: string;
-        overview?: string;
-        year?: string;
-        type?: string;
-      }[];
-
-      for (const row of items) {
-        const id = String(row.tmdb_id || row.id || "");
-        const title = String(row.name || row.title || "").trim();
-        if (!id || !title) continue;
-        // Phone-friendly embed player
-        const linkUrl = `https://player.videasy.net/movie/${id}`;
-        await prisma.content.create({
-          data: {
-            type: "movie",
-            title: title.slice(0, 200),
-            description: row.overview
-              ? String(row.overview).slice(0, 500)
-              : row.year
-                ? `Year ${row.year}`
-                : null,
-            linkUrl,
-            coverUrl: row.poster || null,
-            linkType: "stream",
-            category: row.year ? `Movie · ${row.year}` : "Movie",
-            status: "published",
-          },
-        });
-        total++;
-      }
-    } catch (e) {
-      console.error("eliteplex page", page, e);
-      break;
-    }
-  }
-  return total;
-}
-
 async function ensureDefaults() {
   for (const d of DEFAULTS) {
     if (d.category === "movie") {
       const existing = await prisma.apiSource.findUnique({
         where: { category: "movie" },
       });
-
       if (!existing || existing.notes !== MOVIE_API_TAG) {
         const count = await importElitePlexMovies();
         console.log("ElitePlex movies imported:", count);
-        await prisma.apiSource.upsert({
-          where: { category: "movie" },
-          create: {
-            category: "movie",
-            name: d.name,
-            url: d.url,
-            notes: MOVIE_API_TAG,
-            enabled: true,
-          },
-          update: {
-            name: d.name,
-            url: d.url,
-            notes: MOVIE_API_TAG,
-            enabled: true,
-          },
-        });
+      }
+      continue;
+    }
+
+    if (d.category === "drama") {
+      const existing = await prisma.apiSource.findUnique({
+        where: { category: "drama" },
+      });
+      if (!existing || existing.notes !== DRAMA_API_TAG) {
+        const count = await importElitePlexDrama();
+        console.log("ElitePlex drama imported:", count);
       }
       continue;
     }

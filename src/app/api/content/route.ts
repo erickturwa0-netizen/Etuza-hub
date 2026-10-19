@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { ensureElitePlexContent } from "@/lib/eliteplex";
 
 const schema = z.object({
   type: z.enum(["movie", "game", "vpn", "tv", "radio", "music", "drama"]),
@@ -24,6 +25,15 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
     const publishedOnly = searchParams.get("published") === "1";
+
+    // Auto-fill movies / tamthilia from ElitePlex when empty
+    if (type === "movie" || type === "drama") {
+      try {
+        await ensureElitePlexContent(type);
+      } catch (e) {
+        console.error("ensureElitePlexContent", type, e);
+      }
+    }
 
     const where: Record<string, string> = {};
     if (type) where.type = type;
@@ -56,8 +66,6 @@ export async function POST(req: Request) {
     }
 
     const d = parsed.data;
-
-    // Force download mode for games & VPN
     const linkType =
       d.type === "game" || d.type === "vpn" ? "download" : d.linkType;
 
