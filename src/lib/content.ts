@@ -48,11 +48,10 @@ function mapRow(c: {
   };
 }
 
-/**
- * Seed ONLY when category is empty.
- * NEVER delete existing rows — protects manual admin content (e.g. game ISO links).
- */
 async function seedIfEmpty(type: ContentType): Promise<Content[]> {
+  // Never auto-seed movies — admin supplies API
+  if (type === "movie" || type === "game" || type === "vpn") return [];
+
   const cfg = PUBLIC_API[type];
   if (!cfg) return [];
 
@@ -100,41 +99,27 @@ async function seedIfEmpty(type: ContentType): Promise<Content[]> {
     return rows.map(mapRow);
   } catch (e) {
     console.error("seedIfEmpty", type, e);
-    const seeds = await fetchPublicSeed(type);
-    return seeds.map((s, i) => ({
-      id: `live-${type}-${i}`,
-      type,
-      title: s.title,
-      description: s.description,
-      cover_url: s.coverUrl,
-      link_url: s.linkUrl,
-      link_type: cfg.linkType,
-      category: s.category,
-      status: "published" as const,
-      protocol: null,
-      country: null,
-      network: null,
-      config_text: null,
-      file_url: null,
-      brand_logo_url: null,
-      tmdb_id: null,
-      views_count: 0,
-      created_by: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }));
+    return [];
   }
 }
 
 export async function getPublishedContent(type?: ContentType): Promise<Content[]> {
   try {
     if (type) {
+      // Movies: never auto-seed; only show what's in DB
+      if (type === "movie") {
+        const items = await prisma.content.findMany({
+          where: { status: "published", type: "movie" },
+          orderBy: { createdAt: "desc" },
+        });
+        return items.map(mapRow);
+      }
+
       const items = await prisma.content.findMany({
         where: { status: "published", type },
         orderBy: { createdAt: "desc" },
       });
       if (items.length > 0) return items.map(mapRow);
-      // Games/VPN: no auto-seed from FreeToGame — admin adds manually
       if (type === "game" || type === "vpn") return [];
       if (PUBLIC_API[type]) return seedIfEmpty(type);
       return [];
@@ -146,9 +131,8 @@ export async function getPublishedContent(type?: ContentType): Promise<Content[]
     });
     if (items.length > 0) return items.map(mapRow);
 
-    // Only auto-seed non-game categories when whole catalog empty
     const types = (Object.keys(PUBLIC_API) as ContentType[]).filter(
-      (t) => t !== "game"
+      (t) => t !== "game" && t !== "movie"
     );
     await Promise.all(types.map((t) => seedIfEmpty(t)));
 

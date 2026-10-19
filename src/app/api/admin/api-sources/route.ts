@@ -5,7 +5,8 @@ import { getSession } from "@/lib/auth";
 import { PUBLIC_API } from "@/lib/public-apis";
 
 const CATEGORIES = ["movie", "tv", "radio", "game", "vpn", "music", "drama"] as const;
-const MOVIE_CLEAR_TAG = "movies-wiped-awaiting-new-api";
+/** Bump this tag to force another full movie wipe */
+const MOVIE_CLEAR_TAG = "movies-wiped-v2-awaiting-new-api";
 
 const DEFAULTS: {
   category: (typeof CATEGORIES)[number];
@@ -64,9 +65,10 @@ async function ensureDefaults() {
         where: { category: "movie" },
       });
 
-      // One-time wipe of old Archive.org movies
+      // Force wipe whenever tag changes
       if (!existing || existing.notes !== MOVIE_CLEAR_TAG) {
-        await prisma.content.deleteMany({ where: { type: "movie" } });
+        const deleted = await prisma.content.deleteMany({ where: { type: "movie" } });
+        console.log("Wiped movies:", deleted.count);
         await prisma.apiSource.upsert({
           where: { category: "movie" },
           create: {
@@ -98,7 +100,7 @@ async function ensureDefaults() {
       },
       update: {
         name: d.name,
-        url: d.url,
+        ...(d.url ? { url: d.url } : {}),
         notes: d.notes,
         enabled: true,
       },
