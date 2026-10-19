@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
-import { loadIptvChannels, IPTV_SOURCE_URL } from "@/lib/iptv";
+import {
+  loadIptvChannels,
+  IPTV_SOURCE_URL,
+  PINNED_CHANNELS,
+} from "@/lib/iptv";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
@@ -17,9 +24,13 @@ export async function GET(req: Request) {
     });
   } catch (err) {
     console.error("tv/channels", err);
-    return NextResponse.json(
-      { channels: [], total: 0, error: "Imeshindikana kupakia IPTV" },
-      { status: 500 }
-    );
+    // Hard fallback so UI never empty
+    return NextResponse.json({
+      channels: PINNED_CHANNELS,
+      total: PINNED_CHANNELS.length,
+      source: "pinned-fallback",
+      playlist: IPTV_SOURCE_URL,
+      error: "Remote IPTV imeshindwa — inaonyesha channels za Tanzania",
+    });
   }
 }

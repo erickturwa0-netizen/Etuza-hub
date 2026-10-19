@@ -12,8 +12,8 @@ const TZ_M3U = "https://iptv-org.github.io/iptv/countries/tz.m3u";
 const KE_M3U = "https://iptv-org.github.io/iptv/countries/ke.m3u";
 const UG_M3U = "https://iptv-org.github.io/iptv/countries/ug.m3u";
 
-/** Known-stable public streams pinned at top of TV list */
-const PINNED: IptvChannel[] = [
+/** Always available — shown even if remote M3U fails */
+export const PINNED_CHANNELS: IptvChannel[] = [
   {
     id: "pin-tbc1",
     title: "TBC1",
@@ -47,6 +47,14 @@ const PINNED: IptvChannel[] = [
     tvgId: "IBNTV.tz@SD",
   },
   {
+    id: "pin-ibn-africa",
+    title: "IBN TV Africa",
+    logo: "https://i.imgur.com/eKy2ocd.png",
+    group: "Tanzania",
+    url: "http://68.183.41.209:8080/live/5d9a537c64b9c/index.m3u8",
+    tvgId: "IBNTVAfrica.tz@SD",
+  },
+  {
     id: "pin-safari",
     title: "Tanzania Safari Channel",
     logo: "https://i.imgur.com/fcLFYhn.png",
@@ -54,17 +62,30 @@ const PINNED: IptvChannel[] = [
     url: "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_31dabe40323511f08b8efff0016f3b67/index.m3u8",
     tvgId: "TanzaniaSafariChannel.tz@SD",
   },
+  {
+    id: "pin-mahaasin",
+    title: "Mahaasin TV",
+    logo: "https://i.imgur.com/wdfdKvC.png",
+    group: "Tanzania",
+    url: "https://mahaasintv.livebox.co.in/mahaasintvhls/mahaasintv.m3u8",
+    tvgId: "MahaasinTV.tz@SD",
+  },
 ];
 
 function parseM3u(text: string): IptvChannel[] {
   const lines = text.split(/\r?\n/);
   const out: IptvChannel[] = [];
-  let pending: { title: string; logo: string | null; group: string; tvgId: string | null } | null =
-    null;
+  let pending: {
+    title: string;
+    logo: string | null;
+    group: string;
+    tvgId: string | null;
+  } | null = null;
 
   for (const raw of lines) {
     const line = raw.trim();
-    if (!line || line.startsWith("#EXTM3U") || line.startsWith("#EXTVLCOPT")) continue;
+    if (!line || line.startsWith("#EXTM3U") || line.startsWith("#EXTVLCOPT"))
+      continue;
 
     if (line.startsWith("#EXTINF:")) {
       const comma = line.lastIndexOf(",");
@@ -102,14 +123,23 @@ function parseM3u(text: string): IptvChannel[] {
   return out;
 }
 
-async function fetchM3u(url: string): Promise<IptvChannel[]> {
-  const res = await fetch(url, {
-    headers: { "User-Agent": "ETUZA-HUB/1.0", Accept: "*/*" },
-    next: { revalidate: 21600 },
-  });
-  if (!res.ok) return [];
-  const text = await res.text();
-  return parseM3u(text);
+async function fetchM3u(url: string, timeoutMs = 8000): Promise<IptvChannel[]> {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const res = await fetch(url, {
+      headers: { "User-Agent": "ETUZA-HUB/1.0", Accept: "*/*" },
+      signal: ctrl.signal,
+      next: { revalidate: 3600 },
+    });
+    clearTimeout(t);
+    if (!res.ok) return [];
+    const text = await res.text();
+    return parseM3u(text);
+  } catch (e) {
+    console.error("fetchM3u", url, e);
+    return [];
+  }
 }
 
 function scoreChannel(c: IptvChannel): number {
@@ -117,10 +147,9 @@ function scoreChannel(c: IptvChannel): number {
   const t = (c.title + " " + c.group + " " + (c.tvgId || "")).toLowerCase();
   if (/\.tz@|tanzania|tbc|dodoma|ibn|zanzibar|azam/i.test(t)) s += 100;
   if (/\.ke@|kenya|ntv|citizen|ktn|kbc/i.test(t)) s += 60;
-  if (/\.ug@|uganda|ntv uganda|bukedde/i.test(t)) s += 50;
+  if (/\.ug@|uganda/i.test(t)) s += 50;
   if (/news/i.test(t)) s += 20;
   if (/sport|football|soccer/i.test(t)) s += 15;
-  // Prefer https HLS
   if (c.url.startsWith("https://") && c.url.includes("m3u8")) s += 10;
   if (c.url.startsWith("http://")) s -= 5;
   return s;
@@ -137,42 +166,29 @@ export async function loadIptvChannels(opts?: {
   const group = (opts?.group || "").toLowerCase().trim();
   const source = opts?.source || "ea";
 
-  let channels: IptvChannel[] = [];
+  let remote: IptvChannel[] = [];
 
-  if (source === "full") {
-    channels = await fetchM3u(M3U_URL);
-  } else {
-    const [tz, ke, ug] = await Promise.all([
-      fetchM3u(TZ_M3U),
-      fetchM3u(KE_M3U),
-      fetchM3u(UG_M3U),
-    ]);
-    channels = [...tz, ...ke, ...ug];
-
-    try {
-      const full = await fetchM3u(M3U_URL);
-      const extra = full
-        .filter((c) =>
-          /news|sport|football|soccer|kids|music/i.test(c.group + " " + c.title)
-        )
-        .slice(0, 80);
-      const seen = new Set(channels.map((c) => c.url));
-      for (const c of extra) {
-        if (!seen.has(c.url)) {
-          seen.add(c.url);
-          channels.push(c);
-        }
-      }
-    } catch {
-      /* ignore */
+  try {
+    if (source === "full") {
+      remote = await fetchM3u(M3U_URL, 12000);
+    } else {
+      const [tz, ke, ug] = await Promise.all([
+        fetchM3u(TZ_M3U),
+        fetchM3u(KE_M3U),
+        fetchM3u(UG_M3U),
+      ]);
+      remote = [...tz, ...ke, ...ug];
     }
+  } catch (e) {
+    console.error("loadIptvChannels remote", e);
   }
 
-  // Pin known TZ channels at top
-  const seenUrl = new Set(PINNED.map((p) => p.url));
-  const rest = channels.filter((c) => !seenUrl.has(c.url));
-  rest.sort((a, b) => scoreChannel(b) - scoreChannel(a));
-  channels = [...PINNED, ...rest];
+  const seenUrl = new Set(PINNED_CHANNELS.map((p) => p.url));
+  const rest = remote
+    .filter((c) => !seenUrl.has(c.url))
+    .sort((a, b) => scoreChannel(b) - scoreChannel(a));
+
+  let channels = [...PINNED_CHANNELS, ...rest];
 
   if (q) {
     channels = channels.filter(
@@ -186,11 +202,15 @@ export async function loadIptvChannels(opts?: {
     channels = channels.filter((c) => c.group.toLowerCase().includes(group));
   }
 
-  const total = channels.length;
+  // Never return empty — at least pinned
+  if (channels.length === 0) {
+    channels = [...PINNED_CHANNELS];
+  }
+
   return {
     channels: channels.slice(0, limit),
-    total,
-    source: source === "full" ? M3U_URL : "pinned-tz+ea+highlights",
+    total: channels.length,
+    source: remote.length ? (source === "full" ? M3U_URL : "pinned+ea") : "pinned-only",
   };
 }
 

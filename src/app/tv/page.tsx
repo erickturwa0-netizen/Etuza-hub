@@ -12,6 +12,45 @@ type Channel = {
   url: string;
 };
 
+/** Local fallback if API completely unreachable */
+const LOCAL_FALLBACK: Channel[] = [
+  {
+    id: "local-tbc1",
+    title: "TBC1",
+    logo: null,
+    group: "Tanzania",
+    url: "https://tbc.maintek.co/LiveApp/streams/YF43nTzH0duMyUA2130641323343587.m3u8",
+  },
+  {
+    id: "local-tbc2",
+    title: "TBC2",
+    logo: null,
+    group: "Tanzania",
+    url: "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_44ed95e05b6d11f18d5d85805abbdd6f/index.m3u8",
+  },
+  {
+    id: "local-dodoma",
+    title: "Dodoma TV",
+    logo: null,
+    group: "Tanzania",
+    url: "https://goliveafrica.media:9998/live/625965017ed69/index.m3u8",
+  },
+  {
+    id: "local-ibn",
+    title: "IBN TV",
+    logo: null,
+    group: "Tanzania",
+    url: "http://138.68.138.119:8080/live/5a8993709ea19/index.m3u8",
+  },
+  {
+    id: "local-safari",
+    title: "Tanzania Safari Channel",
+    logo: null,
+    group: "Tanzania",
+    url: "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_31dabe40323511f08b8efff0016f3b67/index.m3u8",
+  },
+];
+
 export default function TvPage() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [total, setTotal] = useState(0);
@@ -32,20 +71,28 @@ export default function TvPage() {
     if (q.trim()) params.set("q", q.trim());
     if (group) params.set("group", group);
 
-    fetch(`/api/tv/channels?${params}`)
-      .then((r) => r.json())
+    fetch(`/api/tv/channels?${params}`, { credentials: "include" })
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok && !(d.channels || []).length) {
+          throw new Error(d.error || `HTTP ${r.status}`);
+        }
+        return d;
+      })
       .then((d) => {
         if (cancelled) return;
-        setChannels(d.channels || []);
-        setTotal(d.total || 0);
+        const list = d.channels || [];
+        setChannels(list.length ? list : LOCAL_FALLBACK);
+        setTotal(d.total || list.length || LOCAL_FALLBACK.length);
         if (d.error) setError(d.error);
         setLoading(false);
       })
-      .catch(() => {
-        if (!cancelled) {
-          setError("Tatizo la mtandao");
-          setLoading(false);
-        }
+      .catch((e) => {
+        if (cancelled) return;
+        setChannels(LOCAL_FALLBACK);
+        setTotal(LOCAL_FALLBACK.length);
+        setError(e instanceof Error ? e.message : "Tatizo la mtandao — channels za TZ");
+        setLoading(false);
       });
 
     return () => {
@@ -66,8 +113,7 @@ export default function TvPage() {
           TV Channels
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          IPTV-org · {total} channels · {" "}
-          <span className="text-slate-600">index.m3u</span>
+          {total} channels · IPTV-org + Tanzania
         </p>
       </div>
 

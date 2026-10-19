@@ -2,7 +2,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
 const PUBLIC_PATHS = ["/login", "/signup"];
-const PUBLIC_API = ["/api/auth/login", "/api/auth/signup"];
+const PUBLIC_API = [
+  "/api/auth/login",
+  "/api/auth/signup",
+  "/api/auth/logout",
+  "/api/auth/me",
+  // Read-only public catalog APIs (TV IPTV, published content)
+  "/api/tv/channels",
+  "/api/content",
+  "/api/resolve-downloads",
+  "/api/public-feed",
+  "/api/radio/stations",
+];
 const COOKIE_NAME = "etuza_session";
 
 function getSecret() {
@@ -28,15 +39,21 @@ async function getSession(token: string | undefined): Promise<Session | null> {
   }
 }
 
+function isPublicApi(pathname: string) {
+  return PUBLIC_API.some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  );
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isPublicPage = PUBLIC_PATHS.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   );
-  const isPublicApi = PUBLIC_API.some((p) => pathname === p);
 
-  if (isPublicApi || pathname === "/api/auth/logout" || pathname === "/api/auth/me") {
+  // Public APIs always pass (GET catalog)
+  if (isPublicApi(pathname)) {
     return NextResponse.next();
   }
 
@@ -46,20 +63,22 @@ export async function middleware(request: NextRequest) {
 
   // Must login for all non-public pages
   if (!isPublicPage && !pathname.startsWith("/api/auth/") && !loggedIn) {
+    // API → JSON 401 instead of HTML redirect
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // Admin routes – admin role only
   if (pathname.startsWith("/admin") && session?.role !== "admin") {
     const home = request.nextUrl.clone();
     home.pathname = "/";
     return NextResponse.redirect(home);
   }
 
-  // Already logged in on login/signup → role-based redirect
   if (isPublicPage && loggedIn) {
     const dest = request.nextUrl.clone();
     dest.pathname = session?.role === "admin" ? "/admin" : "/";
