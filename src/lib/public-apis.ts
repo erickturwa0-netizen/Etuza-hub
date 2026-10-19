@@ -4,10 +4,7 @@ export const PUBLIC_API: Record<
   string,
   { url: string; linkType: "stream" | "download" }
 > = {
-  movie: {
-    url: "https://archive.org/advancedsearch.php?q=mediatype:movies&fl[]=identifier&fl[]=title&rows=40&output=json",
-    linkType: "stream",
-  },
+  // movie: removed — admin will supply a new API
   music: {
     url: "https://itunes.apple.com/search?term=bongo&media=music&entity=song&country=TZ&limit=40",
     linkType: "stream",
@@ -57,7 +54,7 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
     }));
   }
 
-  // Archive.org
+  // Archive.org (kept for optional future use)
   const docs = (data as { response?: { docs?: unknown[] } })?.response?.docs;
   if (Array.isArray(docs)) {
     return (docs as { identifier?: string; title?: string }[]).map((d) => {
@@ -123,6 +120,30 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
       coverUrl: g.thumbnail || null,
       category: g.genre || type,
       description: g.short_description || null,
+    }));
+  }
+
+  // Generic array of objects with title + url
+  if (Array.isArray(data)) {
+    return (data as Record<string, unknown>[]).slice(0, 50).map((row, i) => ({
+      title: String(row.title || row.name || `Item ${i + 1}`),
+      linkUrl: String(
+        row.linkUrl ||
+          row.url ||
+          row.stream ||
+          row.stream_url ||
+          row.embed ||
+          row.previewUrl ||
+          ""
+      ),
+      coverUrl: (row.coverUrl ||
+        row.poster ||
+        row.poster_path ||
+        row.thumbnail ||
+        row.image ||
+        null) as string | null,
+      category: String(row.category || row.genre || type),
+      description: (row.overview || row.description || null) as string | null,
     }));
   }
 

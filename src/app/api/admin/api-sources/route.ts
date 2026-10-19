@@ -6,7 +6,6 @@ import { PUBLIC_API } from "@/lib/public-apis";
 
 const CATEGORIES = ["movie", "tv", "radio", "game", "vpn", "music", "drama"] as const;
 
-/** Exact APIs from media-apis.mjs — old URLs are overwritten */
 const DEFAULTS: {
   category: (typeof CATEGORIES)[number];
   name: string;
@@ -15,39 +14,39 @@ const DEFAULTS: {
 }[] = [
   {
     category: "movie",
-    name: "Internet Archive Movies",
-    url: PUBLIC_API.movie.url,
-    notes: "media-apis-v2 · Archive.org public domain",
+    name: "Movies API",
+    url: "",
+    notes: "Cleared — awaiting new API from admin",
   },
   {
     category: "music",
     name: "iTunes Miziki (Bongo/TZ)",
-    url: PUBLIC_API.music.url,
-    notes: "media-apis-v2 · iTunes Search TZ",
+    url: PUBLIC_API.music?.url || "",
+    notes: "iTunes Search TZ",
   },
   {
     category: "radio",
     name: "Radio Browser TZ",
-    url: PUBLIC_API.radio.url,
-    notes: "media-apis-v2 · Radio Browser Tanzania",
+    url: PUBLIC_API.radio?.url || "",
+    notes: "Radio Browser Tanzania",
   },
   {
     category: "drama",
     name: "TVmaze",
-    url: PUBLIC_API.drama.url,
-    notes: "media-apis-v2 · TVmaze",
+    url: PUBLIC_API.drama?.url || "",
+    notes: "TVmaze",
   },
   {
     category: "game",
-    name: "FreeToGame",
-    url: PUBLIC_API.game.url,
-    notes: "media-apis-v2 · FreeToGame browser",
+    name: "Games",
+    url: "",
+    notes: "Manual / resolve downloads",
   },
   {
     category: "tv",
     name: "iptv-org",
     url: "https://iptv-org.github.io/api/channels.json",
-    notes: "media-apis-v2 · iptv-org",
+    notes: "iptv-org",
   },
   {
     category: "vpn",
@@ -68,14 +67,15 @@ async function ensureDefaults() {
         notes: d.notes,
         enabled: true,
       },
-      update: {
-        name: d.name,
-        url: d.url,
-        notes: d.notes,
-        enabled: true,
-      },
+      update:
+        d.category === "movie"
+          ? { name: d.name, url: "", notes: d.notes, enabled: true }
+          : { name: d.name, url: d.url, notes: d.notes, enabled: true },
     });
   }
+
+  // Wipe ALL movies once API is cleared
+  await prisma.content.deleteMany({ where: { type: "movie" } });
 }
 
 export async function GET() {
