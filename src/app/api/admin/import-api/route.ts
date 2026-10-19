@@ -17,6 +17,45 @@ type NormItem = {
 };
 
 function normalize(data: unknown, category: string): NormItem[] {
+  // ElitePlex: { creator, items: [{ id, tmdb_id, name, poster, overview, year }] }
+  const eliteItems = (data as { items?: unknown[]; creator?: string })?.items;
+  if (
+    Array.isArray(eliteItems) &&
+    eliteItems[0] &&
+    typeof eliteItems[0] === "object" &&
+    ("tmdb_id" in (eliteItems[0] as object) ||
+      "poster" in (eliteItems[0] as object))
+  ) {
+    return (eliteItems as {
+      id?: string;
+      tmdb_id?: string;
+      name?: string;
+      title?: string;
+      poster?: string;
+      overview?: string;
+      year?: string;
+      type?: string;
+      stream?: string;
+      play?: string;
+    }[]).map((row) => {
+      const id = String(row.tmdb_id || row.id || "");
+      const media = row.type === "tv" || row.type === "series" ? "tv" : "movie";
+      // Prefer known phone-friendly embed; fallback to ElitePlex play JSON URL
+      const linkUrl = id
+        ? `https://player.videasy.net/${media}/${id}`
+        : row.stream
+          ? `https://eliteplex-api.vercel.app${row.stream}`
+          : "";
+      return {
+        title: String(row.name || row.title || "Untitled"),
+        linkUrl,
+        coverUrl: row.poster || null,
+        category: row.year ? `${category} · ${row.year}` : category,
+        description: row.overview ? String(row.overview).slice(0, 500) : null,
+      };
+    });
+  }
+
   // Radio Browser stations
   if (
     Array.isArray(data) &&
@@ -25,7 +64,6 @@ function normalize(data: unknown, category: string): NormItem[] {
     "stationuuid" in (data[0] as object)
   ) {
     return (data as {
-      stationuuid: string;
       name: string;
       url_resolved?: string;
       url?: string;
@@ -40,24 +78,13 @@ function normalize(data: unknown, category: string): NormItem[] {
     }));
   }
 
-  // Internet Archive advancedsearch
-  const archiveDocs = (data as { response?: { docs?: unknown[] } })?.response?.docs;
-  if (Array.isArray(archiveDocs)) {
-    return (archiveDocs as { identifier?: string; title?: string }[]).map((d) => {
-      const id = d.identifier || "";
-      return {
-        title: String(d.title || id),
-        linkUrl: id ? `https://archive.org/embed/${id}` : "",
-        coverUrl: id ? `https://archive.org/services/img/${id}` : null,
-        category,
-        description: null,
-      };
-    });
-  }
-
-  // iTunes Search (movies / music)
+  // iTunes Search
   const itunes = (data as { results?: Record<string, unknown>[] })?.results;
-  if (Array.isArray(itunes) && itunes[0] && ("trackId" in itunes[0] || "collectionId" in itunes[0])) {
+  if (
+    Array.isArray(itunes) &&
+    itunes[0] &&
+    ("trackId" in itunes[0] || "collectionId" in itunes[0])
+  ) {
     return itunes.map((m) => {
       const art = String(m.artworkUrl100 || "");
       const poster = art ? art.replace("100x100", "600x600") : null;
@@ -69,26 +96,30 @@ function normalize(data: unknown, category: string): NormItem[] {
         linkUrl: link,
         coverUrl: poster,
         category: String(m.primaryGenreName || category),
-        description: (m.longDescription || m.shortDescription || null) as string | null,
+        description: (m.longDescription || m.shortDescription || null) as
+          | string
+          | null,
       };
     });
   }
 
-  // TVmaze search: [{ score, show }]
+  // TVmaze
   if (
     Array.isArray(data) &&
     data[0] &&
     typeof data[0] === "object" &&
     "show" in (data[0] as object)
   ) {
-    return (data as { show: {
-      id: number;
-      name: string;
-      genres?: string[];
-      image?: { medium?: string } | null;
-      summary?: string | null;
-      url?: string;
-    } }[]).map(({ show }) => ({
+    return (data as {
+      show: {
+        id: number;
+        name: string;
+        genres?: string[];
+        image?: { medium?: string } | null;
+        summary?: string | null;
+        url?: string;
+      };
+    }[]).map(({ show }) => ({
       title: show.name,
       linkUrl: show.url || `https://www.tvmaze.com/shows/${show.id}`,
       coverUrl: show.image?.medium || null,
@@ -129,9 +160,7 @@ function normalize(data: unknown, category: string): NormItem[] {
         ? (data as { items: unknown[] }).items
         : Array.isArray((data as { data?: unknown[] }).data)
           ? (data as { data: unknown[] }).data
-          : Array.isArray((data as { stations?: unknown[] }).stations)
-            ? (data as { stations: unknown[] }).stations
-            : [];
+          : [];
 
   return (raw as Record<string, unknown>[]).slice(0, 50).map((row, i) => {
     const title = String(row.title || row.name || `Item ${i + 1}`);
@@ -221,7 +250,7 @@ export async function POST(req: Request) {
     }
 
     let count = 0;
-    for (const item of items.slice(0, 50)) {
+    for (const item of items.slice(0, 80)) {
       await prisma.content.create({
         data: {
           type: category,
