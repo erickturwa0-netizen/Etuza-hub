@@ -7,11 +7,12 @@ export const revalidate = 0;
 export const metadata = { title: "TV Channels – ETUZA HUB" };
 
 export default async function TvPage() {
+  // Prefer verified pins so users don't open dead streams
   let channels = PINNED_CHANNELS;
   let total = PINNED_CHANNELS.length;
 
   try {
-    const result = await loadIptvChannels({ source: "ea", limit: 120 });
+    const result = await loadIptvChannels({ source: "pinned", limit: 40 });
     if (result.channels.length > 0) {
       channels = result.channels;
       total = result.total;
@@ -20,7 +21,6 @@ export default async function TvPage() {
     console.error("tv page", e);
   }
 
-  // Hard guarantee
   if (!channels.length) channels = PINNED_CHANNELS;
 
   const groups = Array.from(
@@ -35,13 +35,18 @@ export default async function TvPage() {
           TV Channels
         </h1>
         <p className="text-sm text-slate-400 mt-1">
-          {channels.length} channels · Tanzania + East Africa
+          {channels.length} channels zilizothibitishwa · Tanzania + East Africa +
+          News
+        </p>
+        <p className="text-xs text-amber-400/90 mt-2">
+          Tip: Anza na <b>TBC2</b>, <b>Mahaasin</b>, <b>France 24</b> au{" "}
+          <b>NASA TV</b> — hizi zimehakikiwa zinacheza.
         </p>
       </div>
 
       {groups.length > 0 && (
         <div className="flex gap-2 mb-5 flex-wrap">
-          {groups.slice(0, 10).map((g) => (
+          {groups.map((g) => (
             <span
               key={g}
               className="px-3 py-1 rounded-lg text-xs border border-slate-700 text-slate-300"
@@ -75,7 +80,10 @@ export default async function TvPage() {
                   className="w-full h-full object-contain p-3"
                 />
               ) : (
-                <Tv className="w-10 h-10 text-white/40" />
+                <div className="text-center px-2">
+                  <Tv className="w-8 h-8 text-white/40 mx-auto mb-1" />
+                  <p className="text-[11px] text-white/50 line-clamp-2">{c.title}</p>
+                </div>
               )}
             </div>
             <div className="p-3 border-t border-slate-800">
@@ -85,10 +93,6 @@ export default async function TvPage() {
           </Link>
         ))}
       </div>
-
-      {channels.length === 0 && (
-        <p className="text-center text-slate-400 mt-8">Hakuna channel</p>
-      )}
     </main>
   );
 }

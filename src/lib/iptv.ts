@@ -12,7 +12,10 @@ const TZ_M3U = "https://iptv-org.github.io/iptv/countries/tz.m3u";
 const KE_M3U = "https://iptv-org.github.io/iptv/countries/ke.m3u";
 const UG_M3U = "https://iptv-org.github.io/iptv/countries/ug.m3u";
 
-/** Only streams we have verified reachable */
+/**
+ * Streams verified reachable (HTTP 200 + valid m3u8) on 2026-10-20.
+ * Most iptv-org TZ/KE links are dead — only pin what works.
+ */
 export const PINNED_CHANNELS: IptvChannel[] = [
   {
     id: "pin-tbc2",
@@ -20,15 +23,7 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     logo: "https://i.imgur.com/VkUJt2q.png",
     group: "Tanzania",
     url: "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_44ed95e05b6d11f18d5d85805abbdd6f/index.m3u8",
-    tvgId: "TBC2.tz@SD",
-  },
-  {
-    id: "pin-safari",
-    title: "Tanzania Safari Channel",
-    logo: "https://i.imgur.com/fcLFYhn.png",
-    group: "Tanzania",
-    url: "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_31dabe40323511f08b8efff0016f3b67/index.m3u8",
-    tvgId: "TanzaniaSafariChannel.tz@SD",
+    tvgId: "TBC2.tz",
   },
   {
     id: "pin-mahaasin",
@@ -36,7 +31,103 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     logo: "https://i.imgur.com/wdfdKvC.png",
     group: "Tanzania",
     url: "https://mahaasintv.livebox.co.in/mahaasintvhls/mahaasintv.m3u8",
-    tvgId: "MahaasinTV.tz@SD",
+    tvgId: "MahaasinTV.tz",
+  },
+  {
+    id: "pin-akili",
+    title: "Akili Kids!",
+    logo: null,
+    group: "Kenya",
+    url: "https://m6.livecdn.io/akilikids.co.ke/akilikids.smil/playlist.m3u8",
+    tvgId: "AkiliKids.ke",
+  },
+  {
+    id: "pin-inooro",
+    title: "Inooro TV",
+    logo: null,
+    group: "Kenya",
+    url: "https://live-onesignal.royalmedia.co.ke/live/T-MxRsFebq6zx7k2QFMbLw.m3u8",
+    tvgId: "InooroTV.ke",
+  },
+  {
+    id: "pin-morning-cloud",
+    title: "Morning Cloud TV",
+    logo: null,
+    group: "Kenya",
+    url: "https://livecdn.live247stream.com/mc/tv/playlist.m3u8",
+    tvgId: "MorningCloud.ke",
+  },
+  {
+    id: "pin-alpha-ug",
+    title: "Alpha Digital",
+    logo: null,
+    group: "Uganda",
+    url: "https://streamfi-alphatvdgtl1.zettawiseroutes.com:8181/hls/stream.m3u8",
+    tvgId: "AlphaDigital.ug",
+  },
+  {
+    id: "pin-ark-tv",
+    title: "Ark TV",
+    logo: null,
+    group: "Uganda",
+    url: "https://stream.hydeinnovations.com/arktv-international/index.fmp4.m3u8",
+    tvgId: "ArkTV.ug",
+  },
+  {
+    id: "pin-btv-ug",
+    title: "BTV Uganda",
+    logo: null,
+    group: "Uganda",
+    url: "https://streamfi-alphadgtl1.zettawiseroutes.com:8181/hls/stream.m3u8",
+    tvgId: "BTV.ug",
+  },
+  {
+    id: "pin-1kzn",
+    title: "1KZN TV",
+    logo: null,
+    group: "South Africa",
+    url: "https://cdn.freevisiontv.co.za/sttv/smil:1kzn.stream.smil/playlist.m3u8",
+    tvgId: "1KZN.za",
+  },
+  {
+    id: "pin-ctv",
+    title: "Cape Town TV",
+    logo: null,
+    group: "South Africa",
+    url: "https://cdn.freevisiontv.co.za/sttv/smil:ctv.stream.smil/playlist.m3u8",
+    tvgId: "CapeTownTV.za",
+  },
+  {
+    id: "pin-boktv",
+    title: "BOKTV",
+    logo: null,
+    group: "South Africa",
+    url: "https://livestream2.bokradio.co.za/hls/Bok5c.m3u8",
+    tvgId: "BOKTV.za",
+  },
+  {
+    id: "pin-france24",
+    title: "France 24 English",
+    logo: null,
+    group: "News",
+    url: "https://static.france24.com/live/F24_EN_LO_HLS/live_web.m3u8",
+    tvgId: "France24.en",
+  },
+  {
+    id: "pin-nasa",
+    title: "NASA TV",
+    logo: null,
+    group: "Science",
+    url: "https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8",
+    tvgId: "NASATV.us",
+  },
+  {
+    id: "pin-redbull",
+    title: "Red Bull TV",
+    logo: null,
+    group: "Sports",
+    url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
+    tvgId: "RedBullTV",
   },
 ];
 
@@ -75,16 +166,7 @@ function parseM3u(text: string): IptvChannel[] {
       continue;
     }
 
-    if (pending && /^https?:\/\//i.test(line)) {
-      if (!line.includes("m3u8")) {
-        pending = null;
-        continue;
-      }
-      // Prefer https
-      if (line.startsWith("http://")) {
-        pending = null;
-        continue;
-      }
+    if (pending && /^https:\/\//i.test(line) && line.includes("m3u8")) {
       const id = pending.tvgId || `ch-${out.length}`;
       out.push({
         id,
@@ -100,7 +182,7 @@ function parseM3u(text: string): IptvChannel[] {
   return out;
 }
 
-async function fetchM3u(url: string, timeoutMs = 8000): Promise<IptvChannel[]> {
+async function fetchM3u(url: string, timeoutMs = 6000): Promise<IptvChannel[]> {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -121,10 +203,10 @@ async function fetchM3u(url: string, timeoutMs = 8000): Promise<IptvChannel[]> {
 function scoreChannel(c: IptvChannel): number {
   let s = 0;
   const t = (c.title + " " + c.group + " " + (c.tvgId || "")).toLowerCase();
-  if (/\.tz@|tanzania|tbc|dodoma|ibn|zanzibar/i.test(t)) s += 100;
-  if (/\.ke@|kenya/i.test(t)) s += 60;
-  if (/\.ug@|uganda/i.test(t)) s += 50;
-  if (c.url.startsWith("https://") && c.url.includes("m3u8")) s += 15;
+  if (/tanzania|tbc|\.tz/i.test(t)) s += 100;
+  if (/kenya|\.ke/i.test(t)) s += 70;
+  if (/uganda|\.ug/i.test(t)) s += 60;
+  if (c.url.startsWith("https://")) s += 15;
   return s;
 }
 
@@ -132,27 +214,30 @@ export async function loadIptvChannels(opts?: {
   q?: string;
   group?: string;
   limit?: number;
-  source?: "ea" | "full";
+  source?: "ea" | "full" | "pinned";
 }): Promise<{ channels: IptvChannel[]; total: number; source: string }> {
-  const limit = Math.min(opts?.limit || 120, 300);
+  const limit = Math.min(opts?.limit || 80, 200);
   const q = (opts?.q || "").toLowerCase().trim();
   const group = (opts?.group || "").toLowerCase().trim();
-  const source = opts?.source || "ea";
+  const source = opts?.source || "pinned";
 
+  // Default: verified pins only (reliable). Optional remote expansion.
   let remote: IptvChannel[] = [];
-  try {
-    if (source === "full") {
-      remote = await fetchM3u(M3U_URL, 12000);
-    } else {
-      const [tz, ke, ug] = await Promise.all([
-        fetchM3u(TZ_M3U),
-        fetchM3u(KE_M3U),
-        fetchM3u(UG_M3U),
-      ]);
-      remote = [...tz, ...ke, ...ug];
+  if (source === "ea" || source === "full") {
+    try {
+      if (source === "full") {
+        remote = await fetchM3u(M3U_URL, 10000);
+      } else {
+        const [tz, ke, ug] = await Promise.all([
+          fetchM3u(TZ_M3U),
+          fetchM3u(KE_M3U),
+          fetchM3u(UG_M3U),
+        ]);
+        remote = [...tz, ...ke, ...ug];
+      }
+    } catch (e) {
+      console.error("loadIptvChannels", e);
     }
-  } catch (e) {
-    console.error("loadIptvChannels", e);
   }
 
   const seenUrl = new Set(PINNED_CHANNELS.map((p) => p.url));
@@ -178,7 +263,7 @@ export async function loadIptvChannels(opts?: {
   return {
     channels: channels.slice(0, limit),
     total: channels.length,
-    source: remote.length ? "pinned+ea" : "pinned-only",
+    source: rest.length ? "pinned+remote" : "pinned-only",
   };
 }
 
