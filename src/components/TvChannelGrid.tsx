@@ -26,11 +26,7 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
           TV Channels
         </h1>
         <p className="text-sm text-slate-400 mt-1">
-          {filtered.length} channels · bofya group kuchuja
-        </p>
-        <p className="text-xs text-amber-400/90 mt-2">
-          Tip: Anza na <b>TBC2</b>, <b>Mahaasin</b>, <b>France 24</b>. Kenya
-          channels zinahitaji network nzuri — bofya channel kisha <b>Play</b>.
+          {filtered.length} channels zilizothibitishwa (zilizokufa zimeondolewa)
         </p>
       </div>
 
