@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "logo.clearbit.com" },
       { protocol: "https", hostname: "*.supabase.co" },
       { protocol: "https", hostname: "archive.org" },
+      { protocol: "https", hostname: "i.imgur.com" },
     ],
   },
   async headers() {
@@ -23,11 +24,17 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
-              "connect-src 'self' https:",
+              // ElitePlex + HLS proxy + external APIs
+              "connect-src 'self' https: blob: wss:",
+              // Native video / HLS
               "media-src 'self' https: blob:",
-              "frame-src 'self' https://archive.org https://www.archive.org https://www.youtube.com https://youtube.com https://www.youtube-nocookie.com https://www.facebook.com https://facebook.com https://player.vimeo.com https://www.dailymotion.com https://www.tiktok.com",
-              "child-src 'self' https://archive.org https://www.youtube.com https://www.youtube-nocookie.com https://www.facebook.com https://player.vimeo.com blob:",
+              // Allow embed players (vidsrc, videasy, 2embed, etc.) + social
+              "frame-src 'self' https: blob:",
+              "child-src 'self' https: blob:",
               "worker-src 'self' blob:",
+              "object-src 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
             ].join("; "),
           },
         ],
