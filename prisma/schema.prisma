@@ -56,3 +56,19 @@ model ApiSource {
 
   @@map("ApiSource")
 }
+
+/** Live presence / active viewers */
+model ViewSession {
+  id        String   @id @default(cuid())
+  sessionId String   @map("session_id")
+  section   String
+  title     String?
+  path      String?
+  lastSeen  DateTime @default(now()) @map("last_seen")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([sessionId, section])
+  @@index([section])
+  @@index([lastSeen])
+  @@map("ViewSession")
+}

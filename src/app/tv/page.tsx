@@ -1,22 +1,18 @@
 import Link from "next/link";
 import { Tv } from "lucide-react";
 import { loadIptvChannels, PINNED_CHANNELS } from "@/lib/iptv";
+import PresenceTrackerClient from "@/components/PresenceTrackerClient";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const metadata = { title: "TV Channels – ETUZA HUB" };
 
 export default async function TvPage() {
-  // Prefer verified pins so users don't open dead streams
   let channels = PINNED_CHANNELS;
-  let total = PINNED_CHANNELS.length;
 
   try {
     const result = await loadIptvChannels({ source: "pinned", limit: 40 });
-    if (result.channels.length > 0) {
-      channels = result.channels;
-      total = result.total;
-    }
+    if (result.channels.length > 0) channels = result.channels;
   } catch (e) {
     console.error("tv page", e);
   }
@@ -29,18 +25,19 @@ export default async function TvPage() {
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 pb-28">
+      <PresenceTrackerClient section="tv" title="TV Channels" />
+
       <div className="mb-6">
         <h1 className="text-2xl font-bold flex items-center gap-2 text-white">
           <Tv className="w-6 h-6 text-red-400" />
           TV Channels
         </h1>
         <p className="text-sm text-slate-400 mt-1">
-          {channels.length} channels zilizothibitishwa · Tanzania + East Africa +
-          News
+          {channels.length} channels zilizothibitishwa
         </p>
         <p className="text-xs text-amber-400/90 mt-2">
           Tip: Anza na <b>TBC2</b>, <b>Mahaasin</b>, <b>France 24</b> au{" "}
-          <b>NASA TV</b> — hizi zimehakikiwa zinacheza.
+          <b>NASA TV</b>.
         </p>
       </div>
 

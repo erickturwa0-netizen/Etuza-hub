@@ -4,6 +4,8 @@ import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import StreamPlayer from "@/components/StreamPlayer";
 import GameDownloadPanel from "@/components/GameDownloadPanel";
+import PresenceTracker from "@/components/PresenceTracker";
+import WebGamePlayer from "@/components/WebGamePlayer";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -17,6 +19,19 @@ function getBackHref(type: string) {
   if (type === "game") return "/games";
   if (type === "vpn") return "/vpn";
   return "/";
+}
+
+function isWebGameUrl(url: string) {
+  const u = url.toLowerCase();
+  return (
+    u.includes("crazygames.com") ||
+    u.includes("poki.com") ||
+    u.includes("itch.io") ||
+    u.includes("gamejolt.com") ||
+    u.includes("html5") ||
+    u.includes("play.google") === false &&
+      (/\/embed|\/game\//i.test(u) || u.endsWith(".html"))
+  );
 }
 
 export default async function WatchPage({
@@ -40,6 +55,15 @@ export default async function WatchPage({
 
   try {
     item = await prisma.content.findUnique({ where: { id } });
+    if (item) {
+      // fire-and-forget view bump
+      prisma.content
+        .update({
+          where: { id },
+          data: { viewsCount: { increment: 1 } },
+        })
+        .catch(() => {});
+    }
   } catch (e) {
     console.error("watch page", e);
   }
@@ -48,15 +72,36 @@ export default async function WatchPage({
 
   const link = (item.linkUrl || "").trim();
   const backHref = getBackHref(item.type);
+  const section =
+    item.type === "drama"
+      ? "drama"
+      : item.type === "game"
+        ? "game"
+        : item.type === "music"
+          ? "music"
+          : item.type === "movie"
+            ? "movie"
+            : item.type === "tv"
+              ? "tv"
+              : item.type;
 
-  const forceDownloadUi =
-    item.linkType === "download" ||
-    item.type === "game" ||
-    item.type === "vpn";
+  // Download-only: explicit download, or VPN configs
+  const isDownload =
+    item.linkType === "download" || item.type === "vpn";
 
-  if (forceDownloadUi) {
+  // Web game: type=game + stream (or detectable web-game host)
+  const isWebGame =
+    item.type === "game" &&
+    item.linkType !== "download" &&
+    (item.linkType === "stream" || isWebGameUrl(link));
+
+  // Game download (ISO/APK/MediaFire)
+  const isGameDownload = item.type === "game" && isDownload;
+
+  if (isGameDownload || (item.type === "vpn")) {
     return (
-      <main className="max-w-3xl mx-auto px-4 py-8">
+      <main className="max-w-3xl mx-auto px-4 py-8 pb-28">
+        <PresenceTracker section={section} title={item.title} />
         <Link
           href={backHref}
           className="inline-flex items-center gap-2 text-sm text-slate-400 mb-6"
@@ -65,7 +110,7 @@ export default async function WatchPage({
           Back
         </Link>
 
-        <h1 className="text-2xl font-bold mb-2">{item.title}</h1>
+        <h1 className="text-2xl font-bold mb-2 text-white">{item.title}</h1>
         {item.category && (
           <p className="text-xs text-slate-500 mb-4 uppercase tracking-wide">
             {item.category}
@@ -98,8 +143,72 @@ export default async function WatchPage({
     );
   }
 
+  if (isWebGame) {
+    return (
+      <main className="max-w-4xl mx-auto px-4 py-6 pb-28">
+        <PresenceTracker section="game" title={item.title} />
+        <Link
+          href={backHref}
+          className="inline-flex items-center gap-2 text-sm text-slate-400 mb-4"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Link>
+        <h1 className="text-xl sm:text-2xl font-bold mb-1 text-white">{item.title}</h1>
+        {item.category && (
+          <p className="text-xs text-slate-500 mb-4 uppercase tracking-wide">
+            {item.category}
+          </p>
+        )}
+        <WebGamePlayer src={link} title={item.title} />
+        {item.description && (
+          <p className="mt-4 text-sm text-slate-400 leading-relaxed">
+            {item.description}
+          </p>
+        )}
+      </main>
+    );
+  }
+
+  // Hybrid game: show player + download if looks like both
+  if (item.type === "game") {
+    return (
+      <main className="max-w-3xl mx-auto px-4 py-8 pb-28">
+        <PresenceTracker section="game" title={item.title} />
+        <Link
+          href={backHref}
+          className="inline-flex items-center gap-2 text-sm text-slate-400 mb-6"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Link>
+        <h1 className="text-2xl font-bold mb-2 text-white">{item.title}</h1>
+        {item.category && (
+          <p className="text-xs text-slate-500 mb-4 uppercase tracking-wide">
+            {item.category}
+          </p>
+        )}
+        {item.coverUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.coverUrl}
+            alt=""
+            className="w-full max-w-xs rounded-2xl border border-slate-800 mb-6 object-cover"
+          />
+        )}
+        <GameDownloadPanel linkUrl={link} title={item.title} />
+        {item.description && (
+          <p className="mt-6 text-sm text-slate-400 leading-relaxed">
+            {item.description}
+          </p>
+        )}
+      </main>
+    );
+  }
+
   return (
     <main className="max-w-4xl mx-auto px-4 py-6 pb-24">
+      <PresenceTracker section={section} title={item.title} />
       <Link
         href={backHref}
         className="inline-flex items-center gap-2 text-sm text-slate-400 mb-4"
@@ -108,7 +217,7 @@ export default async function WatchPage({
         Back
       </Link>
 
-      <h1 className="text-xl sm:text-2xl font-bold mb-1">{item.title}</h1>
+      <h1 className="text-xl sm:text-2xl font-bold mb-1 text-white">{item.title}</h1>
       {item.category && (
         <p className="text-xs text-slate-500 mb-4 uppercase tracking-wide">
           {item.category}
@@ -122,10 +231,6 @@ export default async function WatchPage({
       ) : (
         <StreamPlayer src={link} poster={item.coverUrl} title={item.title} />
       )}
-
-      <p className="mt-3 text-[11px] text-slate-600 break-all">
-        Link iliyohifadhiwa: {link || "(tupu)"}
-      </p>
 
       {item.description && (
         <p className="mt-4 text-sm text-slate-400 leading-relaxed">

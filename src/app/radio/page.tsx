@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Radio, Search } from "lucide-react";
+import PresenceTracker from "@/components/PresenceTracker";
 
 type Station = {
   id: string;
@@ -12,6 +13,12 @@ type Station = {
   country: string;
   bitrate: number;
 };
+
+function coverFor(s: Station) {
+  if (s.favicon && /^https?:\/\//i.test(s.favicon)) return s.favicon;
+  const name = encodeURIComponent(s.name.slice(0, 24) || "Radio");
+  return `https://ui-avatars.com/api/?name=${name}&background=831843&color=fff&size=128&bold=true`;
+}
 
 export default function RadioPage() {
   const [stations, setStations] = useState<Station[]>([]);
@@ -46,15 +53,15 @@ export default function RadioPage() {
 
   return (
     <main className="flex-1 max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-28">
+      <PresenceTracker section="radio" title={playing?.name || "Radio"} />
+
       <div className="flex items-center gap-3 mb-6">
         <div className="w-11 h-11 rounded-xl bg-pink-500/20 flex items-center justify-center text-pink-400 shrink-0">
           <Radio className="w-5 h-5" />
         </div>
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-white">Radio</h1>
-          <p className="text-sm text-slate-400">
-            Live stations · Tanzania + world
-          </p>
+          <p className="text-sm text-slate-400">Live stations · Tanzania + world</p>
         </div>
       </div>
 
@@ -107,16 +114,18 @@ export default function RadioPage() {
 
       {playing && (
         <div className="rounded-2xl border border-pink-500/30 bg-slate-900 p-4 mb-4 sticky top-2 z-20">
-          <p className="text-sm font-semibold mb-2 text-white">
-            Now playing: {playing.name}
-          </p>
-          <audio
-            key={playing.id}
-            controls
-            autoPlay
-            className="w-full"
-            src={playing.url}
-          />
+          <div className="flex items-center gap-3 mb-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={coverFor(playing)}
+              alt=""
+              className="w-12 h-12 rounded-xl object-cover border border-slate-700"
+            />
+            <p className="text-sm font-semibold text-white truncate">
+              Now playing: {playing.name}
+            </p>
+          </div>
+          <audio key={playing.id} controls autoPlay className="w-full" src={playing.url} />
         </div>
       )}
 
@@ -138,27 +147,24 @@ export default function RadioPage() {
               }`}
             >
               <div className="w-14 h-14 rounded-xl bg-pink-950 flex items-center justify-center overflow-hidden shrink-0 border border-slate-800">
-                {s.favicon ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={s.favicon}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <Radio className="w-6 h-6 text-pink-400" />
-                )}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={coverFor(s)}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      s.name.slice(0, 16)
+                    )}&background=831843&color=fff&size=128`;
+                  }}
+                />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-[15px] text-white truncate">
-                  {s.name}
-                </p>
+                <p className="font-semibold text-[15px] text-white truncate">{s.name}</p>
                 <p className="text-xs text-slate-400 mt-0.5 truncate">
                   {s.country}
                   {s.bitrate ? ` · ${s.bitrate}kbps` : ""}
-                  {s.tags
-                    ? ` · ${s.tags.split(",").slice(0, 2).join(", ")}`
-                    : ""}
+                  {s.tags ? ` · ${s.tags.split(",").slice(0, 2).join(", ")}` : ""}
                 </p>
               </div>
             </button>
