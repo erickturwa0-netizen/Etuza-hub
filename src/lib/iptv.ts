@@ -12,7 +12,7 @@ const TZ_M3U = "https://iptv-org.github.io/iptv/countries/tz.m3u";
 const KE_M3U = "https://iptv-org.github.io/iptv/countries/ke.m3u";
 const UG_M3U = "https://iptv-org.github.io/iptv/countries/ug.m3u";
 
-/** Verified-ish public streams (tested reachable) */
+/** Only streams we have verified reachable */
 export const PINNED_CHANNELS: IptvChannel[] = [
   {
     id: "pin-tbc2",
@@ -37,22 +37,6 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     group: "Tanzania",
     url: "https://mahaasintv.livebox.co.in/mahaasintvhls/mahaasintv.m3u8",
     tvgId: "MahaasinTV.tz@SD",
-  },
-  {
-    id: "pin-dodoma",
-    title: "Dodoma TV",
-    logo: "https://i.imgur.com/bLq9eFa.png",
-    group: "Tanzania",
-    url: "https://goliveafrica.media:9998/live/625965017ed69/index.m3u8",
-    tvgId: "DodomaTV.tz@SD",
-  },
-  {
-    id: "pin-pluto-00s",
-    title: "00s Replay (Movies)",
-    logo: "https://images.pluto.tv/channels/62ba60f059624e000781c436/colorLogoPNG.png",
-    group: "Movies",
-    url: "https://jmp2.uk/plu-62ba60f059624e000781c436.m3u8",
-    tvgId: "00sReplay.us@SD",
   },
 ];
 
@@ -92,8 +76,12 @@ function parseM3u(text: string): IptvChannel[] {
     }
 
     if (pending && /^https?:\/\//i.test(line)) {
-      // Prefer https m3u8
-      if (!line.includes("m3u8") && !line.includes(".ts")) {
+      if (!line.includes("m3u8")) {
+        pending = null;
+        continue;
+      }
+      // Prefer https
+      if (line.startsWith("http://")) {
         pending = null;
         continue;
       }
@@ -133,12 +121,10 @@ async function fetchM3u(url: string, timeoutMs = 8000): Promise<IptvChannel[]> {
 function scoreChannel(c: IptvChannel): number {
   let s = 0;
   const t = (c.title + " " + c.group + " " + (c.tvgId || "")).toLowerCase();
-  if (/\.tz@|tanzania|tbc|dodoma|ibn|zanzibar|azam/i.test(t)) s += 100;
+  if (/\.tz@|tanzania|tbc|dodoma|ibn|zanzibar/i.test(t)) s += 100;
   if (/\.ke@|kenya/i.test(t)) s += 60;
   if (/\.ug@|uganda/i.test(t)) s += 50;
-  if (/news|sport/i.test(t)) s += 15;
   if (c.url.startsWith("https://") && c.url.includes("m3u8")) s += 15;
-  if (c.url.startsWith("http://")) s -= 10;
   return s;
 }
 
