@@ -7,6 +7,11 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const metadata = { title: "Movies – ETUZA HUB" };
 
+function yearFromCategory(cat: string | null): number {
+  const m = (cat || "").match(/(20\d{2}|19\d{2})/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
 export default async function MoviesPage() {
   let items: {
     id: string;
@@ -17,17 +22,28 @@ export default async function MoviesPage() {
 
   try {
     await ensureElitePlexContent("movie");
-    items = await prisma.content.findMany({
+    const raw = await prisma.content.findMany({
       where: { type: "movie", status: "published" },
-      orderBy: { createdAt: "desc" },
       select: { id: true, title: true, coverUrl: true, category: true },
+    });
+    // Classics / older first, then 2025+
+    items = raw.sort((a, b) => {
+      const ya = yearFromCategory(a.category);
+      const yb = yearFromCategory(b.category);
+      const fa = ya >= 2025 ? 1 : 0;
+      const fb = yb >= 2025 ? 1 : 0;
+      if (fa !== fb) return fa - fb;
+      return yb - ya;
     });
   } catch (e) {
     console.error("movies page", e);
   }
 
+  const playable = items.filter((c) => yearFromCategory(c.category) > 0 && yearFromCategory(c.category) < 2025).length;
+  const newest = items.length - playable;
+
   return (
-    <main className="max-w-6xl mx-auto px-4 py-8 pb-24">
+    <main className="max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-24">
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center text-violet-400">
           <Film className="w-5 h-5" />
@@ -35,7 +51,7 @@ export default async function MoviesPage() {
         <div>
           <h1 className="text-2xl font-bold">Movies</h1>
           <p className="text-sm text-slate-500">
-            {items.length} movies · ElitePlex
+            {items.length} movies · {playable} za zamani · {newest} mpya (2025+)
           </p>
         </div>
       </div>
@@ -48,31 +64,40 @@ export default async function MoviesPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {items.map((c) => (
-            <Link key={c.id} href={`/watch/${c.id}`} className="block group">
-              <div className="aspect-[2/3] rounded-2xl border border-slate-800 bg-violet-950 overflow-hidden relative">
-                {c.coverUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={c.coverUrl}
-                    alt={c.title}
-                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition"
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Film className="w-10 h-10 text-white/20" />
-                  </div>
-                )}
-                <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/90 to-transparent">
-                  <p className="text-xs font-semibold line-clamp-2">{c.title}</p>
-                  {c.category && (
-                    <p className="text-[10px] text-slate-400 mt-0.5">{c.category}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
+          {items.map((c) => {
+            const y = yearFromCategory(c.category);
+            const isNew = y >= 2025;
+            return (
+              <Link key={c.id} href={`/watch/${c.id}`} className="block group">
+                <div className="aspect-[2/3] rounded-2xl border border-slate-800 bg-violet-950 overflow-hidden relative">
+                  {c.coverUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={c.coverUrl}
+                      alt={c.title}
+                      className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Film className="w-10 h-10 text-white/20" />
+                    </div>
                   )}
+                  {isNew && (
+                    <span className="absolute top-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-black">
+                      NEW
+                    </span>
+                  )}
+                  <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/90 to-transparent">
+                    <p className="text-xs font-semibold line-clamp-2 text-white">{c.title}</p>
+                    {c.category && (
+                      <p className="text-[10px] text-slate-400 mt-0.5">{c.category}</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       )}
     </main>
