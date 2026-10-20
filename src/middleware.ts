@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
-// Pages anyone can open without login
 const PUBLIC_PATHS = [
   "/login",
   "/signup",
@@ -26,6 +25,7 @@ const PUBLIC_API = [
   "/api/resolve-downloads",
   "/api/public-feed",
   "/api/radio/stations",
+  "/api/proxy/stream",
 ];
 
 const COOKIE_NAME = "etuza_session";
@@ -80,7 +80,6 @@ export async function middleware(request: NextRequest) {
   const session = await getSession(token);
   const loggedIn = !!session;
 
-  // Admin + other private pages need login
   if (!loggedIn) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -97,11 +96,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(home);
   }
 
-  // Logged-in user visiting login/signup → home
-  if (
-    (pathname === "/login" || pathname === "/signup") &&
-    loggedIn
-  ) {
+  if ((pathname === "/login" || pathname === "/signup") && loggedIn) {
     const dest = request.nextUrl.clone();
     dest.pathname = session?.role === "admin" ? "/admin" : "/";
     return NextResponse.redirect(dest);
