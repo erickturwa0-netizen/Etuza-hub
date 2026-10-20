@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Film } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensureElitePlexContent } from "@/lib/eliteplex";
+import { ensureBongoMovies } from "@/lib/bongo-movies";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,6 +11,10 @@ export const metadata = { title: "Movies – ETUZA HUB" };
 function yearFromCategory(cat: string | null): number {
   const m = (cat || "").match(/(20\d{2}|19\d{2})/);
   return m ? parseInt(m[1], 10) : 0;
+}
+
+function isBongo(cat: string | null) {
+  return (cat || "").toLowerCase().startsWith("bongo");
 }
 
 export default async function MoviesPage() {
@@ -22,15 +27,20 @@ export default async function MoviesPage() {
 
   try {
     await ensureElitePlexContent("movie");
+    await ensureBongoMovies();
     const raw = await prisma.content.findMany({
       where: { type: "movie", status: "published" },
       select: { id: true, title: true, coverUrl: true, category: true },
     });
+    // Bongo first, then older Hollywood, then newest
     items = raw.sort((a, b) => {
+      const ba = isBongo(a.category) ? 0 : 1;
+      const bb = isBongo(b.category) ? 0 : 1;
+      if (ba !== bb) return ba - bb;
       const ya = yearFromCategory(a.category);
       const yb = yearFromCategory(b.category);
-      const fa = ya >= 2025 ? 1 : 0;
-      const fb = yb >= 2025 ? 1 : 0;
+      const fa = ya >= 2025 && !isBongo(a.category) ? 1 : 0;
+      const fb = yb >= 2025 && !isBongo(b.category) ? 1 : 0;
       if (fa !== fb) return fa - fb;
       return yb - ya;
     });
@@ -38,10 +48,7 @@ export default async function MoviesPage() {
     console.error("movies page", e);
   }
 
-  const playable = items.filter(
-    (c) => yearFromCategory(c.category) > 0 && yearFromCategory(c.category) < 2025
-  ).length;
-  const newest = items.length - playable;
+  const bongoCount = items.filter((c) => isBongo(c.category)).length;
 
   return (
     <main className="max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-28">
@@ -52,7 +59,7 @@ export default async function MoviesPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-white">Movies</h1>
           <p className="text-sm text-slate-400">
-            {items.length} movies · {playable} za zamani · {newest} mpya
+            {items.length} movies · {bongoCount} Bongo Movies
           </p>
         </div>
       </div>
@@ -67,8 +74,7 @@ export default async function MoviesPage() {
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4">
           {items.map((c) => {
-            const y = yearFromCategory(c.category);
-            const isNew = y >= 2025;
+            const bongo = isBongo(c.category);
             return (
               <Link
                 key={c.id}
@@ -88,9 +94,9 @@ export default async function MoviesPage() {
                       <Film className="w-12 h-12 text-white/20" />
                     </div>
                   )}
-                  {isNew && (
-                    <span className="absolute top-2 right-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-black">
-                      NEW
+                  {bongo && (
+                    <span className="absolute top-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-600 text-white">
+                      BONGO
                     </span>
                   )}
                 </div>
