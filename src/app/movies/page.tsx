@@ -26,7 +26,6 @@ export default async function MoviesPage() {
       where: { type: "movie", status: "published" },
       select: { id: true, title: true, coverUrl: true, category: true },
     });
-    // Classics / older first, then 2025+
     items = raw.sort((a, b) => {
       const ya = yearFromCategory(a.category);
       const yb = yearFromCategory(b.category);
@@ -39,19 +38,21 @@ export default async function MoviesPage() {
     console.error("movies page", e);
   }
 
-  const playable = items.filter((c) => yearFromCategory(c.category) > 0 && yearFromCategory(c.category) < 2025).length;
+  const playable = items.filter(
+    (c) => yearFromCategory(c.category) > 0 && yearFromCategory(c.category) < 2025
+  ).length;
   const newest = items.length - playable;
 
   return (
-    <main className="max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-24">
+    <main className="max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-28">
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center text-violet-400">
+        <div className="w-11 h-11 rounded-xl bg-violet-500/20 flex items-center justify-center text-violet-400 shrink-0">
           <Film className="w-5 h-5" />
         </div>
-        <div>
-          <h1 className="text-2xl font-bold">Movies</h1>
-          <p className="text-sm text-slate-500">
-            {items.length} movies · {playable} za zamani · {newest} mpya (2025+)
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-white">Movies</h1>
+          <p className="text-sm text-slate-400">
+            {items.length} movies · {playable} za zamani · {newest} mpya
           </p>
         </div>
       </div>
@@ -64,13 +65,17 @@ export default async function MoviesPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4">
           {items.map((c) => {
             const y = yearFromCategory(c.category);
             const isNew = y >= 2025;
             return (
-              <Link key={c.id} href={`/watch/${c.id}`} className="block group">
-                <div className="aspect-[2/3] rounded-2xl border border-slate-800 bg-violet-950 overflow-hidden relative">
+              <Link
+                key={c.id}
+                href={`/watch/${c.id}`}
+                className="block rounded-2xl border border-slate-700 bg-slate-900 overflow-hidden active:scale-[0.98] transition group"
+              >
+                <div className="relative w-full aspect-[2/3] bg-violet-950">
                   {c.coverUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -80,7 +85,7 @@ export default async function MoviesPage() {
                     />
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <Film className="w-10 h-10 text-white/20" />
+                      <Film className="w-12 h-12 text-white/20" />
                     </div>
                   )}
                   {isNew && (
@@ -88,12 +93,16 @@ export default async function MoviesPage() {
                       NEW
                     </span>
                   )}
-                  <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/90 to-transparent">
-                    <p className="text-xs font-semibold line-clamp-2 text-white">{c.title}</p>
-                    {c.category && (
-                      <p className="text-[10px] text-slate-400 mt-0.5">{c.category}</p>
-                    )}
-                  </div>
+                </div>
+                <div className="p-2.5 sm:p-3">
+                  <p className="text-sm font-semibold text-white leading-snug line-clamp-2">
+                    {c.title}
+                  </p>
+                  {c.category && (
+                    <p className="text-[11px] text-violet-300/80 mt-1 truncate">
+                      {c.category}
+                    </p>
+                  )}
                 </div>
               </Link>
             );

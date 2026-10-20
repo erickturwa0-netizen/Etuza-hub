@@ -45,15 +45,17 @@ export default function RadioPage() {
   }, []);
 
   return (
-    <main className="flex-1 max-w-6xl mx-auto px-4 py-8 pb-28">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Radio className="w-6 h-6 text-pink-400" />
-          Radio
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Live stations · Radio Browser API (Tanzania + world)
-        </p>
+    <main className="flex-1 max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-28">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-11 h-11 rounded-xl bg-pink-500/20 flex items-center justify-center text-pink-400 shrink-0">
+          <Radio className="w-5 h-5" />
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-white">Radio</h1>
+          <p className="text-sm text-slate-400">
+            Live stations · Tanzania + world
+          </p>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
@@ -71,9 +73,9 @@ export default function RadioPage() {
               setTab(t.id);
               if (t.id !== "SEARCH") load(t.id);
             }}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
+            className={`px-3 py-2 rounded-xl text-sm font-medium border ${
               tab === t.id
-                ? "bg-pink-600/20 border-pink-500/40 text-pink-300"
+                ? "bg-pink-600/25 border-pink-500/50 text-pink-200"
                 : "border-slate-700 text-slate-400"
             }`}
           >
@@ -88,13 +90,13 @@ export default function RadioPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && load("SEARCH", q)}
-            className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+            className="flex-1 px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
             placeholder="BBC, Clouds, Capital…"
           />
           <button
             type="button"
             onClick={() => load("SEARCH", q)}
-            className="px-3 py-2 rounded-xl bg-slate-800"
+            className="px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700"
           >
             <Search className="w-4 h-4" />
           </button>
@@ -104,8 +106,10 @@ export default function RadioPage() {
       {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
 
       {playing && (
-        <div className="glass-card p-4 mb-4 sticky top-2 z-20">
-          <p className="text-sm font-semibold mb-2">Now playing: {playing.name}</p>
+        <div className="rounded-2xl border border-pink-500/30 bg-slate-900 p-4 mb-4 sticky top-2 z-20">
+          <p className="text-sm font-semibold mb-2 text-white">
+            Now playing: {playing.name}
+          </p>
           <audio
             key={playing.id}
             controls
@@ -121,29 +125,40 @@ export default function RadioPage() {
       ) : stations.length === 0 ? (
         <p className="text-slate-500 text-sm">Hakuna stations.</p>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {stations.map((s) => (
             <button
               key={s.id}
               type="button"
               onClick={() => setPlaying(s)}
-              className={`text-left glass-card p-3 flex items-center gap-3 hover:border-pink-500/30 ${
-                playing?.id === s.id ? "border-pink-500/50" : ""
+              className={`text-left rounded-2xl border p-3.5 flex items-center gap-3 transition ${
+                playing?.id === s.id
+                  ? "border-pink-500/60 bg-pink-950/40"
+                  : "border-slate-700 bg-slate-900 active:border-pink-500/40"
               }`}
             >
-              <div className="w-12 h-12 rounded-xl bg-pink-950 flex items-center justify-center overflow-hidden shrink-0">
+              <div className="w-14 h-14 rounded-xl bg-pink-950 flex items-center justify-center overflow-hidden shrink-0 border border-slate-800">
                 {s.favicon ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={s.favicon} alt="" className="w-full h-full object-cover" />
+                  <img
+                    src={s.favicon}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
-                  <Radio className="w-5 h-5 text-pink-400" />
+                  <Radio className="w-6 h-6 text-pink-400" />
                 )}
               </div>
-              <div className="min-w-0">
-                <p className="font-semibold text-sm truncate">{s.name}</p>
-                <p className="text-[11px] text-slate-500 truncate">
-                  {s.country} {s.bitrate ? `· ${s.bitrate}kbps` : ""}{" "}
-                  {s.tags ? `· ${s.tags.split(",").slice(0, 2).join(", ")}` : ""}
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-[15px] text-white truncate">
+                  {s.name}
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5 truncate">
+                  {s.country}
+                  {s.bitrate ? ` · ${s.bitrate}kbps` : ""}
+                  {s.tags
+                    ? ` · ${s.tags.split(",").slice(0, 2).join(", ")}`
+                    : ""}
                 </p>
               </div>
             </button>
