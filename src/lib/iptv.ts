@@ -8,11 +8,12 @@ export type IptvChannel = {
 };
 
 /**
- * ONLY channels verified working.
- * Removed dead ones: Safari, Dodoma, TBC1, Pluto/00s Replay,
- * and other iptv-org links that return 404 / fail in player.
+ * Channels with live HTTPS m3u8 verified 2026-10-21.
+ * Truly dead (no alternate URL found): Dodoma TV, Tanzania Safari, TBC1, most KE commercial.
+ * Restored: all reachable TZ/KE/UG/ZA/RW + news/sports.
  */
 export const PINNED_CHANNELS: IptvChannel[] = [
+  // Tanzania
   {
     id: "pin-tbc2",
     title: "TBC2",
@@ -29,6 +30,139 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     url: "https://mahaasintv.livebox.co.in/mahaasintvhls/mahaasintv.m3u8",
     tvgId: "MahaasinTV.tz",
   },
+  // Kenya
+  {
+    id: "pin-akili",
+    title: "Akili Kids!",
+    logo: null,
+    group: "Kenya",
+    url: "https://m6.livecdn.io/akilikids.co.ke/akilikids.smil/playlist.m3u8",
+    tvgId: "AkiliKids.ke",
+  },
+  {
+    id: "pin-inooro",
+    title: "Inooro TV",
+    logo: null,
+    group: "Kenya",
+    url: "https://live-onesignal.royalmedia.co.ke/live/T-MxRsFebq6zx7k2QFMbLw.m3u8",
+    tvgId: "InooroTV.ke",
+  },
+  {
+    id: "pin-morning-cloud",
+    title: "Morning Cloud TV",
+    logo: null,
+    group: "Kenya",
+    url: "https://livecdn.live247stream.com/mc/tv/playlist.m3u8",
+    tvgId: "MorningCloud.ke",
+  },
+  {
+    id: "pin-younib",
+    title: "YOUNIB Media TV",
+    logo: null,
+    group: "Kenya",
+    url: "https://goliveafrica.media:9998/live/6257fbe7383d6/index.m3u8",
+    tvgId: "YOUNIB.ke",
+  },
+  // Uganda
+  {
+    id: "pin-alpha-ug",
+    title: "Alpha Digital",
+    logo: null,
+    group: "Uganda",
+    url: "https://streamfi-alphatvdgtl1.zettawiseroutes.com:8181/hls/stream.m3u8",
+    tvgId: "AlphaDigital.ug",
+  },
+  {
+    id: "pin-ark-tv",
+    title: "Ark TV",
+    logo: null,
+    group: "Uganda",
+    url: "https://stream.hydeinnovations.com/arktv-international/index.fmp4.m3u8",
+    tvgId: "ArkTV.ug",
+  },
+  {
+    id: "pin-btv-ug",
+    title: "BTV Uganda",
+    logo: null,
+    group: "Uganda",
+    url: "https://streamfi-alphadgtl1.zettawiseroutes.com:8181/hls/stream.m3u8",
+    tvgId: "BTV.ug",
+  },
+  {
+    id: "pin-bukedde1",
+    title: "Bukedde TV 1",
+    logo: null,
+    group: "Uganda",
+    url: "https://stream.hydeinnovations.com/bukedde1flussonic/index.m3u8",
+    tvgId: "Bukedde1.ug",
+  },
+  {
+    id: "pin-bukedde2",
+    title: "Bukedde TV 2",
+    logo: null,
+    group: "Uganda",
+    url: "https://stream.hydeinnovations.com/bukedde2flussonic/index.m3u8",
+    tvgId: "Bukedde2.ug",
+  },
+  // South Africa
+  {
+    id: "pin-1kzn",
+    title: "1KZN TV",
+    logo: null,
+    group: "South Africa",
+    url: "https://cdn.freevisiontv.co.za/sttv/smil:1kzn.stream.smil/playlist.m3u8",
+    tvgId: "1KZN.za",
+  },
+  {
+    id: "pin-ctv",
+    title: "Cape Town TV",
+    logo: null,
+    group: "South Africa",
+    url: "https://cdn.freevisiontv.co.za/sttv/smil:ctv.stream.smil/playlist.m3u8",
+    tvgId: "CapeTownTV.za",
+  },
+  {
+    id: "pin-boktv",
+    title: "BOKTV",
+    logo: null,
+    group: "South Africa",
+    url: "https://livestream2.bokradio.co.za/hls/Bok5c.m3u8",
+    tvgId: "BOKTV.za",
+  },
+  {
+    id: "pin-ln24",
+    title: "LN24 SA",
+    logo: null,
+    group: "South Africa",
+    url: "https://cdnstack.internetmultimediaonline.org/ln24/ln24.stream/playlist.m3u8",
+    tvgId: "LN24.za",
+  },
+  // Rwanda
+  {
+    id: "pin-tv1-rw",
+    title: "TV1 Rwanda",
+    logo: null,
+    group: "Rwanda",
+    url: "https://live.tv1.rw/index.m3u8",
+    tvgId: "TV1.rw",
+  },
+  {
+    id: "pin-isibo",
+    title: "Isibo TV",
+    logo: null,
+    group: "Rwanda",
+    url: "https://5c46fa289c89f.streamlock.net/pub2live/myStream/playlist.m3u8",
+    tvgId: "Isibo.rw",
+  },
+  {
+    id: "pin-tv10",
+    title: "TV10 Rwanda",
+    logo: null,
+    group: "Rwanda",
+    url: "https://5c46fa289c89f.streamlock.net/pub1live/mystream/playlist.m3u8",
+    tvgId: "TV10.rw",
+  },
+  // World
   {
     id: "pin-france24",
     title: "France 24 English",
@@ -55,7 +189,6 @@ export const PINNED_CHANNELS: IptvChannel[] = [
   },
 ];
 
-/** Never pull remote dead playlists by default */
 export async function loadIptvChannels(opts?: {
   q?: string;
   group?: string;
@@ -84,7 +217,7 @@ export async function loadIptvChannels(opts?: {
   return {
     channels: channels.slice(0, limit),
     total: channels.length,
-    source: "pinned-only",
+    source: "pinned-restored",
   };
 }
 
