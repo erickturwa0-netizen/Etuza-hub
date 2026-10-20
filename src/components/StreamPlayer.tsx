@@ -30,7 +30,6 @@ function extractTmdbEmbed(src: string): { id: string; media: "movie" | "tv" } | 
   return null;
 }
 
-/** Prefer hosts that usually allow iframe embedding */
 function buildInAppSources(id: string, media: "movie" | "tv"): Source[] {
   if (media === "movie") {
     return [
@@ -59,7 +58,6 @@ function buildInAppSources(id: string, media: "movie" | "tv"): Source[] {
 export default function StreamPlayer({ src, poster, title }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("Inatafuta…");
   const [playUrl, setPlayUrl] = useState<string | null>(null);
@@ -121,10 +119,8 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     if (tmdb) {
       (async () => {
         setStatus("Inatafuta player…");
-        // Start with frame-friendly list
         let list = buildInAppSources(tmdb.id, tmdb.media);
 
-        // Merge ElitePlex extras (dedupe by url)
         try {
           const res = await fetch(
             `https://eliteplex-api.vercel.app/api/play?tmdb_id=${tmdb.id}&media=${tmdb.media}&fast=true`
@@ -184,8 +180,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     hlsRef.current = null;
     setError("");
     setNeedsTap(false);
-
-    // Start muted so autoplay is allowed in-app
     el.muted = true;
 
     const tryPlay = async () => {
@@ -274,12 +268,12 @@ export default function StreamPlayer({ src, poster, title }: Props) {
 
   function goFullscreenPlayer() {
     if (!embedUrl) return;
-    // Stay on same site — internal fullscreen player page
     const q = new URLSearchParams({
       url: embedUrl,
       title: title || "Player",
     });
-    window.location.href = `/watch/player?${q.toString()}`;
+    // Internal route — stays on etuza domain
+    window.location.href = `/play?${q.toString()}`;
   }
 
   if (mode === "loading") {
@@ -293,7 +287,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     );
   }
 
-  // ——— IN-APP EMBED (movies / series) ———
   if (mode === "embed" && embedUrl) {
     return (
       <div className="space-y-3">
@@ -302,7 +295,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
           style={{ aspectRatio: "16/9", minHeight: 220 }}
         >
           <iframe
-            ref={iframeRef}
             key={embedUrl}
             src={embedUrl}
             title={title || "Player"}
@@ -310,7 +302,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen; web-share"
             allowFullScreen
             referrerPolicy="origin"
-            // no sandbox — many players need full capabilities in-frame
           />
         </div>
 
@@ -360,16 +351,14 @@ export default function StreamPlayer({ src, poster, title }: Props) {
         )}
 
         <p className="text-[11px] text-slate-500">
-          Inacheza ndani ya app · {sources[sourceIdx]?.provider || "player"}
-          {" "}
-          ({sourceIdx + 1}/{Math.max(sources.length, 1)}). Kama tupu, bofya{" "}
-          <b>Source nyingine</b>.
+          Inacheza <b>ndani ya app</b> · {sources[sourceIdx]?.provider || "player"}{" "}
+          ({sourceIdx + 1}/{Math.max(sources.length, 1)}). Kama tupu →{" "}
+          <b>Source nyingine</b> au <b>Player kamili</b>.
         </p>
       </div>
     );
   }
 
-  // ——— VIDEO / HLS (TV) — in-app only ———
   if (mode === "video" && playUrl) {
     return (
       <div className="space-y-3">
@@ -388,9 +377,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             poster={poster || undefined}
             style={{ minHeight: 200 }}
             onError={() =>
-              setError(
-                "Video haikucheza. Bofya Play au badilisha proxy."
-              )
+              setError("Video haikucheza. Bofya Play au badilisha proxy.")
             }
           />
 
@@ -422,9 +409,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             type="button"
             onClick={() => {
               const el = videoRef.current;
-              if (el) {
-                el.muted = !el.muted;
-              }
+              if (el) el.muted = !el.muted;
             }}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-sm text-slate-200"
           >
@@ -450,7 +435,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
   }
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
       <p className="text-sm text-slate-300">{error || "Haiwezi kucheza."}</p>
     </div>
   );

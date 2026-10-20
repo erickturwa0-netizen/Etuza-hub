@@ -13,6 +13,7 @@ const PUBLIC_PATHS = [
   "/games",
   "/vpn",
   "/watch",
+  "/play",
 ];
 
 const PUBLIC_API = [
