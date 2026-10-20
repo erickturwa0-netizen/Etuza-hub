@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { detectSocial } from "@/lib/social-embed";
+import { ExternalLink } from "lucide-react";
 
 type Props = {
   src: string;
@@ -11,16 +12,6 @@ type Props = {
 
 type Source = { provider: string; url: string };
 
-function extractArchiveId(src: string): string | null {
-  const d = src.match(/archive\.org\/details\/([^/?#]+)/i);
-  if (d) return d[1];
-  const e = src.match(/archive\.org\/embed\/([^/?#]+)/i);
-  if (e) return e[1];
-  const dl = src.match(/archive\.org\/download\/([^/?#]+)/i);
-  if (dl) return dl[1];
-  return null;
-}
-
 function isDirectMedia(src: string) {
   return /\.(mp4|webm|ogg|mov|mp3|aac|m4a)(\?|$)/i.test(src);
 }
@@ -29,29 +20,15 @@ function isHls(src: string) {
   return /\.m3u8(\?|$)/i.test(src) || src.includes("m3u8");
 }
 
-/** Detect embed players that use TMDB id in path */
+function proxyHls(url: string) {
+  return `/api/proxy/stream?url=${encodeURIComponent(url)}`;
+}
+
 function extractTmdbEmbed(src: string): { id: string; media: "movie" | "tv" } | null {
-  const patterns = [
-    /(?:videasy\.(?:net|to)|vidrock\.net|vidlink\.pro|vidfast\.pro|vidnest\.fun|vidup\.to|111movies\.com|vidzen\.fun|vidcore\.net|moviesapi\.to)\/(movie|tv)\/(\d+)/i,
-    /vidking\.net\/embed\/(movie|tv)\/(\d+)/i,
-    /player\.vidplus\.to\/embed\/(movie|tv)\/(\d+)/i,
-    /vixsrc\.to\/embed\/(movie|tv)\/(\d+)/i,
-    /eliteplex[^/]*\/.*?tmdb_id=(\d+).*?media=(movie|tv)/i,
-  ];
-  for (const re of patterns) {
-    const m = src.match(re);
-    if (m) {
-      if (m[1] && /^\d+$/.test(m[1])) {
-        return { id: m[1], media: (m[2] as "movie" | "tv") || "movie" };
-      }
-      if (m[2] && /^\d+$/.test(m[2])) {
-        return { id: m[2], media: (m[1] as "movie" | "tv") || "movie" };
-      }
-    }
-  }
-  // fallback: /movie/12345 or /tv/12345 anywhere
   const m2 = src.match(/\/(movie|tv)\/(\d{3,})/i);
   if (m2) return { id: m2[2], media: m2[1].toLowerCase() as "movie" | "tv" };
+  const m3 = src.match(/tmdb_id=(\d+).*media=(movie|tv)/i);
+  if (m3) return { id: m3[1], media: m3[2] as "movie" | "tv" };
   return null;
 }
 
@@ -62,7 +39,8 @@ const FALLBACK_EMBEDS = (id: string, media: "movie" | "tv"): Source[] => [
   { provider: "VidFast", url: `https://vidfast.pro/${media}/${id}` },
   { provider: "VidKing", url: `https://www.vidking.net/embed/${media}/${id}` },
   { provider: "111Movies", url: `https://111movies.com/${media}/${id}` },
-  { provider: "VidNest", url: `https://vidnest.fun/${media}/${id}` },
+  { provider: "MoviesAPI", url: `https://moviesapi.to/${media}/${id}` },
+  { provider: "VidPlus", url: `https://player.vidplus.to/embed/${media}/${id}` },
 ];
 
 export default function StreamPlayer({ src, poster, title }: Props) {
@@ -72,7 +50,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
   const [playUrl, setPlayUrl] = useState<string | null>(null);
   const [embedUrl, setEmbedUrl] = useState<string | null>(null);
   const [mode, setMode] = useState<"loading" | "video" | "embed" | "fail">("loading");
-  const [embedKind, setEmbedKind] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
   const [sourceIdx, setSourceIdx] = useState(0);
 
@@ -93,29 +70,26 @@ export default function StreamPlayer({ src, poster, title }: Props) {
       return;
     }
 
-    // 1) Social
     const social = detectSocial(raw);
     if (social.embedUrl) {
       if (!cancelled) {
         setEmbedUrl(social.embedUrl);
-        setEmbedKind(social.kind || "social");
         setMode("embed");
         setStatus("");
       }
       return;
     }
 
-    // 2) Direct / HLS
-    if (isDirectMedia(raw) || isHls(raw)) {
+    // HLS / direct via proxy for m3u8
+    if (isHls(raw) || isDirectMedia(raw)) {
       if (!cancelled) {
-        setPlayUrl(raw);
+        setPlayUrl(isHls(raw) ? proxyHls(raw) : raw);
         setMode("video");
         setStatus("");
       }
       return;
     }
 
-    // 3) ElitePlex / TMDB embed multi-source
     const tmdb = extractTmdbEmbed(raw);
     if (tmdb) {
       (async () => {
@@ -123,8 +97,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
         let list: Source[] = [];
         try {
           const res = await fetch(
-            `https://eliteplex-api.vercel.app/api/play?tmdb_id=${tmdb.id}&media=${tmdb.media}&fast=true`,
-            { headers: { Accept: "application/json" } }
+            `https://eliteplex-api.vercel.app/api/play?tmdb_id=${tmdb.id}&media=${tmdb.media}&fast=true`
           );
           if (res.ok) {
             const data = await res.json();
@@ -133,7 +106,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
                 provider: s.provider || "Source",
                 url: s.play_url || s.url || "",
               }))
-              .filter((s) => s.url);
+              .filter((s) => s.url && s.url.startsWith("http"));
           }
         } catch {
           /* ignore */
@@ -143,51 +116,15 @@ export default function StreamPlayer({ src, poster, title }: Props) {
         setSources(list);
         setSourceIdx(0);
         setEmbedUrl(list[0].url);
-        setEmbedKind("eliteplex");
         setMode("embed");
         setStatus("");
       })();
       return;
     }
 
-    // 4) Archive
-    const archiveId = extractArchiveId(raw);
-    if (archiveId) {
-      (async () => {
-        try {
-          setStatus("Inapakia Archive…");
-          const res = await fetch(
-            `/api/archive/resolve?id=${encodeURIComponent(archiveId)}`
-          );
-          const data = await res.json();
-          if (cancelled) return;
-          if (data.playUrl) {
-            setPlayUrl(data.playUrl);
-            setEmbedUrl(data.embedUrl || `https://archive.org/embed/${archiveId}`);
-            setMode("video");
-            setStatus("");
-            return;
-          }
-          setEmbedUrl(data.embedUrl || `https://archive.org/embed/${archiveId}`);
-          setEmbedKind("archive");
-          setMode("embed");
-          setStatus("");
-        } catch {
-          if (!cancelled) {
-            setEmbedUrl(`https://archive.org/embed/${archiveId}`);
-            setEmbedKind("archive");
-            setMode("embed");
-          }
-        }
-      })();
-      return;
-    }
-
-    // 5) Generic https → iframe
     if (/^https?:\/\//i.test(raw)) {
       if (!cancelled) {
         setEmbedUrl(raw);
-        setEmbedKind("page");
         setMode("embed");
         setStatus("");
       }
@@ -196,19 +133,32 @@ export default function StreamPlayer({ src, poster, title }: Props) {
 
     setMode("fail");
     setError("Link haitambuliwi.");
-
     return () => {
       cancelled = true;
     };
   }, [src]);
 
+  // Auto-advance embed source after 5s if user hasn't switched (helps dead embeds)
+  useEffect(() => {
+    if (mode !== "embed" || sources.length < 2) return;
+    const t = setTimeout(() => {
+      // only auto-advance first 3 attempts
+      if (sourceIdx < 2 && sourceIdx + 1 < sources.length) {
+        setSourceIdx((i) => i + 1);
+        setEmbedUrl(sources[sourceIdx + 1]?.url || null);
+      }
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [mode, sourceIdx, sources]);
+
   useEffect(() => {
     const el = videoRef.current;
     if (!el || !playUrl || mode !== "video") return;
 
-    if (isHls(playUrl)) {
+    if (isHls(playUrl) || playUrl.includes("/api/proxy/stream")) {
       if (el.canPlayType("application/vnd.apple.mpegurl")) {
         el.src = playUrl;
+        el.play().catch(() => {});
         return;
       }
       let hls: { destroy: () => void } | null = null;
@@ -219,15 +169,23 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             const instance = new Hls({
               enableWorker: true,
               maxBufferLength: 30,
+              xhrSetup: (xhr: XMLHttpRequest) => {
+                xhr.withCredentials = false;
+              },
             });
             instance.loadSource(playUrl);
             instance.attachMedia(videoRef.current);
+            instance.on(Hls.Events.MANIFEST_PARSED, () => {
+              videoRef.current?.play().catch(() => {});
+            });
             instance.on(Hls.Events.ERROR, (_e, data) => {
               if (data.fatal) {
-                setError("Stream imeshindwa (HLS).");
+                setError("Stream imeshindwa. Jaribu channel nyingine.");
               }
             });
             hls = instance;
+          } else {
+            setError("Kifaa hakisaidii HLS");
           }
         } catch {
           setError("HLS failed");
@@ -237,6 +195,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     }
 
     el.src = playUrl;
+    el.play().catch(() => {});
   }, [playUrl, mode]);
 
   function switchSource(i: number) {
@@ -245,10 +204,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     setEmbedUrl(sources[i].url);
     setError("");
     setMode("embed");
-  }
-
-  function nextSource() {
-    if (sourceIdx + 1 < sources.length) switchSource(sourceIdx + 1);
   }
 
   if (mode === "loading") {
@@ -274,10 +229,9 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             src={embedUrl}
             title={title || "Player"}
             className="absolute inset-0 w-full h-full border-0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen; web-share"
             allowFullScreen
-            referrerPolicy="no-referrer"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups"
+            referrerPolicy="origin"
           />
         </div>
 
@@ -290,15 +244,16 @@ export default function StreamPlayer({ src, poster, title }: Props) {
               </p>
               <button
                 type="button"
-                onClick={nextSource}
-                disabled={sourceIdx + 1 >= sources.length}
-                className="text-xs px-3 py-1.5 rounded-lg bg-violet-700 text-white disabled:opacity-40"
+                onClick={() =>
+                  sourceIdx + 1 < sources.length && switchSource(sourceIdx + 1)
+                }
+                className="text-xs px-3 py-1.5 rounded-lg bg-violet-700 text-white"
               >
                 Source inayofuata →
               </button>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {sources.slice(0, 10).map((s, i) => (
+              {sources.slice(0, 12).map((s, i) => (
                 <button
                   key={s.provider + i}
                   type="button"
@@ -316,24 +271,24 @@ export default function StreamPlayer({ src, poster, title }: Props) {
           </div>
         )}
 
+        <a
+          href={embedUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-700 text-sm font-semibold text-white"
+        >
+          <ExternalLink className="w-4 h-4" />
+          Fungua player nje (kama iframe haichezi)
+        </a>
+
         <p className="text-[11px] text-slate-500">
-          {embedKind === "eliteplex"
-            ? "Multi-source player · kama haichezi, chagua source nyingine"
-            : "Inacheza ndani ya player"}
+          Tip: Movies mpya (2026) zinaweza kuwa bado hazina stream. Jaribu movie za zamani.
         </p>
-        {error && <p className="text-sm text-amber-300">{error}</p>}
       </div>
     );
   }
 
   if (mode === "video" && playUrl) {
-    if (/\.(mp3|aac|m4a)(\?|$)/i.test(playUrl)) {
-      return (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-          <audio controls className="w-full" src={playUrl} preload="auto" />
-        </div>
-      );
-    }
     return (
       <div className="space-y-2">
         <div
@@ -345,12 +300,22 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             className="w-full h-full"
             controls
             playsInline
+            autoPlay
             preload="auto"
             poster={poster || undefined}
-            onError={() => setError("Stream imeshindwa.")}
+            onError={() => setError("Stream imeshindwa. Jaribu channel nyingine.")}
           />
         </div>
         {error && <p className="text-sm text-amber-300">{error}</p>}
+        <a
+          href={src}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 text-xs text-violet-400"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          Fungua stream nje
+        </a>
       </div>
     );
   }
@@ -362,8 +327,9 @@ export default function StreamPlayer({ src, poster, title }: Props) {
         href={src}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex px-4 py-2.5 rounded-xl bg-violet-600 text-sm font-semibold text-white"
+        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-sm font-semibold text-white"
       >
+        <ExternalLink className="w-4 h-4" />
         Fungua link nje →
       </a>
     </div>

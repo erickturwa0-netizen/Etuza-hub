@@ -12,16 +12,8 @@ const TZ_M3U = "https://iptv-org.github.io/iptv/countries/tz.m3u";
 const KE_M3U = "https://iptv-org.github.io/iptv/countries/ke.m3u";
 const UG_M3U = "https://iptv-org.github.io/iptv/countries/ug.m3u";
 
-/** Always available — shown even if remote M3U fails */
+/** Verified-ish public streams (tested reachable) */
 export const PINNED_CHANNELS: IptvChannel[] = [
-  {
-    id: "pin-tbc1",
-    title: "TBC1",
-    logo: "https://i.imgur.com/OmiVZ1u.png",
-    group: "Tanzania",
-    url: "https://tbc.maintek.co/LiveApp/streams/YF43nTzH0duMyUA2130641323343587.m3u8",
-    tvgId: "TBC1.tz@SD",
-  },
   {
     id: "pin-tbc2",
     title: "TBC2",
@@ -29,30 +21,6 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     group: "Tanzania",
     url: "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_44ed95e05b6d11f18d5d85805abbdd6f/index.m3u8",
     tvgId: "TBC2.tz@SD",
-  },
-  {
-    id: "pin-dodoma",
-    title: "Dodoma TV",
-    logo: "https://i.imgur.com/bLq9eFa.png",
-    group: "Tanzania",
-    url: "https://goliveafrica.media:9998/live/625965017ed69/index.m3u8",
-    tvgId: "DodomaTV.tz@SD",
-  },
-  {
-    id: "pin-ibn",
-    title: "IBN TV",
-    logo: "https://i.imgur.com/hkV51ij.png",
-    group: "Tanzania",
-    url: "http://138.68.138.119:8080/live/5a8993709ea19/index.m3u8",
-    tvgId: "IBNTV.tz@SD",
-  },
-  {
-    id: "pin-ibn-africa",
-    title: "IBN TV Africa",
-    logo: "https://i.imgur.com/eKy2ocd.png",
-    group: "Tanzania",
-    url: "http://68.183.41.209:8080/live/5d9a537c64b9c/index.m3u8",
-    tvgId: "IBNTVAfrica.tz@SD",
   },
   {
     id: "pin-safari",
@@ -69,6 +37,22 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     group: "Tanzania",
     url: "https://mahaasintv.livebox.co.in/mahaasintvhls/mahaasintv.m3u8",
     tvgId: "MahaasinTV.tz@SD",
+  },
+  {
+    id: "pin-dodoma",
+    title: "Dodoma TV",
+    logo: "https://i.imgur.com/bLq9eFa.png",
+    group: "Tanzania",
+    url: "https://goliveafrica.media:9998/live/625965017ed69/index.m3u8",
+    tvgId: "DodomaTV.tz@SD",
+  },
+  {
+    id: "pin-pluto-00s",
+    title: "00s Replay (Movies)",
+    logo: "https://images.pluto.tv/channels/62ba60f059624e000781c436/colorLogoPNG.png",
+    group: "Movies",
+    url: "https://jmp2.uk/plu-62ba60f059624e000781c436.m3u8",
+    tvgId: "00sReplay.us@SD",
   },
 ];
 
@@ -108,6 +92,11 @@ function parseM3u(text: string): IptvChannel[] {
     }
 
     if (pending && /^https?:\/\//i.test(line)) {
+      // Prefer https m3u8
+      if (!line.includes("m3u8") && !line.includes(".ts")) {
+        pending = null;
+        continue;
+      }
       const id = pending.tvgId || `ch-${out.length}`;
       out.push({
         id,
@@ -134,8 +123,7 @@ async function fetchM3u(url: string, timeoutMs = 8000): Promise<IptvChannel[]> {
     });
     clearTimeout(t);
     if (!res.ok) return [];
-    const text = await res.text();
-    return parseM3u(text);
+    return parseM3u(await res.text());
   } catch (e) {
     console.error("fetchM3u", url, e);
     return [];
@@ -146,12 +134,11 @@ function scoreChannel(c: IptvChannel): number {
   let s = 0;
   const t = (c.title + " " + c.group + " " + (c.tvgId || "")).toLowerCase();
   if (/\.tz@|tanzania|tbc|dodoma|ibn|zanzibar|azam/i.test(t)) s += 100;
-  if (/\.ke@|kenya|ntv|citizen|ktn|kbc/i.test(t)) s += 60;
+  if (/\.ke@|kenya/i.test(t)) s += 60;
   if (/\.ug@|uganda/i.test(t)) s += 50;
-  if (/news/i.test(t)) s += 20;
-  if (/sport|football|soccer/i.test(t)) s += 15;
-  if (c.url.startsWith("https://") && c.url.includes("m3u8")) s += 10;
-  if (c.url.startsWith("http://")) s -= 5;
+  if (/news|sport/i.test(t)) s += 15;
+  if (c.url.startsWith("https://") && c.url.includes("m3u8")) s += 15;
+  if (c.url.startsWith("http://")) s -= 10;
   return s;
 }
 
@@ -167,7 +154,6 @@ export async function loadIptvChannels(opts?: {
   const source = opts?.source || "ea";
 
   let remote: IptvChannel[] = [];
-
   try {
     if (source === "full") {
       remote = await fetchM3u(M3U_URL, 12000);
@@ -180,7 +166,7 @@ export async function loadIptvChannels(opts?: {
       remote = [...tz, ...ke, ...ug];
     }
   } catch (e) {
-    console.error("loadIptvChannels remote", e);
+    console.error("loadIptvChannels", e);
   }
 
   const seenUrl = new Set(PINNED_CHANNELS.map((p) => p.url));
@@ -194,23 +180,19 @@ export async function loadIptvChannels(opts?: {
     channels = channels.filter(
       (c) =>
         c.title.toLowerCase().includes(q) ||
-        c.group.toLowerCase().includes(q) ||
-        (c.tvgId || "").toLowerCase().includes(q)
+        c.group.toLowerCase().includes(q)
     );
   }
   if (group) {
     channels = channels.filter((c) => c.group.toLowerCase().includes(group));
   }
 
-  // Never return empty — at least pinned
-  if (channels.length === 0) {
-    channels = [...PINNED_CHANNELS];
-  }
+  if (!channels.length) channels = [...PINNED_CHANNELS];
 
   return {
     channels: channels.slice(0, limit),
     total: channels.length,
-    source: remote.length ? (source === "full" ? M3U_URL : "pinned+ea") : "pinned-only",
+    source: remote.length ? "pinned+ea" : "pinned-only",
   };
 }
 
