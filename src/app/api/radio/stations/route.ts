@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-/** Working stations when radio-browser.info is down */
 const FALLBACK_TZ = [
   {
     id: "fb-clouds",
@@ -48,24 +47,6 @@ const FALLBACK_TZ = [
     bitrate: 64,
   },
   {
-    id: "fb-rfm",
-    name: "Radio Free Africa",
-    url: "https://streams.radio.co/s8d0b4d1c6/listen",
-    favicon: "https://ui-avatars.com/api/?name=RFA&background=831843&color=fff&size=128&bold=true",
-    tags: "news",
-    country: "Tanzania",
-    bitrate: 128,
-  },
-  {
-    id: "fb-capital",
-    name: "Capital Radio TZ",
-    url: "https://capitalradio.radioca.st/stream",
-    favicon: "https://ui-avatars.com/api/?name=Capital&background=831843&color=fff&size=128&bold=true",
-    tags: "music",
-    country: "Tanzania",
-    bitrate: 128,
-  },
-  {
     id: "fb-passion",
     name: "Passion FM",
     url: "https://stream.zeno.fm/0r0xa792kwzuv",
@@ -80,15 +61,6 @@ const FALLBACK_TZ = [
     url: "https://stream.zeno.fm/eequgfw2x1zuv",
     favicon: "https://ui-avatars.com/api/?name=Abood&background=831843&color=fff&size=128&bold=true",
     tags: "music",
-    country: "Tanzania",
-    bitrate: 128,
-  },
-  {
-    id: "fb-utume",
-    name: "Radio Utume",
-    url: "https://stream.zeno.fm/4k8v9xqzkwzuv",
-    favicon: "https://ui-avatars.com/api/?name=Utume&background=831843&color=fff&size=128&bold=true",
-    tags: "gospel",
     country: "Tanzania",
     bitrate: 128,
   },
@@ -114,15 +86,6 @@ const FALLBACK_WORLD = [
     bitrate: 128,
   },
   {
-    id: "fb-franceinfo",
-    name: "France Info",
-    url: "https://stream.radiofrance.fr/franceinfo/franceinfo_hifi.m3u8",
-    favicon: "https://ui-avatars.com/api/?name=France&background=002395&color=fff&size=128&bold=true",
-    tags: "news",
-    country: "France",
-    bitrate: 192,
-  },
-  {
     id: "fb-kexp",
     name: "KEXP Seattle",
     url: "https://kexp-mp3-128.streamguys1.com/kexp128.mp3",
@@ -137,15 +100,6 @@ const FALLBACK_WORLD = [
     url: "https://ice1.somafm.com/groovesalad-128-mp3",
     favicon: "https://ui-avatars.com/api/?name=SomaFM&background=2a5f7a&color=fff&size=128&bold=true",
     tags: "chill,electronic",
-    country: "USA",
-    bitrate: 128,
-  },
-  {
-    id: "fb-jazz",
-    name: "Smooth Jazz Global",
-    url: "https://streaming.live365.com/a77137",
-    favicon: "https://ui-avatars.com/api/?name=Jazz&background=4a0080&color=fff&size=128&bold=true",
-    tags: "jazz",
     country: "USA",
     bitrate: 128,
   },
@@ -167,12 +121,20 @@ const FALLBACK_WORLD = [
     country: "United Kingdom",
     bitrate: 128,
   },
+  {
+    id: "fb-franceinfo",
+    name: "France Info",
+    url: "https://stream.radiofrance.fr/franceinfo/franceinfo_hifi.m3u8",
+    favicon: "https://ui-avatars.com/api/?name=France&background=002395&color=fff&size=128&bold=true",
+    tags: "news",
+    country: "France",
+    bitrate: 192,
+  },
 ];
 
 const BASES = [
   "https://de1.api.radio-browser.info",
   "https://nl1.api.radio-browser.info",
-  "https://at1.api.radio-browser.info",
   "https://fi1.api.radio-browser.info",
   "https://all.api.radio-browser.info",
 ];
@@ -206,9 +168,19 @@ export async function GET(req: Request) {
   const q = searchParams.get("q")?.trim();
   const limit = Math.min(Number(searchParams.get("limit") || 50), 100);
 
+  let stations: {
+    id: string;
+    name: string;
+    url: string;
+    favicon: string | null;
+    tags: string;
+    country: string;
+    bitrate: number;
+  }[] = [];
+  let source = "fallback";
+
   try {
     let data: unknown;
-
     if (q) {
       data = await fetchStations(
         `/json/stations/search?name=${encodeURIComponent(q)}&hidebroken=true&limit=${limit}`
@@ -224,7 +196,7 @@ export async function GET(req: Request) {
     }
 
     const list = Array.isArray(data) ? data : [];
-    const stations = list
+    stations = list
       .filter(
         (s: { url_resolved?: string; url?: string }) =>
           s.url_resolved || s.url
@@ -242,42 +214,59 @@ export async function GET(req: Request) {
         }) => ({
           id: s.stationuuid,
           name: s.name,
-          url: s.url_resolved || s.url,
+          url: (s.url_resolved || s.url) as string,
           favicon: s.favicon || null,
           tags: s.tags || "",
           country: s.country || country,
           bitrate: s.bitrate || 0,
         })
       );
-
-    if (stations.length > 0) {
-      return NextResponse.json({
-        stations: stations.slice(0, limit),
-        source: "radio-browser.info",
-      });
-    }
+    if (stations.length) source = "radio-browser.info";
   } catch (err) {
     console.error("radio-browser", err);
   }
 
-  // Fallback — always return stations so UI is never empty
-  let fallback =
-    country === "TOP"
-      ? [...FALLBACK_WORLD, ...FALLBACK_TZ]
-      : [...FALLBACK_TZ, ...FALLBACK_WORLD];
+  // Always ensure TOP / TZ have something
+  if (stations.length === 0 || country === "TOP") {
+    const extra =
+      country === "TOP"
+        ? FALLBACK_WORLD
+        : country === "TZ"
+          ? FALLBACK_TZ
+          : [...FALLBACK_TZ, ...FALLBACK_WORLD];
+
+    if (stations.length === 0) {
+      stations = extra;
+      source = "fallback";
+    } else if (country === "TOP") {
+      // merge world fallbacks at end so list never feels empty
+      const seen = new Set(stations.map((s) => s.name.toLowerCase()));
+      for (const e of FALLBACK_WORLD) {
+        if (!seen.has(e.name.toLowerCase())) stations.push(e);
+      }
+    }
+  }
 
   if (q) {
     const qq = q.toLowerCase();
-    fallback = fallback.filter(
+    stations = stations.filter(
       (s) =>
         s.name.toLowerCase().includes(qq) ||
         s.tags.toLowerCase().includes(qq) ||
         s.country.toLowerCase().includes(qq)
     );
+    if (!stations.length) {
+      stations = [...FALLBACK_TZ, ...FALLBACK_WORLD].filter(
+        (s) =>
+          s.name.toLowerCase().includes(qq) ||
+          s.tags.toLowerCase().includes(qq)
+      );
+      source = "fallback";
+    }
   }
 
   return NextResponse.json({
-    stations: fallback.slice(0, limit),
-    source: "fallback",
+    stations: stations.slice(0, limit),
+    source,
   });
 }

@@ -27,6 +27,7 @@ export default function RadioPage() {
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<Station | null>(null);
   const [error, setError] = useState("");
+  const [source, setSource] = useState("");
 
   async function load(kind: "TZ" | "TOP" | "SEARCH", query?: string) {
     setLoading(true);
@@ -37,12 +38,15 @@ export default function RadioPage() {
       if (kind === "SEARCH" && query) {
         path = `/api/radio/stations?q=${encodeURIComponent(query)}&limit=40`;
       }
-      const res = await fetch(path);
+      const res = await fetch(path, { cache: "no-store" });
       const data = await res.json();
-      setStations(data.stations || []);
-      if (data.error) setError(data.error);
+      const list = (data.stations || []) as Station[];
+      setStations(list);
+      setSource(data.source || "");
+      if (!list.length) setError("Hakuna stations zilizopatikana");
     } catch {
       setError("Imeshindwa kupakia radio");
+      setStations([]);
     }
     setLoading(false);
   }
@@ -56,12 +60,14 @@ export default function RadioPage() {
       <PresenceTracker section="radio" title={playing?.name || "Radio"} />
 
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-11 h-11 rounded-xl bg-pink-500/20 flex items-center justify-center text-pink-400 shrink-0">
+        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-pink-500 to-rose-700 flex items-center justify-center text-white shrink-0 shadow-lg shadow-pink-900/40">
           <Radio className="w-5 h-5" />
         </div>
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-white">Radio</h1>
-          <p className="text-sm text-slate-400">Live stations · Tanzania + world</p>
+          <p className="text-sm text-slate-400">
+            Live stations{source ? ` · ${source}` : ""}
+          </p>
         </div>
       </div>
 
@@ -164,7 +170,6 @@ export default function RadioPage() {
                 <p className="text-xs text-slate-400 mt-0.5 truncate">
                   {s.country}
                   {s.bitrate ? ` · ${s.bitrate}kbps` : ""}
-                  {s.tags ? ` · ${s.tags.split(",").slice(0, 2).join(", ")}` : ""}
                 </p>
               </div>
             </button>
