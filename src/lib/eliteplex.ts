@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
 
 const BASE = "https://eliteplex-api.vercel.app";
-const MOVIE_TAG = "eliteplex-playable-v4";
-const DRAMA_TAG = "eliteplex-drama-v4";
+const MOVIE_TAG = "eliteplex-mixed-v5";
+const DRAMA_TAG = "eliteplex-drama-v5";
 
 type EliteItem = {
   id?: string;
@@ -15,7 +15,7 @@ type EliteItem = {
   type?: string;
 };
 
-/** Known-good TMDB ids — always include these first */
+/** Known-good TMDB ids — always first */
 const CLASSIC_SEEDS: { id: string; title: string; year: string; poster?: string }[] = [
   { id: "27205", title: "Inception", year: "2010", poster: "https://image.tmdb.org/t/p/w500/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg" },
   { id: "157336", title: "Interstellar", year: "2014", poster: "https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg" },
@@ -75,25 +75,17 @@ function yearNum(y?: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function isPlayableYear(y?: string) {
-  const n = yearNum(y);
-  // Skip unreleased / future catalogue filler
-  return n > 0 && n <= 2024;
-}
-
 export async function importElitePlexMovies(force = false): Promise<number> {
   const existing = await prisma.apiSource.findUnique({ where: { category: "movie" } });
   if (!force && existing?.notes === MOVIE_TAG) {
     return prisma.content.count({ where: { type: "movie", status: "published" } });
   }
 
-  // Pull deeper pages — early pages are almost all 2026
-  const remote = await fetchPages("/api/movies", [1, 2, 3, 5, 7, 8, 10, 12, 15]);
-  const filtered = remote.filter((r) => isPlayableYear(r.year));
+  // Include recent pages (2025/2026) + older pages
+  const remote = await fetchPages("/api/movies", [1, 2, 3, 4, 5, 7, 8, 10, 12, 15]);
 
   const byId = new Map<string, EliteItem>();
 
-  // Classics first
   for (const c of CLASSIC_SEEDS) {
     byId.set(c.id, {
       tmdb_id: c.id,
@@ -104,24 +96,32 @@ export async function importElitePlexMovies(force = false): Promise<number> {
     });
   }
 
-  for (const row of filtered) {
+  for (const row of remote) {
     const id = String(row.tmdb_id || row.id || "");
-    // Only numeric TMDB-like ids
     if (!/^\d{2,7}$/.test(id)) continue;
     if (!byId.has(id)) byId.set(id, row);
   }
 
   await prisma.content.deleteMany({ where: { type: "movie" } });
 
-  let total = 0;
-  // Insert classics order first, then rest by year desc
+  // Classics first, then others: older (≤2024) before future (2025+)
+  const rest = [...byId.values()]
+    .filter((r) => !CLASSIC_SEEDS.some((c) => c.id === String(r.tmdb_id || r.id)))
+    .sort((a, b) => {
+      const ya = yearNum(a.year);
+      const yb = yearNum(b.year);
+      const fa = ya >= 2025 ? 1 : 0;
+      const fb = yb >= 2025 ? 1 : 0;
+      if (fa !== fb) return fa - fb;
+      return yb - ya;
+    });
+
   const ordered = [
     ...CLASSIC_SEEDS.map((c) => byId.get(c.id)!).filter(Boolean),
-    ...[...byId.values()]
-      .filter((r) => !CLASSIC_SEEDS.some((c) => c.id === String(r.tmdb_id || r.id)))
-      .sort((a, b) => yearNum(b.year) - yearNum(a.year)),
+    ...rest,
   ];
 
+  let total = 0;
   for (const row of ordered) {
     const id = String(row.tmdb_id || row.id || "");
     const title = String(row.name || row.title || "").trim();
@@ -150,13 +150,13 @@ export async function importElitePlexMovies(force = false): Promise<number> {
     where: { category: "movie" },
     create: {
       category: "movie",
-      name: "ElitePlex Movies (playable)",
+      name: "ElitePlex Movies",
       url: `${BASE}/api/movies`,
       notes: MOVIE_TAG,
       enabled: true,
     },
     update: {
-      name: "ElitePlex Movies (playable)",
+      name: "ElitePlex Movies",
       url: `${BASE}/api/movies`,
       notes: MOVIE_TAG,
       enabled: true,
@@ -173,16 +173,12 @@ export async function importElitePlexDrama(force = false): Promise<number> {
   }
 
   const series = await fetchPages("/api/series", [1, 2, 3, 5, 8]);
-  const playable = series.filter((r) => {
-    const y = yearNum(r.year);
-    return y === 0 || y <= 2024;
-  });
 
   await prisma.content.deleteMany({ where: { type: "drama" } });
 
   const seen = new Set<string>();
   let total = 0;
-  for (const row of playable) {
+  for (const row of series) {
     const id = String(row.tmdb_id || row.id || "");
     const title = String(row.name || row.title || "").trim();
     if (!id || !title || seen.has(id)) continue;
@@ -227,7 +223,6 @@ export async function importElitePlexDrama(force = false): Promise<number> {
 export async function ensureElitePlexContent(
   type: "movie" | "drama"
 ): Promise<number> {
-  // Force upgrade when tag changes
   if (type === "movie") {
     const src = await prisma.apiSource.findUnique({ where: { category: "movie" } });
     if (!src || src.notes !== MOVIE_TAG) {
