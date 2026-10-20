@@ -40,18 +40,34 @@ async function fetchPages(
   return out;
 }
 
+function yearNum(y?: string) {
+  const n = parseInt(String(y || "").slice(0, 4), 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export async function importElitePlexMovies(): Promise<number> {
-  const items = await fetchPages("/api/movies", [1, 2, 3]);
+  const items = await fetchPages("/api/movies", [1, 2, 3, 4, 5]);
   if (!items.length) return 0;
+
+  // Prefer released titles (skip pure future placeholders when possible)
+  const sorted = [...items].sort((a, b) => {
+    const ya = yearNum(a.year);
+    const yb = yearNum(b.year);
+    // put 2025 and earlier first
+    const sa = ya >= 2026 ? 1 : 0;
+    const sb = yb >= 2026 ? 1 : 0;
+    if (sa !== sb) return sa - sb;
+    return yb - ya;
+  });
 
   await prisma.content.deleteMany({ where: { type: "movie" } });
 
   let total = 0;
-  for (const row of items) {
+  for (const row of sorted) {
     const id = String(row.tmdb_id || row.id || "");
     const title = String(row.name || row.title || "").trim();
     if (!id || !title) continue;
-    // Use videasy.to (current domain) — StreamPlayer multi-sources the rest
+    const y = yearNum(row.year);
     const linkUrl = `https://player.videasy.to/movie/${id}`;
     await prisma.content.create({
       data: {
@@ -59,13 +75,13 @@ export async function importElitePlexMovies(): Promise<number> {
         title: title.slice(0, 200),
         description: row.overview
           ? String(row.overview).slice(0, 500)
-          : row.year
-            ? `Year ${row.year}`
+          : y
+            ? `Year ${y}`
             : null,
         linkUrl,
         coverUrl: row.poster || null,
         linkType: "stream",
-        category: row.year ? `Movie · ${row.year}` : "Movie",
+        category: y ? `Movie · ${y}` : "Movie",
         status: "published",
       },
     });
@@ -78,13 +94,13 @@ export async function importElitePlexMovies(): Promise<number> {
       category: "movie",
       name: "ElitePlex Movies",
       url: `${BASE}/api/movies`,
-      notes: "eliteplex-v2-play",
+      notes: "eliteplex-v3-sorted",
       enabled: true,
     },
     update: {
       name: "ElitePlex Movies",
       url: `${BASE}/api/movies`,
-      notes: "eliteplex-v2-play",
+      notes: "eliteplex-v3-sorted",
       enabled: true,
     },
   });
@@ -98,20 +114,15 @@ export async function importElitePlexDrama(): Promise<number> {
   let anime: EliteItem[] = [];
   try {
     const res = await fetch(`${BASE}/api/search?q=anime`, {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "ETUZA-HUB/1.0",
-      },
+      headers: { Accept: "application/json", "User-Agent": "ETUZA-HUB/1.0" },
       next: { revalidate: 0 },
     });
     if (res.ok) {
       const data = await res.json();
-      anime = ((data?.items || []) as EliteItem[]).filter(
-        (i) => i.type === "series" || i.type === "tv" || !i.type
-      );
+      anime = (data?.items || []) as EliteItem[];
     }
   } catch (e) {
-    console.error("eliteplex anime search", e);
+    console.error("eliteplex anime", e);
   }
 
   const all = [...series, ...anime];
@@ -127,28 +138,15 @@ export async function importElitePlexDrama(): Promise<number> {
     if (!id || !title || seen.has(id)) continue;
     seen.add(id);
 
-    const isAnime =
-      /anime/i.test(title) ||
-      /anime/i.test(String(row.overview || "")) ||
-      anime.some((a) => String(a.tmdb_id || a.id) === id);
-
     await prisma.content.create({
       data: {
         type: "drama",
         title: title.slice(0, 200),
-        description: row.overview
-          ? String(row.overview).slice(0, 500)
-          : null,
+        description: row.overview ? String(row.overview).slice(0, 500) : null,
         linkUrl: `https://player.videasy.to/tv/${id}`,
         coverUrl: row.poster || null,
         linkType: "stream",
-        category: isAnime
-          ? row.year
-            ? `Anime · ${row.year}`
-            : "Anime"
-          : row.year
-            ? `Series · ${row.year}`
-            : "Series",
+        category: row.year ? `Series · ${row.year}` : "Series",
         status: "published",
       },
     });
@@ -161,13 +159,13 @@ export async function importElitePlexDrama(): Promise<number> {
       category: "drama",
       name: "ElitePlex Series + Anime",
       url: `${BASE}/api/series`,
-      notes: "eliteplex-drama-v2",
+      notes: "eliteplex-drama-v3",
       enabled: true,
     },
     update: {
       name: "ElitePlex Series + Anime",
       url: `${BASE}/api/series`,
-      notes: "eliteplex-drama-v2",
+      notes: "eliteplex-drama-v3",
       enabled: true,
     },
   });
