@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Suspense } from "react";
 import StreamPlayer from "@/components/StreamPlayer";
+import PresenceTracker from "@/components/PresenceTracker";
 
 function LiveInner() {
   const sp = useSearchParams();
@@ -13,6 +14,8 @@ function LiveInner() {
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-6 pb-24">
+      <PresenceTracker section="tv" title={title} />
+
       <Link
         href="/tv"
         className="inline-flex items-center gap-2 text-sm text-slate-400 mb-4"
@@ -21,15 +24,13 @@ function LiveInner() {
         TV Channels
       </Link>
 
-      <h1 className="text-xl sm:text-2xl font-bold mb-4">{title}</h1>
+      <h1 className="text-xl sm:text-2xl font-bold mb-4 text-white">{title}</h1>
 
       {!url ? (
         <p className="text-sm text-red-400">Hakuna stream URL</p>
       ) : (
         <StreamPlayer src={url} title={title} />
       )}
-
-      <p className="mt-3 text-[11px] text-slate-600 break-all">{url}</p>
     </main>
   );
 }
