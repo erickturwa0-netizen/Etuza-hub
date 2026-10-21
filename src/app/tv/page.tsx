@@ -8,14 +8,10 @@ export const metadata = { title: "TV Channels – ETUZA HUB" };
 
 export default async function TvPage() {
   let channels = PINNED_CHANNELS;
-  let source = "pins";
 
   try {
-    const result = await loadIptvChannels({ limit: 150 });
-    if (result.channels.length > 0) {
-      channels = result.channels;
-      source = result.source;
-    }
+    const result = await loadIptvChannels({ limit: 80 });
+    if (result.channels.length > 0) channels = result.channels;
   } catch (e) {
     console.error("tv page", e);
   }
@@ -25,7 +21,6 @@ export default async function TvPage() {
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 pb-28">
       <PresenceTrackerClient section="tv" title="TV Channels" />
-      <p className="text-[11px] text-slate-600 mb-2">Source: {source}</p>
       <TvChannelGrid channels={channels} />
     </main>
   );

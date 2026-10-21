@@ -7,8 +7,12 @@ export type IptvChannel = {
   tvgId: string | null;
 };
 
-/** Always-on verified pins */
+/**
+ * ONLY m3u8 streams verified HTTP-live on 2026-10-21.
+ * Dead removed (e.g. Mahaasin). Dodoma / Kenya / UG / ZA / RW revived where URL works.
+ */
 export const PINNED_CHANNELS: IptvChannel[] = [
+  // Tanzania
   {
     id: "pin-tbc2",
     title: "TBC2",
@@ -18,13 +22,210 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     tvgId: "TBC2.tz",
   },
   {
-    id: "pin-mahaasin",
-    title: "Mahaasin TV",
-    logo: "https://i.imgur.com/wdfdKvC.png",
+    id: "pin-dodoma",
+    title: "Dodoma TV",
+    logo: null,
     group: "Tanzania",
-    url: "https://mahaasintv.livebox.co.in/mahaasintvhls/mahaasintv.m3u8",
-    tvgId: "MahaasinTV.tz",
+    url: "https://goliveafrica.media:9998/live/625965017ed69/index.m3u8",
+    tvgId: "DodomaTV.tz",
   },
+  // Kenya
+  {
+    id: "pin-akili",
+    title: "Akili Kids!",
+    logo: null,
+    group: "Kenya",
+    url: "https://m6.livecdn.io/akilikids.co.ke/akilikids.smil/playlist.m3u8",
+    tvgId: "AkiliKids.ke",
+  },
+  {
+    id: "pin-inooro",
+    title: "Inooro TV",
+    logo: null,
+    group: "Kenya",
+    url: "https://live-onesignal.royalmedia.co.ke/live/T-MxRsFebq6zx7k2QFMbLw.m3u8",
+    tvgId: "InooroTV.ke",
+  },
+  {
+    id: "pin-meru",
+    title: "MERU TV",
+    logo: null,
+    group: "Kenya",
+    url: "https://goliveafrica.media:9998/live/628e5c1991061/index.m3u8",
+    tvgId: "MeruTV.ke",
+  },
+  {
+    id: "pin-morning-cloud",
+    title: "Morning Cloud TV",
+    logo: null,
+    group: "Kenya",
+    url: "https://livecdn.live247stream.com/mc/tv/playlist.m3u8",
+    tvgId: "MorningCloud.ke",
+  },
+  {
+    id: "pin-younib",
+    title: "YOUNIB Media TV",
+    logo: null,
+    group: "Kenya",
+    url: "https://goliveafrica.media:9998/live/6257fbe7383d6/index.m3u8",
+    tvgId: "YOUNIB.ke",
+  },
+  {
+    id: "pin-capuchin",
+    title: "Capuchin TV",
+    logo: null,
+    group: "Kenya",
+    url: "https://goliveafrica.media:9998/live/64227f58b8413/index.m3u8",
+    tvgId: "Capuchin.ke",
+  },
+  // Uganda
+  {
+    id: "pin-bukedde1",
+    title: "Bukedde TV 1",
+    logo: null,
+    group: "Uganda",
+    url: "https://stream.hydeinnovations.com/bukedde1flussonic/index.m3u8",
+    tvgId: "Bukedde1.ug",
+  },
+  {
+    id: "pin-bukedde2",
+    title: "Bukedde TV 2",
+    logo: null,
+    group: "Uganda",
+    url: "https://stream.hydeinnovations.com/bukedde2flussonic/index.m3u8",
+    tvgId: "Bukedde2.ug",
+  },
+  {
+    id: "pin-ark",
+    title: "Ark TV",
+    logo: null,
+    group: "Uganda",
+    url: "https://stream.hydeinnovations.com/arktv-international/index.fmp4.m3u8",
+    tvgId: "ArkTV.ug",
+  },
+  {
+    id: "pin-btv",
+    title: "BTV Uganda",
+    logo: null,
+    group: "Uganda",
+    url: "https://streamfi-alphadgtl1.zettawiseroutes.com:8181/hls/stream.m3u8",
+    tvgId: "BTV.ug",
+  },
+  {
+    id: "pin-alpha",
+    title: "Alpha Digital",
+    logo: null,
+    group: "Uganda",
+    url: "https://streamfi-alphatvdgtl1.zettawiseroutes.com:8181/hls/stream.m3u8",
+    tvgId: "Alpha.ug",
+  },
+  {
+    id: "pin-tvwest",
+    title: "TV West",
+    logo: null,
+    group: "Uganda",
+    url: "https://stream.hydeinnovations.com/tvwest-flussonic/index.m3u8",
+    tvgId: "TVWest.ug",
+  },
+  {
+    id: "pin-fort",
+    title: "FORT TV",
+    logo: null,
+    group: "Uganda",
+    url: "https://fort.co-works.org/memfs/87017643-274a-4bc0-a786-7767a0d159c2.m3u8",
+    tvgId: "FORT.ug",
+  },
+  // Rwanda
+  {
+    id: "pin-tv1rw",
+    title: "TV1 Rwanda",
+    logo: null,
+    group: "Rwanda",
+    url: "https://live.tv1.rw/index.m3u8",
+    tvgId: "TV1.rw",
+  },
+  {
+    id: "pin-isibo",
+    title: "Isibo TV",
+    logo: null,
+    group: "Rwanda",
+    url: "https://5c46fa289c89f.streamlock.net/pub2live/myStream/playlist.m3u8",
+    tvgId: "Isibo.rw",
+  },
+  {
+    id: "pin-tv10",
+    title: "TV10 Rwanda",
+    logo: null,
+    group: "Rwanda",
+    url: "https://5c46fa289c89f.streamlock.net/pub1live/mystream/playlist.m3u8",
+    tvgId: "TV10.rw",
+  },
+  // South Africa
+  {
+    id: "pin-1kzn",
+    title: "1KZN TV",
+    logo: null,
+    group: "South Africa",
+    url: "https://cdn.freevisiontv.co.za/sttv/smil:1kzn.stream.smil/playlist.m3u8",
+    tvgId: "1KZN.za",
+  },
+  {
+    id: "pin-ctv",
+    title: "Cape Town TV",
+    logo: null,
+    group: "South Africa",
+    url: "https://cdn.freevisiontv.co.za/sttv/smil:ctv.stream.smil/playlist.m3u8",
+    tvgId: "CTV.za",
+  },
+  {
+    id: "pin-soweto",
+    title: "Soweto TV",
+    logo: null,
+    group: "South Africa",
+    url: "https://cdn.freevisiontv.co.za/sttv/smil:soweto.stream.smil/playlist.m3u8",
+    tvgId: "Soweto.za",
+  },
+  {
+    id: "pin-tshwane",
+    title: "Tshwane TV",
+    logo: null,
+    group: "South Africa",
+    url: "https://cdn.freevisiontv.co.za/sttv/smil:tshwane.stream.smil/playlist.m3u8",
+    tvgId: "Tshwane.za",
+  },
+  {
+    id: "pin-boktv",
+    title: "BOKTV",
+    logo: null,
+    group: "South Africa",
+    url: "https://livestream2.bokradio.co.za/hls/Bok5c.m3u8",
+    tvgId: "BOKTV.za",
+  },
+  {
+    id: "pin-sabc-news",
+    title: "SABC News",
+    logo: null,
+    group: "News",
+    url: "https://sabconetanw.cdn.mangomolo.com/news/smil:news.stream.smil/master.m3u8",
+    tvgId: "SABCNews.za",
+  },
+  {
+    id: "pin-ln24",
+    title: "LN24 SA",
+    logo: null,
+    group: "News",
+    url: "https://cdnstack.internetmultimediaonline.org/ln24/ln24.stream/playlist.m3u8",
+    tvgId: "LN24.za",
+  },
+  {
+    id: "pin-wildearth",
+    title: "WildEarth",
+    logo: null,
+    group: "Nature",
+    url: "https://cdn-ue1-prod.tsv2.amagi.tv/linear/amg01290-wildearthmediap-wildearth-samsungnl/playlist.m3u8",
+    tvgId: "WildEarth",
+  },
+  // World
   {
     id: "pin-france24",
     title: "France 24 English",
@@ -51,144 +252,18 @@ export const PINNED_CHANNELS: IptvChannel[] = [
   },
 ];
 
-/** GitHub health-checked / curated sources */
-const REMOTE_PLAYLISTS = [
-  // dearbulut — health-scored (updated daily)
-  { url: "https://dearbulut.github.io/iptv/playlists/country/tz.m3u", groupHint: "Tanzania" },
-  { url: "https://dearbulut.github.io/iptv/playlists/country/ke.m3u", groupHint: "Kenya" },
-  { url: "https://dearbulut.github.io/iptv/playlists/country/ug.m3u", groupHint: "Uganda" },
-  { url: "https://dearbulut.github.io/iptv/playlists/country/za.m3u", groupHint: "South Africa" },
-  { url: "https://dearbulut.github.io/iptv/playlists/country/rw.m3u", groupHint: "Rwanda" },
-  // Free-TV curated free channels
-  {
-    url: "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
-    groupHint: "Free-TV",
-  },
-  // News category from iptv-org
-  {
-    url: "https://iptv-org.github.io/iptv/categories/news.m3u",
-    groupHint: "News",
-  },
-];
-
-function parseM3u(text: string, groupHint?: string): IptvChannel[] {
-  const lines = text.split(/\r?\n/);
-  const out: IptvChannel[] = [];
-  let pending: {
-    title: string;
-    logo: string | null;
-    group: string;
-    tvgId: string | null;
-  } | null = null;
-
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#EXTM3U") || line.startsWith("#EXTVLCOPT"))
-      continue;
-
-    if (line.startsWith("#EXTINF:")) {
-      const comma = line.lastIndexOf(",");
-      const title = comma >= 0 ? line.slice(comma + 1).trim() : "Channel";
-      const meta = comma >= 0 ? line.slice(0, comma) : line;
-      const logo =
-        meta.match(/tvg-logo="([^"]+)"/i)?.[1] ||
-        meta.match(/tvg-logo='([^']+)'/i)?.[1] ||
-        null;
-      const group =
-        meta.match(/group-title="([^"]+)"/i)?.[1] ||
-        meta.match(/group-title='([^']+)'/i)?.[1] ||
-        groupHint ||
-        "General";
-      const tvgId =
-        meta.match(/tvg-id="([^"]+)"/i)?.[1] ||
-        meta.match(/tvg-id='([^']+)'/i)?.[1] ||
-        null;
-      pending = { title, logo, group: group.split(";")[0], tvgId };
-      continue;
-    }
-
-    if (
-      pending &&
-      /^https:\/\//i.test(line) &&
-      (line.includes("m3u8") || line.includes("/live") || line.includes("stream"))
-    ) {
-      const id = pending.tvgId || `ch-${out.length}-${pending.title.slice(0, 12)}`;
-      out.push({
-        id,
-        title: pending.title.replace(/\s*\(\d+p\).*$/i, "").trim(),
-        logo: pending.logo,
-        group: pending.group || groupHint || "General",
-        url: line,
-        tvgId: pending.tvgId,
-      });
-      pending = null;
-    }
-  }
-  return out;
-}
-
-async function fetchM3u(
-  url: string,
-  groupHint?: string,
-  timeoutMs = 8000
-): Promise<IptvChannel[]> {
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    const res = await fetch(url, {
-      headers: { "User-Agent": "ETUZA-HUB/1.0", Accept: "*/*" },
-      signal: ctrl.signal,
-      next: { revalidate: 1800 },
-    });
-    clearTimeout(t);
-    if (!res.ok) return [];
-    return parseM3u(await res.text(), groupHint);
-  } catch (e) {
-    console.error("fetchM3u", url, e);
-    return [];
-  }
-}
-
-function scoreChannel(c: IptvChannel): number {
-  let s = 0;
-  const t = (c.title + " " + c.group + " " + (c.tvgId || "")).toLowerCase();
-  if (/tanzania|tbc|mahaasin|\.tz/i.test(t)) s += 100;
-  if (/kenya|\.ke|inooro|akili/i.test(t)) s += 80;
-  if (/uganda|\.ug|bukedde|ark/i.test(t)) s += 70;
-  if (/rwanda|south africa|\.za|\.rw/i.test(t)) s += 60;
-  if (/news|france|bbc|al jazeera|cnn/i.test(t)) s += 40;
-  if (c.url.startsWith("https://")) s += 10;
-  return s;
-}
-
+/** Live pins only — no remote dead lists */
 export async function loadIptvChannels(opts?: {
   q?: string;
   group?: string;
   limit?: number;
   source?: "ea" | "full" | "pinned";
 }): Promise<{ channels: IptvChannel[]; total: number; source: string }> {
-  const limit = Math.min(opts?.limit || 120, 200);
+  const limit = Math.min(opts?.limit || 80, 100);
   const q = (opts?.q || "").toLowerCase().trim();
   const group = (opts?.group || "").toLowerCase().trim();
 
-  const remoteBatches = await Promise.all(
-    REMOTE_PLAYLISTS.map((p) => fetchM3u(p.url, p.groupHint))
-  );
-  const remote = remoteBatches.flat();
-
-  const seen = new Set<string>();
-  const merged: IptvChannel[] = [];
-
-  for (const c of [...PINNED_CHANNELS, ...remote.sort((a, b) => scoreChannel(b) - scoreChannel(a))]) {
-    const key = c.url.split("?")[0];
-    if (seen.has(key)) continue;
-    seen.add(key);
-    // skip obvious junk
-    if (/adult|xxx|porn/i.test(c.title + c.group)) continue;
-    merged.push(c);
-  }
-
-  let channels = merged;
+  let channels = [...PINNED_CHANNELS];
 
   if (q) {
     channels = channels.filter(
@@ -206,9 +281,8 @@ export async function loadIptvChannels(opts?: {
   return {
     channels: channels.slice(0, limit),
     total: channels.length,
-    source: remote.length ? "github-health+pins" : "pins-only",
+    source: "live-m3u8-only",
   };
 }
 
-export const IPTV_SOURCE_URL =
-  "https://dearbulut.github.io/iptv/playlists/online.m3u";
+export const IPTV_SOURCE_URL = "";
