@@ -9,7 +9,7 @@ export type IptvChannel = {
 
 /**
  * ONLY m3u8 streams verified HTTP-live on 2026-10-21.
- * Dead removed (e.g. Mahaasin). Dodoma / Kenya / UG / ZA / RW revived where URL works.
+ * Free/public only — no panel/MAC streams.
  */
 export const PINNED_CHANNELS: IptvChannel[] = [
   // Tanzania
@@ -201,7 +201,96 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     url: "https://livestream2.bokradio.co.za/hls/Bok5c.m3u8",
     tvgId: "BOKTV.za",
   },
+  // Sports (free FAST / public HLS only)
   {
+    id: "pin-redbull",
+    title: "Red Bull TV",
+    logo: null,
+    group: "Sports",
+    url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
+    tvgId: "RedBullTV",
+  },
+  {
+    id: "pin-acc",
+    title: "ACC Network",
+    logo: null,
+    group: "Sports",
+    url: "https://raycom-accdn-firetv.amagi.tv/playlist.m3u8",
+    tvgId: "ACCNetwork",
+  },
+  {
+    id: "pin-bein-xtra",
+    title: "beIN SPORTS XTRA",
+    logo: null,
+    group: "Sports",
+    url: "https://bein-xtra-bein.amagi.tv/playlist.m3u8",
+    tvgId: "beINXTRA",
+  },
+  {
+    id: "pin-espn8",
+    title: "ESPN8 The Ocho",
+    logo: null,
+    group: "Sports",
+    url: "https://d3b6q2ou5kp8ke.cloudfront.net/ESPNTheOcho.m3u8",
+    tvgId: "ESPN8",
+  },
+  {
+    id: "pin-fifa-plus",
+    title: "FIFA+",
+    logo: null,
+    group: "Sports",
+    url: "https://d2w9q46ikgrcwx.cloudfront.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc423b46-291b-498a-a815-2db531c8fdea/fifaplus-web.m3u8",
+    tvgId: "FIFAPlus",
+  },
+  {
+    id: "pin-flohockey",
+    title: "FloHockey",
+    logo: null,
+    group: "Sports",
+    url: "https://amg02278-amg02278c2-flosports-worldwide-9916.playouts.now.amagi.tv/playlist.m3u8",
+    tvgId: "FloHockey",
+  },
+  {
+    id: "pin-floracing",
+    title: "FloRacing",
+    logo: null,
+    group: "Sports",
+    url: "https://amg02278-amg02278c1-flosports-worldwide-7592.playouts.now.amagi.tv/playlist.m3u8",
+    tvgId: "FloRacing",
+  },
+  {
+    id: "pin-fite",
+    title: "FITE 24/7",
+    logo: null,
+    group: "Sports",
+    url: "https://d3d85c7qkywguj.cloudfront.net/scheduler/scheduleMaster/263.m3u8",
+    tvgId: "FITE",
+  },
+  {
+    id: "pin-golf-30a",
+    title: "30A Golf Kingdom",
+    logo: null,
+    group: "Sports",
+    url: "https://30a-tv.com/feeds/vidaa/golf.m3u8",
+    tvgId: "30AGolf",
+  },
+  {
+    id: "pin-dd-sports",
+    title: "DD Sports",
+    logo: null,
+    group: "Sports",
+    url: "https://d3qs3d2rkhfqrt.cloudfront.net/out/v1/b17adfe543354fdd8d189b110617cddd/index.m3u8",
+    tvgId: "DDSports",
+  },
+  {
+    id: "pin-ninja",
+    title: "American Ninja Warrior",
+    logo: null,
+    group: "Sports",
+    url: "https://d4whmvwm0rdvi.cloudfront.net/10007/99951318/hls/master.m3u8",
+    tvgId: "NinjaWarrior",
+  },
+  // News /n  {
     id: "pin-sabc-news",
     title: "SABC News",
     logo: null,
@@ -218,21 +307,20 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     tvgId: "LN24.za",
   },
   {
+    id: "pin-france24",
+    title: "France "France 24 English",
+    logo: null,
+    group: "News",
+    url: "https://static.france24.com/live/F24_EN_LO_HLS/live_web.m3u8",
+    tvgId: "France24.en",
+  },
+  {
     id: "pin-wildearth",
     title: "WildEarth",
     logo: null,
     group: "Nature",
     url: "https://cdn-ue1-prod.tsv2.amagi.tv/linear/amg01290-wildearthmediap-wildearth-samsungnl/playlist.m3u8",
     tvgId: "WildEarth",
-  },
-  // World
-  {
-    id: "pin-france24",
-    title: "France 24 English",
-    logo: null,
-    group: "News",
-    url: "https://static.france24.com/live/F24_EN_LO_HLS/live_web.m3u8",
-    tvgId: "France24.en",
   },
   {
     id: "pin-nasa",
@@ -241,14 +329,6 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     group: "Science",
     url: "https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8",
     tvgId: "NASATV.us",
-  },
-  {
-    id: "pin-redbull",
-    title: "Red Bull TV",
-    logo: null,
-    group: "Sports",
-    url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
-    tvgId: "RedBullTV",
   },
 ];
 
@@ -259,7 +339,7 @@ export async function loadIptvChannels(opts?: {
   limit?: number;
   source?: "ea" | "full" | "pinned";
 }): Promise<{ channels: IptvChannel[]; total: number; source: string }> {
-  const limit = Math.min(opts?.limit || 80, 100);
+  const limit = Math.min(opts?.limit || 100, 120);
   const q = (opts?.q || "").toLowerCase().trim();
   const group = (opts?.group || "").toLowerCase().trim();
 
