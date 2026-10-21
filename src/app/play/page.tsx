@@ -4,6 +4,9 @@ import { Suspense, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
+const IFRAME_SANDBOX =
+  "allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen";
+
 function PlayerInner() {
   const sp = useSearchParams();
   const router = useRouter();
@@ -40,9 +43,10 @@ function PlayerInner() {
             src={safe}
             title={title}
             className="absolute inset-0 w-full h-full border-0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen; web-share"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
-            referrerPolicy="origin"
+            referrerPolicy="no-referrer"
+            sandbox={IFRAME_SANDBOX}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">

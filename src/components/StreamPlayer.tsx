@@ -12,6 +12,11 @@ type Props = {
 
 type Source = { provider: string; url: string };
 
+/** Block ad popups / new tabs from embed players */
+const IFRAME_SANDBOX =
+  "allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen";
+// intentionally NO allow-popups / allow-top-navigation
+
 function isDirectMedia(src: string) {
   return /\.(mp4|webm|ogg|mov|mp3|aac|m4a)(\?|$)/i.test(src);
 }
@@ -30,28 +35,30 @@ function extractTmdbEmbed(src: string): { id: string; media: "movie" | "tv" } | 
   return null;
 }
 
+/** Prefer players that tend to show fewer interstitial ads */
 function buildInAppSources(id: string, media: "movie" | "tv"): Source[] {
   if (media === "movie") {
     return [
-      { provider: "VidSrc", url: `https://vidsrc.to/embed/movie/${id}` },
+      { provider: "VidSrc", url: `https://vidsrc.xyz/embed/movie/${id}` },
+      { provider: "VidSrc.to", url: `https://vidsrc.to/embed/movie/${id}` },
       { provider: "2Embed", url: `https://www.2embed.cc/embed/${id}` },
-      { provider: "VidKing", url: `https://www.vidking.net/embed/movie/${id}` },
       { provider: "MoviesAPI", url: `https://moviesapi.to/movie/${id}` },
-      { provider: "VidPlus", url: `https://player.vidplus.to/embed/movie/${id}` },
-      { provider: "Videasy", url: `https://player.videasy.to/movie/${id}` },
+      { provider: "VidKing", url: `https://www.vidking.net/embed/movie/${id}` },
       { provider: "VidLink", url: `https://vidlink.pro/movie/${id}` },
       { provider: "Vidrock", url: `https://vidrock.net/movie/${id}` },
+      { provider: "Videasy", url: `https://player.videasy.to/movie/${id}` },
+      { provider: "VidPlus", url: `https://player.vidplus.to/embed/movie/${id}` },
       { provider: "VidFast", url: `https://vidfast.pro/movie/${id}` },
-      { provider: "111Movies", url: `https://111movies.com/movie/${id}` },
     ];
   }
   return [
-    { provider: "VidSrc", url: `https://vidsrc.to/embed/tv/${id}` },
+    { provider: "VidSrc", url: `https://vidsrc.xyz/embed/tv/${id}` },
+    { provider: "VidSrc.to", url: `https://vidsrc.to/embed/tv/${id}` },
     { provider: "2Embed", url: `https://www.2embed.cc/embedtv/${id}` },
     { provider: "VidKing", url: `https://www.vidking.net/embed/tv/${id}` },
-    { provider: "Videasy", url: `https://player.videasy.to/tv/${id}` },
     { provider: "VidLink", url: `https://vidlink.pro/tv/${id}` },
     { provider: "Vidrock", url: `https://vidrock.net/tv/${id}` },
+    { provider: "Videasy", url: `https://player.videasy.to/tv/${id}` },
   ];
 }
 
@@ -138,6 +145,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
               }))
               .filter((s) => s.url.startsWith("http"));
             const seen = new Set(list.map((x) => x.url));
+            // Put ElitePlex extras after preferred low-ad sources
             for (const e of extra) {
               if (!seen.has(e.url)) {
                 seen.add(e.url);
@@ -272,7 +280,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
       url: embedUrl,
       title: title || "Player",
     });
-    // Internal route — stays on etuza domain
     window.location.href = `/play?${q.toString()}`;
   }
 
@@ -299,9 +306,11 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             src={embedUrl}
             title={title || "Player"}
             className="absolute inset-0 w-full h-full border-0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen; web-share"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
-            referrerPolicy="origin"
+            referrerPolicy="no-referrer"
+            sandbox={IFRAME_SANDBOX}
+            loading="eager"
           />
         </div>
 
@@ -351,9 +360,10 @@ export default function StreamPlayer({ src, poster, title }: Props) {
         )}
 
         <p className="text-[11px] text-slate-500">
-          Inacheza <b>ndani ya app</b> · {sources[sourceIdx]?.provider || "player"}{" "}
-          ({sourceIdx + 1}/{Math.max(sources.length, 1)}). Kama tupu →{" "}
-          <b>Source nyingine</b> au <b>Player kamili</b>.
+          Popups za ads zimezuiwa · Source:{" "}
+          <b>{sources[sourceIdx]?.provider || "player"}</b>{" "}
+          ({sourceIdx + 1}/{Math.max(sources.length, 1)}). Kama ads bado →{" "}
+          <b>Source nyingine</b>.
         </p>
       </div>
     );
