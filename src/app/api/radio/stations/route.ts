@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
+import { radioCover } from "@/lib/covers";
 
 const FALLBACK_TZ = [
   {
     id: "fb-clouds",
     name: "Clouds FM",
     url: "https://eu6.radioboss.fm:8225/stream",
-    favicon: "https://ui-avatars.com/api/?name=Clouds+FM&background=831843&color=fff&size=128&bold=true",
     tags: "tanzania,music",
     country: "Tanzania",
     bitrate: 128,
@@ -14,7 +14,6 @@ const FALLBACK_TZ = [
     id: "fb-radioone",
     name: "Radio One Tanzania",
     url: "https://radioonetanzania.radioca.st/stream",
-    favicon: "https://ui-avatars.com/api/?name=Radio+One&background=831843&color=fff&size=128&bold=true",
     tags: "news,tanzania",
     country: "Tanzania",
     bitrate: 128,
@@ -23,7 +22,6 @@ const FALLBACK_TZ = [
     id: "fb-eastafrica",
     name: "East Africa Radio",
     url: "https://eatv.radioca.st/stream",
-    favicon: "https://ui-avatars.com/api/?name=EA+Radio&background=831843&color=fff&size=128&bold=true",
     tags: "tanzania,music",
     country: "Tanzania",
     bitrate: 128,
@@ -32,7 +30,6 @@ const FALLBACK_TZ = [
     id: "fb-wasafi",
     name: "Wasafi FM",
     url: "https://streamingv2.shoutcast.com/wasafi-fm",
-    favicon: "https://ui-avatars.com/api/?name=Wasafi&background=831843&color=fff&size=128&bold=true",
     tags: "bongo,music",
     country: "Tanzania",
     bitrate: 128,
@@ -41,7 +38,6 @@ const FALLBACK_TZ = [
     id: "fb-tbc",
     name: "TBC Taifa",
     url: "https://streamingv2.shoutcast.com/tbc-taifa",
-    favicon: "https://ui-avatars.com/api/?name=TBC&background=831843&color=fff&size=128&bold=true",
     tags: "news,government",
     country: "Tanzania",
     bitrate: 64,
@@ -50,7 +46,6 @@ const FALLBACK_TZ = [
     id: "fb-passion",
     name: "Passion FM",
     url: "https://stream.zeno.fm/0r0xa792kwzuv",
-    favicon: "https://ui-avatars.com/api/?name=Passion&background=831843&color=fff&size=128&bold=true",
     tags: "gospel",
     country: "Tanzania",
     bitrate: 128,
@@ -59,19 +54,36 @@ const FALLBACK_TZ = [
     id: "fb-abood",
     name: "Abood FM",
     url: "https://stream.zeno.fm/eequgfw2x1zuv",
-    favicon: "https://ui-avatars.com/api/?name=Abood&background=831843&color=fff&size=128&bold=true",
     tags: "music",
     country: "Tanzania",
     bitrate: 128,
   },
-];
+  {
+    id: "fb-capital",
+    name: "Capital Radio TZ",
+    url: "https://capitalradio.radioca.st/stream",
+    tags: "music,tanzania",
+    country: "Tanzania",
+    bitrate: 128,
+  },
+  {
+    id: "fb-utume",
+    name: "Radio Maria Tanzania",
+    url: "https://dreamsiteradiocp2.com/proxy/rmtanzania2?mp=/stream",
+    tags: "religious",
+    country: "Tanzania",
+    bitrate: 64,
+  },
+].map((s) => ({
+  ...s,
+  favicon: radioCover(s.name),
+}));
 
 const FALLBACK_WORLD = [
   {
     id: "fb-bbc",
     name: "BBC World Service",
     url: "https://stream.live.vc.bbcmedia.co.uk/bbc_world_service",
-    favicon: "https://ui-avatars.com/api/?name=BBC&background=bb0000&color=fff&size=128&bold=true",
     tags: "news",
     country: "United Kingdom",
     bitrate: 128,
@@ -80,7 +92,6 @@ const FALLBACK_WORLD = [
     id: "fb-npr",
     name: "NPR News",
     url: "https://npr-ice.streamguys1.com/live.mp3",
-    favicon: "https://ui-avatars.com/api/?name=NPR&background=1a1a1a&color=fff&size=128&bold=true",
     tags: "news",
     country: "USA",
     bitrate: 128,
@@ -89,7 +100,6 @@ const FALLBACK_WORLD = [
     id: "fb-kexp",
     name: "KEXP Seattle",
     url: "https://kexp-mp3-128.streamguys1.com/kexp128.mp3",
-    favicon: "https://ui-avatars.com/api/?name=KEXP&background=ff6600&color=fff&size=128&bold=true",
     tags: "alternative,music",
     country: "USA",
     bitrate: 128,
@@ -98,7 +108,6 @@ const FALLBACK_WORLD = [
     id: "fb-soma",
     name: "SomaFM Groove Salad",
     url: "https://ice1.somafm.com/groovesalad-128-mp3",
-    favicon: "https://ui-avatars.com/api/?name=SomaFM&background=2a5f7a&color=fff&size=128&bold=true",
     tags: "chill,electronic",
     country: "USA",
     bitrate: 128,
@@ -107,7 +116,6 @@ const FALLBACK_WORLD = [
     id: "fb-classic",
     name: "Classic FM",
     url: "https://media-ssl.musicradio.com/ClassicFM",
-    favicon: "https://ui-avatars.com/api/?name=Classic&background=6b2d5b&color=fff&size=128&bold=true",
     tags: "classical",
     country: "United Kingdom",
     bitrate: 128,
@@ -116,7 +124,6 @@ const FALLBACK_WORLD = [
     id: "fb-capitaluk",
     name: "Capital UK",
     url: "https://media-ssl.musicradio.com/Capital",
-    favicon: "https://ui-avatars.com/api/?name=Capital+UK&background=00a0e3&color=fff&size=128&bold=true",
     tags: "pop",
     country: "United Kingdom",
     bitrate: 128,
@@ -125,12 +132,14 @@ const FALLBACK_WORLD = [
     id: "fb-franceinfo",
     name: "France Info",
     url: "https://stream.radiofrance.fr/franceinfo/franceinfo_hifi.m3u8",
-    favicon: "https://ui-avatars.com/api/?name=France&background=002395&color=fff&size=128&bold=true",
     tags: "news",
     country: "France",
     bitrate: 192,
   },
-];
+].map((s) => ({
+  ...s,
+  favicon: radioCover(s.name),
+}));
 
 const BASES = [
   "https://de1.api.radio-browser.info",
@@ -215,7 +224,7 @@ export async function GET(req: Request) {
           id: s.stationuuid,
           name: s.name,
           url: (s.url_resolved || s.url) as string,
-          favicon: s.favicon || null,
+          favicon: radioCover(s.name, s.favicon || null),
           tags: s.tags || "",
           country: s.country || country,
           bitrate: s.bitrate || 0,
@@ -226,7 +235,6 @@ export async function GET(req: Request) {
     console.error("radio-browser", err);
   }
 
-  // Always ensure TOP / TZ have something
   if (stations.length === 0 || country === "TOP") {
     const extra =
       country === "TOP"
@@ -239,13 +247,18 @@ export async function GET(req: Request) {
       stations = extra;
       source = "fallback";
     } else if (country === "TOP") {
-      // merge world fallbacks at end so list never feels empty
       const seen = new Set(stations.map((s) => s.name.toLowerCase()));
       for (const e of FALLBACK_WORLD) {
         if (!seen.has(e.name.toLowerCase())) stations.push(e);
       }
     }
   }
+
+  // Ensure every station has a cover
+  stations = stations.map((s) => ({
+    ...s,
+    favicon: radioCover(s.name, s.favicon),
+  }));
 
   if (q) {
     const qq = q.toLowerCase();

@@ -5,6 +5,12 @@ import Link from "next/link";
 import { Tv } from "lucide-react";
 import type { IptvChannel } from "@/lib/iptv";
 
+function logoSrc(c: IptvChannel) {
+  if (c.logo && /^https?:\/\//i.test(c.logo)) return c.logo;
+  const n = encodeURIComponent((c.title || "TV").slice(0, 24));
+  return `https://ui-avatars.com/api/?name=${n}&background=1e293b&color=f87171&size=256&bold=true`;
+}
+
 export default function TvChannelGrid({ channels }: { channels: IptvChannel[] }) {
   const groups = useMemo(
     () =>
@@ -26,7 +32,7 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
           TV Channels
         </h1>
         <p className="text-sm text-slate-400 mt-1">
-          {filtered.length} channels zilizothibitishwa (zilizokufa zimeondolewa)
+          {filtered.length} channels · kila channel ina cover
         </p>
       </div>
 
@@ -54,27 +60,19 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
             href={`/watch/live?url=${encodeURIComponent(c.url)}&title=${encodeURIComponent(c.title)}`}
             className="block rounded-2xl border border-slate-700 bg-slate-900 overflow-hidden active:border-red-500"
           >
-            <div
-              className="aspect-video flex items-center justify-center"
-              style={{
-                background: c.logo
-                  ? "#0a0a0f"
-                  : "linear-gradient(135deg,#7f1d1d,#1e1b4b)",
-              }}
-            >
-              {c.logo ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={c.logo}
-                  alt={c.title}
-                  className="w-full h-full object-contain p-3"
-                />
-              ) : (
-                <div className="text-center px-2">
-                  <Tv className="w-8 h-8 text-white/40 mx-auto mb-1" />
-                  <p className="text-[11px] text-white/50 line-clamp-2">{c.title}</p>
-                </div>
-              )}
+            <div className="aspect-video flex items-center justify-center bg-slate-950">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={logoSrc(c)}
+                alt={c.title}
+                className="w-full h-full object-contain p-2"
+                onError={(e) => {
+                  const el = e.target as HTMLImageElement;
+                  el.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                    c.title.slice(0, 16)
+                  )}&background=7f1d1d&color=fff&size=256&bold=true`;
+                }}
+              />
             </div>
             <div className="p-3 border-t border-slate-800">
               <p className="font-semibold text-sm text-white truncate">{c.title}</p>
