@@ -8,8 +8,8 @@ export type IptvChannel = {
 };
 
 /**
- * ONLY m3u8 streams verified HTTP-live on 2026-10-21.
- * Free/public only — no panel/MAC streams.
+ * ONLY m3u8 streams verified HTTP-live.
+ * Free/public only — no panel/MAC / pay-TV cracks.
  */
 export const PINNED_CHANNELS: IptvChannel[] = [
   // Tanzania
@@ -201,7 +201,64 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     url: "https://livestream2.bokradio.co.za/hls/Bok5c.m3u8",
     tvgId: "BOKTV.za",
   },
-  // Sports (free FAST / public HLS)
+  // Football (free public — verified live)
+  {
+    id: "pin-fifa-plus",
+    title: "FIFA+",
+    logo: null,
+    group: "Football",
+    url: "https://d2w9q46ikgrcwx.cloudfront.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-of5cbk3sav3w5/v1/sysdata_s_p_a_fifa_7/samsungheadend_us/latest/main/hls/playlist.m3u8",
+    tvgId: "FIFAPlus",
+  },
+  {
+    id: "pin-fifa-women",
+    title: "FIFA+ Women",
+    logo: null,
+    group: "Football",
+    url: "https://cffda8ff.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/U2Ftc3VuZy1nYl9GSUZBUGx1c3dvbWVuX0hMUw/playlist.m3u8",
+    tvgId: "FIFAPlusWomen",
+  },
+  {
+    id: "pin-fifa-fr",
+    title: "FIFA+ French",
+    logo: null,
+    group: "Football",
+    url: "https://37b4c228.wurl.com/master/f36d25e7e52f1ba8d7e56eb859c636563214f541/UmFrdXRlblRWLWZyX0ZJRkFQbHVzRnJlbmNoX0hMUw/playlist.m3u8",
+    tvgId: "FIFAPlusFR",
+  },
+  {
+    id: "pin-premier-sports",
+    title: "Premier Sports",
+    logo: null,
+    group: "Football",
+    url: "https://amg19223-amg19223c3-amgplt0351.playout.now3.amagi.tv/playlist/amg19223-amg19223c3-amgplt0351/playlist.m3u8",
+    tvgId: "PremierSports",
+  },
+  {
+    id: "pin-premier-sports-2",
+    title: "Premier Sports 2",
+    logo: null,
+    group: "Football",
+    url: "https://amg19223-amg19223c4-amgplt0351.playout.now3.amagi.tv/playlist/amg19223-amg19223c4-amgplt0351/playlist.m3u8",
+    tvgId: "PremierSports2",
+  },
+  {
+    id: "pin-stadium",
+    title: "Stadium",
+    logo: null,
+    group: "Football",
+    url: "https://wurl120sports.global.transmit.live/hls/679a907dce42a042c23ace37/v1/stadium_gracenote/samsung_us/latest/main/hls/playlist.m3u8",
+    tvgId: "Stadium",
+  },
+  {
+    id: "pin-bein-xtra",
+    title: "beIN SPORTS XTRA",
+    logo: null,
+    group: "Football",
+    url: "https://bein-xtra-bein.amagi.tv/playlist.m3u8",
+    tvgId: "beINXTRA",
+  },
+  // Other sports
   {
     id: "pin-redbull",
     title: "Red Bull TV",
@@ -219,28 +276,12 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     tvgId: "ACCNetwork",
   },
   {
-    id: "pin-bein-xtra",
-    title: "beIN SPORTS XTRA",
-    logo: null,
-    group: "Sports",
-    url: "https://bein-xtra-bein.amagi.tv/playlist.m3u8",
-    tvgId: "beINXTRA",
-  },
-  {
     id: "pin-espn8",
     title: "ESPN8 The Ocho",
     logo: null,
     group: "Sports",
     url: "https://d3b6q2ou5kp8ke.cloudfront.net/ESPNTheOcho.m3u8",
     tvgId: "ESPN8",
-  },
-  {
-    id: "pin-fifa-plus",
-    title: "FIFA+",
-    logo: null,
-    group: "Sports",
-    url: "https://d2w9q46ikgrcwx.cloudfront.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc423b46-291b-498a-a815-2db531c8fdea/fifaplus-web.m3u8",
-    tvgId: "FIFAPlus",
   },
   {
     id: "pin-flohockey",
@@ -281,14 +322,6 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     group: "Sports",
     url: "https://d3qs3d2rkhfqrt.cloudfront.net/out/v1/b17adfe543354fdd8d189b110617cddd/index.m3u8",
     tvgId: "DDSports",
-  },
-  {
-    id: "pin-ninja",
-    title: "American Ninja Warrior",
-    logo: null,
-    group: "Sports",
-    url: "https://d4whmvwm0rdvi.cloudfront.net/10007/99951318/hls/master.m3u8",
-    tvgId: "NinjaWarrior",
   },
   // News
   {
@@ -333,7 +366,6 @@ export const PINNED_CHANNELS: IptvChannel[] = [
   },
 ];
 
-/** Live pins only — no remote dead lists */
 export async function loadIptvChannels(opts?: {
   q?: string;
   group?: string;
