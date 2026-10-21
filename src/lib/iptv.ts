@@ -201,7 +201,7 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     url: "https://livestream2.bokradio.co.za/hls/Bok5c.m3u8",
     tvgId: "BOKTV.za",
   },
-  // Sports (free FAST / public HLS only)
+  // Sports (free FAST / public HLS)
   {
     id: "pin-redbull",
     title: "Red Bull TV",
@@ -290,7 +290,8 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     url: "https://d4whmvwm0rdvi.cloudfront.net/10007/99951318/hls/master.m3u8",
     tvgId: "NinjaWarrior",
   },
-  // News /n  {
+  // News
+  {
     id: "pin-sabc-news",
     title: "SABC News",
     logo: null,
@@ -308,7 +309,7 @@ export const PINNED_CHANNELS: IptvChannel[] = [
   },
   {
     id: "pin-france24",
-    title: "France "France 24 English",
+    title: "France 24 English",
     logo: null,
     group: "News",
     url: "https://static.france24.com/live/F24_EN_LO_HLS/live_web.m3u8",
