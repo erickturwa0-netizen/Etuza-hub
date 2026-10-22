@@ -30,27 +30,21 @@ function extractTmdbEmbed(src: string): { id: string; media: "movie" | "tv" } | 
   return { id: m[2], media: m[1].toLowerCase() as "movie" | "tv" };
 }
 
-/** Fastest common free embeds first */
+/** Providers that allow iframe embed */
 function buildSources(id: string, media: "movie" | "tv"): Source[] {
   if (media === "movie") {
     return [
-      {
-        provider: "MultiEmbed",
-        url: "https://multiembed.mov/?video_id=" + id + "&tmdb=1",
-      },
-      { provider: "VidSrc.xyz", url: "https://vidsrc.xyz/embed/movie/" + id },
-      { provider: "2Embed", url: "https://www.2embed.cc/embed/" + id },
       { provider: "VidSrc", url: "https://vidsrc.to/embed/movie/" + id },
+      { provider: "2Embed", url: "https://www.2embed.cc/embed/" + id },
+      { provider: "VidSrc.xyz", url: "https://vidsrc.xyz/embed/movie/" + id },
+      { provider: "EmbedSU", url: "https://embed.su/embed/movie/" + id },
     ];
   }
   return [
-    {
-      provider: "MultiEmbed",
-      url: "https://multiembed.mov/?video_id=" + id + "&tmdb=1&s=1&e=1",
-    },
-    { provider: "VidSrc.xyz", url: "https://vidsrc.xyz/embed/tv/" + id },
-    { provider: "2Embed", url: "https://www.2embed.cc/embedtv/" + id },
     { provider: "VidSrc", url: "https://vidsrc.to/embed/tv/" + id },
+    { provider: "2Embed", url: "https://www.2embed.cc/embedtv/" + id },
+    { provider: "VidSrc.xyz", url: "https://vidsrc.xyz/embed/tv/" + id },
+    { provider: "EmbedSU", url: "https://embed.su/embed/tv/" + id },
   ];
 }
 
@@ -91,7 +85,6 @@ function resolveSrc(src: string): Resolved {
 }
 
 export default function StreamPlayer({ src, poster, title }: Props) {
-  // Resolve on first paint — no "Inapakia" delay for embeds
   const initial = useMemo(() => resolveSrc(src), [src]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -263,7 +256,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             className="absolute inset-0 w-full h-full border-0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
-            referrerPolicy="no-referrer"
+            referrerPolicy="origin"
             loading="eager"
           />
         </div>
@@ -314,7 +307,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
 
         <p className="text-[11px] text-slate-500">
           {(sources[sourceIdx] && sources[sourceIdx].provider) || "player"} ·
-          ikichelewa bofya Source nyingine
+          haioneshi? bofya Source nyingine
         </p>
       </div>
     );
