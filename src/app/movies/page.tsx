@@ -33,14 +33,7 @@ export default async function MoviesPage({
   let bannerTitles: string[] = [];
 
   try {
-    // Fast path: list from DB first
-    let count = await prisma.content.count({
-      where: { type: "movie", status: "published" },
-    });
-    if (count < 10) {
-      // Only heavy import when catalog empty/thin
-      await ensureElitePlexContent("movie");
-    }
+    await ensureElitePlexContent("movie");
 
     const banner = await getNewContentBanner();
     if (banner?.titles) bannerTitles = banner.titles;
@@ -59,20 +52,15 @@ export default async function MoviesPage({
           : {}),
       },
       select: { id: true, title: true, coverUrl: true, category: true },
-      take: 200,
+      take: 120,
     });
 
-    items = raw
-      .filter((c) => {
-        const y = yearFromCategory(c.category);
-        return !y || y <= 2024;
-      })
-      .sort((a, b) => {
-        const ya = yearFromCategory(a.category);
-        const yb = yearFromCategory(b.category);
-        if (yb !== ya) return yb - ya;
-        return a.title.localeCompare(b.title);
-      });
+    items = raw.sort((a, b) => {
+      const ya = yearFromCategory(a.category);
+      const yb = yearFromCategory(b.category);
+      if (yb !== ya) return yb - ya;
+      return a.title.localeCompare(b.title);
+    });
   } catch (e) {
     console.error("movies page", e);
   }
@@ -87,7 +75,7 @@ export default async function MoviesPage({
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-white">Movies</h1>
             <p className="text-sm text-slate-400">
-              {items.length} movies · zinazocheza tu
+              {items.length} movies · zinazocheza
             </p>
           </div>
         </div>
@@ -104,9 +92,7 @@ export default async function MoviesPage({
         <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center">
           <Film className="w-10 h-10 text-slate-600 mx-auto mb-3" />
           <p className="text-slate-400 text-sm">
-            {q
-              ? `Hakuna matokeo ya "${q}"`
-              : "Hakuna movies bado. Fungua tena baada ya sekunde chache."}
+            {q ? `Hakuna matokeo ya "${q}"` : "Inapakia movies… fungua tena."}
           </p>
         </div>
       ) : (
@@ -123,7 +109,7 @@ export default async function MoviesPage({
                   <img
                     src={c.coverUrl}
                     alt={c.title}
-                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition"
+                    className="absolute inset-0 w-full h-full object-cover"
                     loading="lazy"
                   />
                 ) : (

@@ -1,10 +1,9 @@
 import { prisma } from "@/lib/prisma";
 
 const BASE = "https://eliteplex-api.vercel.app";
-/** Playable-only: classics + API titles year <= 2024 */
-const MOVIE_TAG = "eliteplex-github-v8-playable";
-const DRAMA_TAG = "eliteplex-drama-v8-playable";
-const MAX_PLAYABLE_YEAR = 2024;
+/** Classics only — known high fill-rate on free embeds */
+const MOVIE_TAG = "eliteplex-github-v9-classics-only";
+const DRAMA_TAG = "eliteplex-drama-v9-playable";
 
 type EliteItem = {
   id?: string;
@@ -14,9 +13,9 @@ type EliteItem = {
   poster?: string;
   overview?: string;
   year?: string;
-  type?: string;
 };
 
+/** Hand-picked titles that usually play on VidSrc / 2Embed */
 const CLASSIC_SEEDS: { id: string; title: string; year: string; poster?: string }[] = [
   { id: "27205", title: "Inception", year: "2010", poster: "https://image.tmdb.org/t/p/w500/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg" },
   { id: "157336", title: "Interstellar", year: "2014", poster: "https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg" },
@@ -34,12 +33,14 @@ const CLASSIC_SEEDS: { id: string; title: string; year: string; poster?: string 
   { id: "603", title: "The Matrix", year: "1999", poster: "https://image.tmdb.org/t/p/w500/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg" },
   { id: "120", title: "The Lord of the Rings: The Fellowship of the Ring", year: "2001", poster: "https://image.tmdb.org/t/p/w500/6oom5QYQ2yQTMJIbnvbkBL9cHo6.jpg" },
   { id: "122", title: "The Lord of the Rings: The Return of the King", year: "2003", poster: "https://image.tmdb.org/t/p/w500/rCzpDGLbOoPwLjy3OAm5NUPOTrC.jpg" },
+  { id: "121", title: "The Lord of the Rings: The Two Towers", year: "2002", poster: "https://image.tmdb.org/t/p/w500/5VTN0pR8gcqV3EPUHHfMGnJyyJv.jpg" },
   { id: "475557", title: "Joker", year: "2019", poster: "https://image.tmdb.org/t/p/w500/udDclJoHjfjb8Ekgsd4FDteOkCU.jpg" },
   { id: "438631", title: "Dune", year: "2021", poster: "https://image.tmdb.org/t/p/w500/d5NXSklXo0qyIYkgV94SCyV0TdR.jpg" },
   { id: "693134", title: "Dune: Part Two", year: "2024", poster: "https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg" },
   { id: "872585", title: "Oppenheimer", year: "2023", poster: "https://image.tmdb.org/t/p/w500/8Gxv8gSFCU0XGDykE0UmQ5Q3vTD.jpg" },
   { id: "346698", title: "Barbie", year: "2023", poster: "https://image.tmdb.org/t/p/w500/iuFNMS8U5cb6xfzi51Dbkovj7vM.jpg" },
   { id: "76600", title: "Avatar: The Way of Water", year: "2022", poster: "https://image.tmdb.org/t/p/w500/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg" },
+  { id: "19995", title: "Avatar", year: "2009", poster: "https://image.tmdb.org/t/p/w500/kyeqWdyUXW608qlYkRqosgbbJyK.jpg" },
   { id: "1022789", title: "Inside Out 2", year: "2024", poster: "https://image.tmdb.org/t/p/w500/vpnVM9B6NMmQpWeZvzLvDESb2QY.jpg" },
   { id: "569094", title: "Spider-Man: Across the Spider-Verse", year: "2023", poster: "https://image.tmdb.org/t/p/w500/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg" },
   { id: "324857", title: "Spider-Man: Into the Spider-Verse", year: "2018", poster: "https://image.tmdb.org/t/p/w500/iiZZtoqCyX7hA6Ftg37o56mZvfk.jpg" },
@@ -48,6 +49,24 @@ const CLASSIC_SEEDS: { id: string; title: string; year: string; poster?: string 
   { id: "424", title: "Schindler's List", year: "1993", poster: "https://image.tmdb.org/t/p/w500/sF1U4EUQS8YHUYjNl3pMGNIQyr0.jpg" },
   { id: "129", title: "Spirited Away", year: "2001", poster: "https://image.tmdb.org/t/p/w500/39wmItIWsg5sZMyRUHLkWBcuVCM.jpg" },
   { id: "497", title: "The Green Mile", year: "1999", poster: "https://image.tmdb.org/t/p/w500/8VG8fDNiy50H4FedGwdSVUPoaJe.jpg" },
+  { id: "496243", title: "Parasite", year: "2019", poster: "https://image.tmdb.org/t/p/w500/7IiTQwIVwNncxM1xVaRPV62QyeB.jpg" },
+  { id: "49026", title: "The Dark Knight Rises", year: "2012", poster: "https://image.tmdb.org/t/p/w500/hr0L2aueqlP2BYUblTTjrlY0tAs.jpg" },
+  { id: "76341", title: "Mad Max: Fury Road", year: "2015", poster: "https://image.tmdb.org/t/p/w500/hA2epsMjHDpTxALjupBziOUdxqg.jpg" },
+  { id: "671", title: "Harry Potter and the Philosopher's Stone", year: "2001", poster: "https://image.tmdb.org/t/p/w500/wuMc08IPKEatf9rnMNXvIDxqP4W.jpg" },
+  { id: "672", title: "Harry Potter and the Chamber of Secrets", year: "2002", poster: "https://image.tmdb.org/t/p/w500/sdEOH0992YZ0QMEXeGqGklQR7Ig.jpg" },
+  { id: "12445", title: "Harry Potter and the Deathly Hallows: Part 2", year: "2011", poster: "https://image.tmdb.org/t/p/w500/c54HpQmuwXjHq2C9wmoACjxoom3.jpg" },
+  { id: "118340", title: "Guardians of the Galaxy", year: "2014", poster: "https://image.tmdb.org/t/p/w500/r7vmZjiyZw9xS6QNgjH6x3RHD0n.jpg" },
+  { id: "1726", title: "Iron Man", year: "2008", poster: "https://image.tmdb.org/t/p/w500/78lPtwv72eTNqFW9COTS8cMVORJ.jpg" },
+  { id: "10138", title: "Iron Man 2", year: "2010", poster: "https://image.tmdb.org/t/p/w500/6WBekiy6j5X3PVrmCyi3FJwG9UE.jpg" },
+  { id: "68721", title: "Iron Man 3", year: "2013", poster: "https://image.tmdb.org/t/p/w500/qhPtAc1TKbMPqNvcdXZOnChbnES.jpg" },
+  { id: "284054", title: "Black Panther", year: "2018", poster: "https://image.tmdb.org/t/p/w500/uxzzTkhVMX6BEzlA7hKNbfYx5sU.jpg" },
+  { id: "299537", title: "Captain Marvel", year: "2019", poster: "https://image.tmdb.org/t/p/w500/AtsgWhDnVTflPn5A3vCQ3cZZaot.jpg" },
+  { id: "634649", title: "Spider-Man: No Way Home", year: "2021", poster: "https://image.tmdb.org/t/p/w500/1g0dhYtq4irTY1GPXvft6k4YLjm.jpg" },
+  { id: "315635", title: "Spider-Man: Homecoming", year: "2017", poster: "https://image.tmdb.org/t/p/w500/c24sv2weTHPsmDa7jEMN0mDcP94.jpg" },
+  { id: "429617", title: "Spider-Man: Far From Home", year: "2019", poster: "https://image.tmdb.org/t/p/w500/4q2NXl87XN5O0B0gB0xZ3b5Z3bZ.jpg" },
+  { id: "766507", title: "Prey", year: "2022", poster: "https://image.tmdb.org/t/p/w500/ujr5LktWaK0iY4h0W9m6cV8l3bQ.jpg" },
+  { id: "361743", title: "Top Gun: Maverick", year: "2022", poster: "https://image.tmdb.org/t/p/w500/62HCnUTziyWcpDaBO2i1DX17ljH.jpg" },
+  { id: "505642", title: "Black Panther: Wakanda Forever", year: "2022", poster: "https://image.tmdb.org/t/p/w500/sv1xJUazXeYqALzczSZ3O6nkH75.jpg" },
 ];
 
 async function fetchPages(path: string, pages: number[]): Promise<EliteItem[]> {
@@ -63,8 +82,7 @@ async function fetchPages(path: string, pages: number[]): Promise<EliteItem[]> {
       const items = (data?.items || []) as EliteItem[];
       if (!items.length) break;
       out.push(...items);
-    } catch (e) {
-      console.error("eliteplex fetch", path, page, e);
+    } catch {
       break;
     }
   }
@@ -76,83 +94,25 @@ function yearNum(y?: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function sortByYearDesc(a: EliteItem, b: EliteItem) {
-  return yearNum(b.year) - yearNum(a.year);
-}
-
-/** Remove unplayable new titles (2025+) from DB */
-export async function purgeUnplayableMovies(): Promise<number> {
-  const all = await prisma.content.findMany({
-    where: { type: "movie" },
-    select: { id: true, category: true, title: true },
-  });
-  const ids: string[] = [];
-  for (const row of all) {
-    const m = (row.category || "").match(/(20\d{2}|19\d{2})/);
-    const y = m ? parseInt(m[1], 10) : 0;
-    if (y >= 2025) ids.push(row.id);
-  }
-  if (ids.length) {
-    await prisma.content.deleteMany({ where: { id: { in: ids } } });
-  }
-  return ids.length;
-}
-
 export async function importElitePlexMovies(force = false): Promise<number> {
   const existing = await prisma.apiSource.findUnique({ where: { category: "movie" } });
   if (!force && existing?.notes === MOVIE_TAG) {
-    await purgeUnplayableMovies();
     return prisma.content.count({ where: { type: "movie", status: "published" } });
-  }
-
-  const remote = await fetchPages(
-    "/api/movies",
-    [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 18, 20]
-  );
-
-  const byId = new Map<string, EliteItem>();
-
-  for (const c of CLASSIC_SEEDS) {
-    byId.set(c.id, {
-      tmdb_id: c.id,
-      id: c.id,
-      name: c.title,
-      year: c.year,
-      poster: c.poster,
-    });
-  }
-
-  // API titles only if year known and <= MAX_PLAYABLE_YEAR
-  for (const row of remote) {
-    const id = String(row.tmdb_id || row.id || "");
-    if (!/^\d{2,7}$/.test(id)) continue;
-    const y = yearNum(row.year);
-    if (!y || y > MAX_PLAYABLE_YEAR) continue;
-    if (!byId.has(id)) byId.set(id, row);
   }
 
   await prisma.content.deleteMany({ where: { type: "movie" } });
 
-  const ordered = [...byId.values()].sort(sortByYearDesc);
   let total = 0;
-  for (const row of ordered) {
-    const id = String(row.tmdb_id || row.id || "");
-    const title = String(row.name || row.title || "").trim();
-    if (!id || !title) continue;
-    const y = yearNum(row.year);
+  for (const c of CLASSIC_SEEDS) {
     await prisma.content.create({
       data: {
         type: "movie",
-        title: title.slice(0, 200),
-        description: row.overview
-          ? String(row.overview).slice(0, 500)
-          : y
-            ? `Year ${y}`
-            : null,
-        linkUrl: `https://player.videasy.to/movie/${id}`,
-        coverUrl: row.poster || null,
+        title: c.title.slice(0, 200),
+        description: `Year ${c.year}`,
+        linkUrl: `https://vidsrc.to/embed/movie/${c.id}`,
+        coverUrl: c.poster || null,
         linkType: "stream",
-        category: y ? `Movie · ${y}` : "Movie",
+        category: `Movie · ${c.year}`,
         status: "published",
       },
     });
@@ -163,14 +123,13 @@ export async function importElitePlexMovies(force = false): Promise<number> {
     where: { category: "movie" },
     create: {
       category: "movie",
-      name: "ElitePlex Movies (playable)",
+      name: "Playable classics",
       url: `${BASE}/api/movies`,
       notes: MOVIE_TAG,
       enabled: true,
     },
     update: {
-      name: "ElitePlex Movies (playable)",
-      url: `${BASE}/api/movies`,
+      name: "Playable classics",
       notes: MOVIE_TAG,
       enabled: true,
     },
@@ -185,45 +144,28 @@ export async function importElitePlexDrama(force = false): Promise<number> {
     return prisma.content.count({ where: { type: "drama", status: "published" } });
   }
 
-  const series = await fetchPages("/api/series", [1, 2, 3, 4, 5, 6, 8, 10]);
-  let anime: EliteItem[] = [];
-  try {
-    anime = await fetchPages("/api/anime", [1, 2, 3]);
-  } catch {
-    /* optional */
-  }
-
+  const series = await fetchPages("/api/series", [1, 2, 3, 4, 5]);
   await prisma.content.deleteMany({ where: { type: "drama" } });
 
   const seen = new Set<string>();
   let total = 0;
-  const all = [...series, ...anime].sort(sortByYearDesc);
-  for (const row of all) {
+  for (const row of series) {
     const id = String(row.tmdb_id || row.id || "");
     const title = String(row.name || row.title || "").trim();
     if (!id || !title || seen.has(id)) continue;
     if (!/^\d{2,7}$/.test(id)) continue;
     const y = yearNum(row.year);
-    if (y && y > MAX_PLAYABLE_YEAR) continue;
+    if (y && y > 2024) continue;
     seen.add(id);
-
-    const isAnime = anime.some((a) => String(a.tmdb_id || a.id) === id);
-
     await prisma.content.create({
       data: {
         type: "drama",
         title: title.slice(0, 200),
         description: row.overview ? String(row.overview).slice(0, 500) : null,
-        linkUrl: `https://player.videasy.to/tv/${id}`,
+        linkUrl: `https://vidsrc.to/embed/tv/${id}`,
         coverUrl: row.poster || null,
         linkType: "stream",
-        category: isAnime
-          ? row.year
-            ? `Anime · ${row.year}`
-            : "Anime"
-          : row.year
-            ? `Series · ${row.year}`
-            : "Series",
+        category: y ? `Series · ${y}` : "Series",
         status: "published",
       },
     });
@@ -234,17 +176,12 @@ export async function importElitePlexDrama(force = false): Promise<number> {
     where: { category: "drama" },
     create: {
       category: "drama",
-      name: "ElitePlex Series+Anime",
+      name: "ElitePlex Series",
       url: `${BASE}/api/series`,
       notes: DRAMA_TAG,
       enabled: true,
     },
-    update: {
-      name: "ElitePlex Series+Anime",
-      url: `${BASE}/api/series`,
-      notes: DRAMA_TAG,
-      enabled: true,
-    },
+    update: { notes: DRAMA_TAG, enabled: true },
   });
 
   return total;
@@ -258,7 +195,6 @@ export async function ensureElitePlexContent(
     if (!src || src.notes !== MOVIE_TAG) {
       return importElitePlexMovies(true);
     }
-    await purgeUnplayableMovies();
     const count = await prisma.content.count({
       where: { type: "movie", status: "published" },
     });
