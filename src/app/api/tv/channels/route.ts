@@ -14,9 +14,8 @@ export async function GET(req: Request) {
     const q = searchParams.get("q") || undefined;
     const group = searchParams.get("group") || undefined;
     const limit = Number(searchParams.get("limit") || 120);
-    const source = (searchParams.get("source") as "ea" | "full") || "ea";
 
-    const result = await loadIptvChannels({ q, group, limit, source });
+    const result = await loadIptvChannels({ q, group, limit, liveOnly: true });
 
     return NextResponse.json({
       ...result,
@@ -24,7 +23,6 @@ export async function GET(req: Request) {
     });
   } catch (err) {
     console.error("tv/channels", err);
-    // Hard fallback so UI never empty
     return NextResponse.json({
       channels: PINNED_CHANNELS,
       total: PINNED_CHANNELS.length,
