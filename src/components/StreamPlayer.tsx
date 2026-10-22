@@ -3,11 +3,14 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { detectSocial } from "@/lib/social-embed";
 import { Play, RefreshCw, Volume2, Maximize2 } from "lucide-react";
+import PreRollGate from "@/components/PreRollGate";
 
 type Props = {
   src: string;
   poster?: string | null;
   title?: string;
+  /** When true, user must complete pre-roll ad before embed plays */
+  requirePreRoll?: boolean;
 };
 
 type Source = { provider: string; url: string };
@@ -57,7 +60,12 @@ function buildInAppSources(id: string, media: "movie" | "tv"): Source[] {
   ];
 }
 
-export default function StreamPlayer({ src, poster, title }: Props) {
+export default function StreamPlayer({
+  src,
+  poster,
+  title,
+  requirePreRoll = true,
+}: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
   const [error, setError] = useState("");
@@ -70,6 +78,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
   const [sourceIdx, setSourceIdx] = useState(0);
   const [useProxy, setUseProxy] = useState(true);
   const [needsTap, setNeedsTap] = useState(false);
+  const [contentKey, setContentKey] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -95,6 +104,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     if (social.embedUrl) {
       if (!cancelled) {
         setEmbedUrl(social.embedUrl);
+        setContentKey(social.embedUrl.slice(0, 80));
         setMode("embed");
       }
       return;
@@ -155,6 +165,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
         setSources(list);
         setSourceIdx(0);
         setEmbedUrl(list[0].url);
+        setContentKey(`${tmdb.media}-${tmdb.id}`);
         setMode("embed");
       })();
       return;
@@ -163,6 +174,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     if (/^https?:\/\//i.test(raw)) {
       if (!cancelled) {
         setEmbedUrl(raw);
+        setContentKey(raw.slice(0, 80));
         setMode("embed");
       }
       return;
@@ -289,7 +301,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
   }
 
   if (mode === "embed" && embedUrl) {
-    return (
+    const player = (
       <div className="space-y-3">
         <div
           className="relative w-full rounded-2xl overflow-hidden border border-slate-700 bg-black"
@@ -358,6 +370,16 @@ export default function StreamPlayer({ src, poster, title }: Props) {
         </p>
       </div>
     );
+
+    // Pre-roll only for movie/series embeds — not live HLS TV
+    if (requirePreRoll && contentKey) {
+      return (
+        <PreRollGate contentKey={contentKey} title={title}>
+          {player}
+        </PreRollGate>
+      );
+    }
+    return player;
   }
 
   if (mode === "video" && playUrl) {
