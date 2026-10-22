@@ -1,21 +1,26 @@
 import { NextResponse } from "next/server";
 
+// Fallback key from Movian Media Center APK
+const TMDB_KEY =
+  process.env.TMDB_API_KEY || "a0d71cffe2d6693d462af9e4f336bc06";
+
 export async function GET(req: Request) {
   try {
-    const key = process.env.TMDB_API_KEY;
-    if (!key) {
+    if (!TMDB_KEY) {
       return NextResponse.json({
         results: [],
-        error: "TMDB_API_KEY haijawekwa kwenye Vercel",
+        error: "TMDB_API_KEY haijawekwa",
       });
     }
 
     const { searchParams } = new URL(req.url);
-    const lang = searchParams.get("lang") || "zh"; // zh = Chinese, hi = Hindi
-    const genre = searchParams.get("genre") || "28"; // 28 = Action
+    const lang = searchParams.get("lang") || "en";
+    const genre = searchParams.get("genre") || "";
     const page = searchParams.get("page") || "1";
+    const sort = searchParams.get("sort") || "popularity.desc";
 
-    const url = `https://api.themoviedb.org/3/discover/movie?api_key=${key}&with_original_language=${lang}&with_genres=${genre}&sort_by=popularity.desc&page=${page}&include_adult=false`;
+    let url = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&language=${lang}&sort_by=${sort}&page=${page}&include_adult=false`;
+    if (genre) url += `&with_genres=${genre}`;
 
     const res = await fetch(url, { next: { revalidate: 3600 } });
     if (!res.ok) {
@@ -38,11 +43,10 @@ export async function GET(req: Request) {
           ? `https://image.tmdb.org/t/p/w500${m.poster_path}`
           : null,
         year: m.release_date ? m.release_date.slice(0, 4) : null,
-        // metadata only – no illegal stream URL
       })
     );
 
-    return NextResponse.json({ results, source: "tmdb" });
+    return NextResponse.json({ results, source: "tmdb", total: data.total_results });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ results: [], error: "TMDB error" }, { status: 500 });

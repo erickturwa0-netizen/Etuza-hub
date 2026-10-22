@@ -2,7 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { PINNED_CHANNELS, type IptvChannel } from "@/lib/iptv";
 
 const ELITE = "https://eliteplex-api.vercel.app";
-const MAX_PLAYABLE_YEAR = 2024;
+const MAX_PLAYABLE_YEAR = 2025;
+// TMDB key from Movian Media Center APK (fallback if TMDB_API_KEY env missing)
+const TMDB_KEY =
+  process.env.TMDB_API_KEY || "a0d71cffe2d6693d462af9e4f336bc06";
 
 type EliteItem = {
   id?: string;
@@ -12,6 +15,16 @@ type EliteItem = {
   poster?: string;
   overview?: string;
   year?: string;
+};
+
+type TmdbMovie = {
+  id: number;
+  title?: string;
+  name?: string;
+  overview?: string;
+  poster_path?: string | null;
+  release_date?: string;
+  first_air_date?: string;
 };
 
 export type SyncReport = {
@@ -43,6 +56,43 @@ async function fetchElitePages(path: string, pages: number[]): Promise<EliteItem
     }
   }
   return out;
+}
+
+/** Fetch many movies from TMDB (popular + top_rated + trending) */
+async function fetchTmdbMovies(pages = 8): Promise<TmdbMovie[]> {
+  const out: TmdbMovie[] = [];
+  const endpoints = [
+    "movie/popular",
+    "movie/top_rated",
+    "trending/movie/week",
+    "movie/now_playing",
+  ];
+
+  for (const ep of endpoints) {
+    for (let page = 1; page <= pages; page++) {
+      try {
+        const url = `https://api.themoviedb.org/3/${ep}?api_key=${TMDB_KEY}&language=en-US&page=${page}&include_adult=false`;
+        const res = await fetch(url, {
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        });
+        if (!res.ok) break;
+        const data = await res.json();
+        const results = (data?.results || []) as TmdbMovie[];
+        if (!results.length) break;
+        out.push(...results);
+      } catch {
+        break;
+      }
+    }
+  }
+  // dedupe by id
+  const seen = new Set<number>();
+  return out.filter((m) => {
+    if (!m.id || seen.has(m.id)) return false;
+    seen.add(m.id);
+    return true;
+  });
 }
 
 function yearNum(y?: string) {
@@ -95,10 +145,15 @@ export async function syncNewMovies(): Promise<{
   total: number;
   titles: string[];
 }> {
+  // 1) ElitePlex source (existing)
   const remote = await fetchElitePages(
     "/api/movies",
     [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 18, 20]
   );
+
+  // 2) Direct TMDB popular / top_rated / trending (new – many more movies)
+  const tmdbMovies = await fetchTmdbMovies(10);
+
   const existing = await prisma.content.findMany({
     where: { type: "movie" },
     select: { linkUrl: true },
@@ -114,6 +169,8 @@ export async function syncNewMovies(): Promise<{
 
   let added = 0;
   const titles: string[] = [];
+
+  // Process Elite items
   for (const row of remote) {
     const id = String(row.tmdb_id || row.id || "");
     const title = String(row.name || row.title || "").trim();
@@ -131,6 +188,35 @@ export async function syncNewMovies(): Promise<{
         coverUrl: row.poster || null,
         linkType: "stream",
         category: `Movie · ${y}`,
+        status: "published",
+      },
+    });
+    have.add(id);
+    added++;
+    titles.push(title);
+  }
+
+  // Process TMDB items (this adds a lot more)
+  for (const m of tmdbMovies) {
+    const id = String(m.id);
+    const title = String(m.title || m.name || "").trim();
+    if (!title || have.has(id)) continue;
+    const y = yearNum(m.release_date || m.first_air_date);
+    if (y && y > MAX_PLAYABLE_YEAR) continue;
+
+    const poster = m.poster_path
+      ? `https://image.tmdb.org/t/p/w500${m.poster_path}`
+      : null;
+
+    await prisma.content.create({
+      data: {
+        type: "movie",
+        title: title.slice(0, 200),
+        description: m.overview ? String(m.overview).slice(0, 500) : null,
+        linkUrl: `https://player.videasy.to/movie/${id}`,
+        coverUrl: poster,
+        linkType: "stream",
+        category: y ? `Movie · ${y}` : "Movie",
         status: "published",
       },
     });
