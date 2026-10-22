@@ -33,6 +33,7 @@ export default async function MoviesPage({
   let bannerTitles: string[] = [];
 
   try {
+    // ALWAYS check tag — replaces old unplayable catalog when tag bumps
     await ensureElitePlexContent("movie");
 
     const banner = await getNewContentBanner();
@@ -92,7 +93,9 @@ export default async function MoviesPage({
         <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center">
           <Film className="w-10 h-10 text-slate-600 mx-auto mb-3" />
           <p className="text-slate-400 text-sm">
-            {q ? `Hakuna matokeo ya "${q}"` : "Inapakia movies… fungua tena."}
+            {q
+              ? `Hakuna matokeo ya "${q}"`
+              : "Inapakia movies… fungua tena sekunde chache."}
           </p>
         </div>
       ) : (
@@ -109,7 +112,7 @@ export default async function MoviesPage({
                   <img
                     src={c.coverUrl}
                     alt={c.title}
-                    className="absolute inset-0 w-full h-full object-cover"
+                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition"
                     loading="lazy"
                   />
                 ) : (

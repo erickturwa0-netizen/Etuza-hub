@@ -2,8 +2,8 @@ import { prisma } from "@/lib/prisma";
 
 const BASE = "https://eliteplex-api.vercel.app";
 /** Classics only — known high fill-rate on free embeds */
-const MOVIE_TAG = "eliteplex-github-v9-classics-only";
-const DRAMA_TAG = "eliteplex-drama-v9-playable";
+const MOVIE_TAG = "eliteplex-github-v10-classics-only";
+const DRAMA_TAG = "eliteplex-drama-v10-playable";
 
 type EliteItem = {
   id?: string;
@@ -63,8 +63,6 @@ const CLASSIC_SEEDS: { id: string; title: string; year: string; poster?: string 
   { id: "299537", title: "Captain Marvel", year: "2019", poster: "https://image.tmdb.org/t/p/w500/AtsgWhDnVTflPn5A3vCQ3cZZaot.jpg" },
   { id: "634649", title: "Spider-Man: No Way Home", year: "2021", poster: "https://image.tmdb.org/t/p/w500/1g0dhYtq4irTY1GPXvft6k4YLjm.jpg" },
   { id: "315635", title: "Spider-Man: Homecoming", year: "2017", poster: "https://image.tmdb.org/t/p/w500/c24sv2weTHPsmDa7jEMN0mDcP94.jpg" },
-  { id: "429617", title: "Spider-Man: Far From Home", year: "2019", poster: "https://image.tmdb.org/t/p/w500/4q2NXl87XN5O0B0gB0xZ3b5Z3bZ.jpg" },
-  { id: "766507", title: "Prey", year: "2022", poster: "https://image.tmdb.org/t/p/w500/ujr5LktWaK0iY4h0W9m6cV8l3bQ.jpg" },
   { id: "361743", title: "Top Gun: Maverick", year: "2022", poster: "https://image.tmdb.org/t/p/w500/62HCnUTziyWcpDaBO2i1DX17ljH.jpg" },
   { id: "505642", title: "Black Panther: Wakanda Forever", year: "2022", poster: "https://image.tmdb.org/t/p/w500/sv1xJUazXeYqALzczSZ3O6nkH75.jpg" },
 ];
@@ -100,6 +98,7 @@ export async function importElitePlexMovies(force = false): Promise<number> {
     return prisma.content.count({ where: { type: "movie", status: "published" } });
   }
 
+  // Wipe ALL old movies (including unplayable)
   await prisma.content.deleteMany({ where: { type: "movie" } });
 
   let total = 0;
@@ -109,6 +108,7 @@ export async function importElitePlexMovies(force = false): Promise<number> {
         type: "movie",
         title: c.title.slice(0, 200),
         description: `Year ${c.year}`,
+        // VidSrc first — faster than Videasy for most titles
         linkUrl: `https://vidsrc.to/embed/movie/${c.id}`,
         coverUrl: c.poster || null,
         linkType: "stream",
