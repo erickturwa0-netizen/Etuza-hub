@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { detectSocial } from "@/lib/social-embed";
 import { Play, RefreshCw, Maximize2 } from "lucide-react";
 
@@ -30,91 +30,132 @@ function extractTmdbEmbed(src: string): { id: string; media: "movie" | "tv" } | 
   return { id: m[2], media: m[1].toLowerCase() as "movie" | "tv" };
 }
 
-/** Working embeds only */
+/** Fastest common free embeds first */
 function buildSources(id: string, media: "movie" | "tv"): Source[] {
   if (media === "movie") {
     return [
-      { provider: "VidSrc", url: "https://vidsrc.to/embed/movie/" + id },
+      {
+        provider: "MultiEmbed",
+        url: "https://multiembed.mov/?video_id=" + id + "&tmdb=1",
+      },
+      { provider: "VidSrc.xyz", url: "https://vidsrc.xyz/embed/movie/" + id },
       { provider: "2Embed", url: "https://www.2embed.cc/embed/" + id },
-      { provider: "EmbedSU", url: "https://embed.su/embed/movie/" + id },
+      { provider: "VidSrc", url: "https://vidsrc.to/embed/movie/" + id },
     ];
   }
   return [
-    { provider: "VidSrc", url: "https://vidsrc.to/embed/tv/" + id },
+    {
+      provider: "MultiEmbed",
+      url: "https://multiembed.mov/?video_id=" + id + "&tmdb=1&s=1&e=1",
+    },
+    { provider: "VidSrc.xyz", url: "https://vidsrc.xyz/embed/tv/" + id },
     { provider: "2Embed", url: "https://www.2embed.cc/embedtv/" + id },
-    { provider: "EmbedSU", url: "https://embed.su/embed/tv/" + id },
+    { provider: "VidSrc", url: "https://vidsrc.to/embed/tv/" + id },
   ];
 }
 
+type Resolved =
+  | { kind: "embed"; url: string; sources: Source[]; idx: number }
+  | { kind: "hls"; url: string; raw: string }
+  | { kind: "video"; url: string }
+  | { kind: "fail"; error: string };
+
+function resolveSrc(src: string): Resolved {
+  const raw = (src || "").trim();
+  if (!raw) return { kind: "fail", error: "Hakuna link." };
+
+  const social = detectSocial(raw);
+  if (social.embedUrl) {
+    return { kind: "embed", url: social.embedUrl, sources: [], idx: 0 };
+  }
+
+  if (isHls(raw)) {
+    return { kind: "hls", url: proxyHls(raw), raw };
+  }
+
+  if (isDirectMedia(raw)) {
+    return { kind: "video", url: raw };
+  }
+
+  const tmdb = extractTmdbEmbed(raw);
+  if (tmdb) {
+    const list = buildSources(tmdb.id, tmdb.media);
+    return { kind: "embed", url: list[0].url, sources: list, idx: 0 };
+  }
+
+  if (/^https?:\/\//i.test(raw)) {
+    return { kind: "embed", url: raw, sources: [], idx: 0 };
+  }
+
+  return { kind: "fail", error: "Link haitambuliwi." };
+}
+
 export default function StreamPlayer({ src, poster, title }: Props) {
+  // Resolve on first paint — no "Inapakia" delay for embeds
+  const initial = useMemo(() => resolveSrc(src), [src]);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
-  const [error, setError] = useState("");
-  const [playUrl, setPlayUrl] = useState<string | null>(null);
-  const [rawHls, setRawHls] = useState<string | null>(null);
-  const [embedUrl, setEmbedUrl] = useState<string | null>(null);
-  const [mode, setMode] = useState<"loading" | "video" | "embed" | "fail">("loading");
-  const [sources, setSources] = useState<Source[]>([]);
-  const [sourceIdx, setSourceIdx] = useState(0);
+  const [error, setError] = useState(
+    initial.kind === "fail" ? initial.error : ""
+  );
+  const [sources, setSources] = useState<Source[]>(
+    initial.kind === "embed" ? initial.sources : []
+  );
+  const [sourceIdx, setSourceIdx] = useState(
+    initial.kind === "embed" ? initial.idx : 0
+  );
+  const [embedUrl, setEmbedUrl] = useState<string | null>(
+    initial.kind === "embed" ? initial.url : null
+  );
+  const [playUrl, setPlayUrl] = useState<string | null>(
+    initial.kind === "hls" || initial.kind === "video" ? initial.url : null
+  );
+  const [rawHls, setRawHls] = useState<string | null>(
+    initial.kind === "hls" ? initial.raw : null
+  );
+  const [mode, setMode] = useState<"video" | "embed" | "fail">(
+    initial.kind === "fail"
+      ? "fail"
+      : initial.kind === "embed"
+        ? "embed"
+        : "video"
+  );
   const [useProxy, setUseProxy] = useState(true);
   const [needsTap, setNeedsTap] = useState(false);
 
   useEffect(() => {
-    setError("");
-    setMode("loading");
-    setPlayUrl(null);
+    const r = resolveSrc(src);
+    if (r.kind === "fail") {
+      setMode("fail");
+      setError(r.error);
+      setEmbedUrl(null);
+      setPlayUrl(null);
+      return;
+    }
+    if (r.kind === "embed") {
+      setMode("embed");
+      setEmbedUrl(r.url);
+      setSources(r.sources);
+      setSourceIdx(r.idx);
+      setPlayUrl(null);
+      setRawHls(null);
+      setError("");
+      return;
+    }
+    if (r.kind === "hls") {
+      setMode("video");
+      setPlayUrl(r.url);
+      setRawHls(r.raw);
+      setEmbedUrl(null);
+      setError("");
+      return;
+    }
+    setMode("video");
+    setPlayUrl(r.url);
     setRawHls(null);
     setEmbedUrl(null);
-    setSources([]);
-    setSourceIdx(0);
-    setUseProxy(true);
-    setNeedsTap(false);
-
-    const raw = (src || "").trim();
-    if (!raw) {
-      setMode("fail");
-      setError("Hakuna link.");
-      return;
-    }
-
-    const social = detectSocial(raw);
-    if (social.embedUrl) {
-      setEmbedUrl(social.embedUrl);
-      setMode("embed");
-      return;
-    }
-
-    if (isHls(raw)) {
-      setRawHls(raw);
-      setPlayUrl(proxyHls(raw));
-      setMode("video");
-      return;
-    }
-
-    if (isDirectMedia(raw)) {
-      setPlayUrl(raw);
-      setMode("video");
-      return;
-    }
-
-    const tmdb = extractTmdbEmbed(raw);
-    if (tmdb) {
-      const list = buildSources(tmdb.id, tmdb.media);
-      setSources(list);
-      setSourceIdx(0);
-      setEmbedUrl(list[0].url);
-      setMode("embed");
-      return;
-    }
-
-    if (/^https?:\/\//i.test(raw)) {
-      setEmbedUrl(raw);
-      setMode("embed");
-      return;
-    }
-
-    setMode("fail");
-    setError("Link haitambuliwi.");
+    setError("");
   }, [src]);
 
   const attachHls = useCallback(async (url: string) => {
@@ -146,9 +187,9 @@ export default function StreamPlayer({ src, poster, title }: Props) {
       if (Hls.isSupported()) {
         const instance = new Hls({
           enableWorker: true,
-          maxBufferLength: 30,
-          fragLoadingMaxRetry: 4,
-          manifestLoadingMaxRetry: 3,
+          maxBufferLength: 20,
+          fragLoadingMaxRetry: 3,
+          manifestLoadingMaxRetry: 2,
         });
         instance.loadSource(url);
         instance.attachMedia(el);
@@ -208,17 +249,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     window.location.href = "/play?" + q.toString();
   }
 
-  if (mode === "loading") {
-    return (
-      <div
-        className="rounded-2xl border border-slate-800 bg-black flex items-center justify-center text-slate-400 text-sm"
-        style={{ minHeight: 220, aspectRatio: "16/9" }}
-      >
-        Inapakia...
-      </div>
-    );
-  }
-
   if (mode === "embed" && embedUrl) {
     return (
       <div className="space-y-3">
@@ -233,7 +263,8 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             className="absolute inset-0 w-full h-full border-0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
-            referrerPolicy="origin"
+            referrerPolicy="no-referrer"
+            loading="eager"
           />
         </div>
 
@@ -283,7 +314,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
 
         <p className="text-[11px] text-slate-500">
           {(sources[sourceIdx] && sources[sourceIdx].provider) || "player"} ·
-          kama haichezi bofya Source nyingine
+          ikichelewa bofya Source nyingine
         </p>
       </div>
     );
