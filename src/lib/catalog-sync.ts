@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { PINNED_CHANNELS, type IptvChannel } from "@/lib/iptv";
 
 const ELITE = "https://eliteplex-api.vercel.app";
+const MAX_PLAYABLE_YEAR = 2024;
 
 type EliteItem = {
   id?: string;
@@ -20,6 +21,7 @@ export type SyncReport = {
   dramaTotal: number;
   tvLive: number;
   tvDead: string[];
+  newTitles: string[];
   ranAt: string;
 };
 
@@ -48,11 +50,57 @@ function yearNum(y?: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Add NEW movies from ElitePlex only (no TMDB key) */
-export async function syncNewMovies(): Promise<{ added: number; total: number }> {
+/** Persist banner of newly added titles (shown on movies page). */
+async function saveNewContentBanner(titles: string[]) {
+  if (!titles.length) return;
+  const payload = JSON.stringify({
+    titles: titles.slice(0, 12),
+    at: new Date().toISOString(),
+  });
+  await prisma.apiSource.upsert({
+    where: { category: "new_content_banner" },
+    create: {
+      category: "new_content_banner",
+      name: "New content banner",
+      url: "",
+      notes: payload,
+      enabled: true,
+    },
+    update: { notes: payload, enabled: true },
+  });
+}
+
+export async function getNewContentBanner(): Promise<{
+  titles: string[];
+  at: string | null;
+} | null> {
+  try {
+    const row = await prisma.apiSource.findUnique({
+      where: { category: "new_content_banner" },
+    });
+    if (!row?.notes || !row.enabled) return null;
+    const data = JSON.parse(row.notes) as { titles?: string[]; at?: string };
+    if (!data.titles?.length) return null;
+    // Hide banner older than 7 days
+    if (data.at) {
+      const age = Date.now() - new Date(data.at).getTime();
+      if (age > 7 * 24 * 60 * 60 * 1000) return null;
+    }
+    return { titles: data.titles, at: data.at || null };
+  } catch {
+    return null;
+  }
+}
+
+/** Add NEW playable movies only (year <= 2024). */
+export async function syncNewMovies(): Promise<{
+  added: number;
+  total: number;
+  titles: string[];
+}> {
   const remote = await fetchElitePages(
     "/api/movies",
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]
+    [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 18, 20]
   );
   const existing = await prisma.content.findMany({
     where: { type: "movie" },
@@ -68,90 +116,46 @@ export async function syncNewMovies(): Promise<{ added: number; total: number }>
   );
 
   let added = 0;
+  const titles: string[] = [];
   for (const row of remote) {
     const id = String(row.tmdb_id || row.id || "");
     const title = String(row.name || row.title || "").trim();
     if (!/^\d{2,7}$/.test(id) || !title || have.has(id)) continue;
     const y = yearNum(row.year);
+    if (!y || y > MAX_PLAYABLE_YEAR) continue;
     await prisma.content.create({
       data: {
         type: "movie",
         title: title.slice(0, 200),
         description: row.overview
           ? String(row.overview).slice(0, 500)
-          : y
-            ? `Year ${y}`
-            : null,
+          : `Year ${y}`,
         linkUrl: `https://player.videasy.to/movie/${id}`,
         coverUrl: row.poster || null,
         linkType: "stream",
-        category: y ? `Movie · ${y}` : "Movie",
+        category: `Movie · ${y}`,
         status: "published",
       },
     });
     have.add(id);
     added++;
+    titles.push(title);
   }
 
-  await prisma.apiSource.upsert({
-    where: { category: "movie" },
-    create: {
-      category: "movie",
-      name: "ElitePlex Movies",
-      url: `${ELITE}/api/movies`,
-      notes: `sync-${new Date().toISOString()}`,
-      enabled: true,
-    },
-    update: { notes: `sync-${new Date().toISOString()}`, enabled: true },
-  });
+  if (titles.length) await saveNewContentBanner(titles);
 
   const total = await prisma.content.count({
     where: { type: "movie", status: "published" },
   });
-  return { added, total };
+  return { added, total, titles };
 }
 
-/** ElitePlex series + TVMaze (no API key) */
-export async function syncNewDrama(): Promise<{ added: number; total: number }> {
-  const series = await fetchElitePages(
-    "/api/series",
-    [1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20]
-  );
-
-  // TVMaze free pages 0–4 (~1000 shows metadata)
-  const tvmaze: EliteItem[] = [];
-  for (const page of [0, 1, 2, 3, 4]) {
-    try {
-      const res = await fetch(`https://api.tvmaze.com/shows?page=${page}`, {
-        headers: { Accept: "application/json", "User-Agent": "ETUZA-HUB/1.0" },
-        cache: "no-store",
-      });
-      if (!res.ok) break;
-      const data = (await res.json()) as {
-        id: number;
-        name: string;
-        summary?: string;
-        image?: { medium?: string } | null;
-        premiered?: string;
-      }[];
-      for (const s of data || []) {
-        tvmaze.push({
-          id: String(s.id),
-          tmdb_id: String(s.id),
-          name: s.name,
-          overview: s.summary?.replace(/<[^>]+>/g, "").slice(0, 400),
-          poster: s.image?.medium || undefined,
-          year: s.premiered?.slice(0, 4),
-        });
-      }
-    } catch {
-      break;
-    }
-  }
+export async function syncNewDrama(): Promise<{ added: number; total: number; titles: string[] }> {
+  const series = await fetchElitePages("/api/series", [1, 2, 3, 4, 5, 6, 8, 10]);
 
   const existing = await prisma.content.findMany({
     where: { type: "drama" },
-    select: { linkUrl: true, title: true },
+    select: { linkUrl: true },
   });
   const haveIds = new Set(
     existing
@@ -161,15 +165,15 @@ export async function syncNewDrama(): Promise<{ added: number; total: number }> 
       })
       .filter(Boolean)
   );
-  const haveTitles = new Set(existing.map((e) => e.title.toLowerCase()));
 
   let added = 0;
-
-  // ElitePlex series → videasy player
+  const titles: string[] = [];
   for (const row of series) {
     const id = String(row.tmdb_id || row.id || "");
-    const title = String(row.name || row.title || "").trim();
+    const title dec = String(row.name || row.title || "").trim();
     if (!/^\d{2,7}$/.test(id) || !title || haveIds.has(id)) continue;
+    const y = yearNum(row.year);
+    if (y && y > MAX_PLAYABLE_YEAR) continue;
     await prisma.content.create({
       data: {
         type: "drama",
@@ -178,59 +182,22 @@ export async function syncNewDrama(): Promise<{ added: number; total: number }> 
         linkUrl: `https://player.videasy.to/tv/${id}`,
         coverUrl: row.poster || null,
         linkType: "stream",
-        category: row.year ? `Series · ${row.year}` : "Series",
+        category: y ? `Series · ${y}` : "Series",
         status: "published",
       },
     });
     haveIds.add(id);
-    haveTitles.add(title.toLowerCase());
     added++;
+    titles.push(title);
   }
-
-  // TVMaze — link to official page (metadata expand); skip if title already exists
-  for (const row of tvmaze) {
-    const title = String(row.name || "").trim();
-    const id = String(row.id || "");
-    if (!title || !id || haveTitles.has(title.toLowerCase())) continue;
-    await prisma.content.create({
-      data: {
-        type: "drama",
-        title: title.slice(0, 200),
-        description: row.overview ? String(row.overview).slice(0, 500) : null,
-        linkUrl: `https://www.tvmaze.com/shows/${id}`,
-        coverUrl: row.poster || null,
-        linkType: "stream",
-        category: row.year ? `TVMaze · ${row.year}` : "TVMaze",
-        status: "published",
-      },
-    });
-    haveTitles.add(title.toLowerCase());
-    added++;
-  }
-
-  await prisma.apiSource.upsert({
-    where: { category: "drama" },
-    create: {
-      category: "drama",
-      name: "ElitePlex + TVMaze",
-      url: `${ELITE}/api/series`,
-      notes: `sync-${new Date().toISOString()}`,
-      enabled: true,
-    },
-    update: {
-      name: "ElitePlex + TVMaze",
-      notes: `sync-${new Date().toISOString()}`,
-      enabled: true,
-    },
-  });
 
   const total = await prisma.content.count({
     where: { type: "drama", status: "published" },
   });
-  return { added, total };
+  return { added, total, titles };
 }
 
-export async function isStreamLive(url: string, timeoutMs = 6000): Promise<boolean> {
+export async function isStreamLive(url: string, timeoutMs = 5000): Promise<boolean> {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -254,24 +221,75 @@ export async function isStreamLive(url: string, timeoutMs = 6000): Promise<boole
   }
 }
 
+/** Health-check TV and cache live IDs for 6h */
 export async function healthCheckTv(): Promise<{
   live: IptvChannel[];
   dead: string[];
 }> {
   const live: IptvChannel[] = [];
   const dead: string[] = [];
-  for (const ch of PINNED_CHANNELS) {
-    const ok = await isStreamLive(ch.url);
-    if (ok) live.push(ch);
-    else dead.push(ch.title);
+  const liveIds: string[] = [];
+
+  // parallel batches of 6
+  const batch = 6;
+  for (let i = 0; i < PINNED_CHANNELS.length; i += batch) {
+    const slice = PINNED_CHANNELS.slice(i, i + batch);
+    const results = await Promise.all(
+      slice.map(async (ch) => ({ ch, ok: await isStreamLive(ch.url) }))
+    );
+    for (const r of results) {
+      if (r.ok) {
+        live.push(r.ch);
+        liveIds.push(r.ch.id);
+      } else {
+        dead.push(r.ch.title);
+      }
+    }
   }
+
+  await prisma.apiSource.upsert({
+    where: { category: "tv_live_ids" },
+    create: {
+      category: "tv_live_ids",
+      name: "TV live channel ids",
+      url: "",
+      notes: JSON.stringify({ ids: liveIds, at: new Date().toISOString() }),
+      enabled: true,
+    },
+    update: {
+      notes: JSON.stringify({ ids: liveIds, at: new Date().toISOString() }),
+      enabled: true,
+    },
+  });
+
   return { live, dead };
+}
+
+export async function getCachedLiveTvIds(): Promise<string[] | null> {
+  try {
+    const row = await prisma.apiSource.findUnique({
+      where: { category: "tv_live_ids" },
+    });
+    if (!row?.notes) return null;
+    const data = JSON.parse(row.notes) as { ids?: string[]; at?: string };
+    if (!data.ids?.length) return null;
+    if (data.at) {
+      const age = Date.now() - new Date(data.at).getTime();
+      // cache 12 hours
+      if (age > 12 * 60 * 60 * 1000) return null;
+    }
+    return data.ids;
+  } catch {
+    return null;
+  }
 }
 
 export async function runCatalogSync(): Promise<SyncReport> {
   const movies = await syncNewMovies();
   const drama = await syncNewDrama();
   const tv = await healthCheckTv();
+  const newTitles = [...movies.titles, ...drama.titles].slice(0, 12);
+  if (newTitles.length) await saveNewContentBanner(newTitles);
   return {
     moviesAdded: movies.added,
     moviesTotal: movies.total,
@@ -279,6 +297,7 @@ export async function runCatalogSync(): Promise<SyncReport> {
     dramaTotal: drama.total,
     tvLive: tv.live.length,
     tvDead: tv.dead,
+    newTitles,
     ranAt: new Date().toISOString(),
   };
 }

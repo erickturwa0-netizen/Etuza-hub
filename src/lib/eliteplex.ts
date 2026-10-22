@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/prisma";
 
 const BASE = "https://eliteplex-api.vercel.app";
-/** Bump tag → force re-import with 2026-first order */
-const MOVIE_TAG = "eliteplex-github-v7-2026first";
-const DRAMA_TAG = "eliteplex-drama-v7";
+/** Playable-only: classics + API titles year <= 2024 */
+const MOVIE_TAG = "eliteplex-github-v8-playable";
+const DRAMA_TAG = "eliteplex-drama-v8-playable";
+const MAX_PLAYABLE_YEAR = 2024;
 
 type EliteItem = {
   id?: string;
@@ -41,6 +42,12 @@ const CLASSIC_SEEDS: { id: string; title: string; year: string; poster?: string 
   { id: "76600", title: "Avatar: The Way of Water", year: "2022", poster: "https://image.tmdb.org/t/p/w500/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg" },
   { id: "1022789", title: "Inside Out 2", year: "2024", poster: "https://image.tmdb.org/t/p/w500/vpnVM9B6NMmQpWeZvzLvDESb2QY.jpg" },
   { id: "569094", title: "Spider-Man: Across the Spider-Verse", year: "2023", poster: "https://image.tmdb.org/t/p/w500/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg" },
+  { id: "324857", title: "Spider-Man: Into the Spider-Verse", year: "2018", poster: "https://image.tmdb.org/t/p/w500/iiZZtoqCyX7hA6Ftg37o56mZvfk.jpg" },
+  { id: "11", title: "Star Wars", year: "1977", poster: "https://image.tmdb.org/t/p/w500/6FfCtAuVAW8XMvVgm8HDqZQDpYN.jpg" },
+  { id: "1891", title: "The Empire Strikes Back", year: "1980", poster: "https://image.tmdb.org/t/p/w500/nNAeTmF4ntnwRyxu6XYd2XNzrtF.jpg" },
+  { id: "424", title: "Schindler's List", year: "1993", poster: "https://image.tmdb.org/t/p/w500/sF1U4EUQS8YHUYjNl3pMGNIQyr0.jpg" },
+  { id: "129", title: "Spirited Away", year: "2001", poster: "https://image.tmdb.org/t/p/w500/39wmItIWsg5sZMyRUHLkWBcuVCM.jpg" },
+  { id: "497", title: "The Green Mile", year: "1999", poster: "https://image.tmdb.org/t/p/w500/8VG8fDNiy50H4FedGwdSVUPoaJe.jpg" },
 ];
 
 async function fetchPages(path: string, pages: number[]): Promise<EliteItem[]> {
@@ -69,47 +76,64 @@ function yearNum(y?: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Newest first: 2026 → 2025 → older */
 function sortByYearDesc(a: EliteItem, b: EliteItem) {
   return yearNum(b.year) - yearNum(a.year);
+}
+
+/** Remove unplayable new titles (2025+) from DB */
+export async function purgeUnplayableMovies(): Promise<number> {
+  const all = await prisma.content.findMany({
+    where: { type: "movie" },
+    select: { id: true, category: true, title: true },
+  });
+  const ids: string[] = [];
+  for (const row of all) {
+    const m = (row.category || "").match(/(20\d{2}|19\d{2})/);
+    const y = m ? parseInt(m[1], 10) : 0;
+    if (y >= 2025) ids.push(row.id);
+  }
+  if (ids.length) {
+    await prisma.content.deleteMany({ where: { id: { in: ids } } });
+  }
+  return ids.length;
 }
 
 export async function importElitePlexMovies(force = false): Promise<number> {
   const existing = await prisma.apiSource.findUnique({ where: { category: "movie" } });
   if (!force && existing?.notes === MOVIE_TAG) {
+    await purgeUnplayableMovies();
     return prisma.content.count({ where: { type: "movie", status: "published" } });
   }
 
   const remote = await fetchPages(
     "/api/movies",
-    [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]
+    [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 18, 20]
   );
 
   const byId = new Map<string, EliteItem>();
 
-  // Remote first so 2026 from API wins over classics list order
+  for (const c of CLASSIC_SEEDS) {
+    byId.set(c.id, {
+      tmdb_id: c.id,
+      id: c.id,
+      name: c.title,
+      year: c.year,
+      poster: c.poster,
+    });
+  }
+
+  // API titles only if year known and <= MAX_PLAYABLE_YEAR
   for (const row of remote) {
     const id = String(row.tmdb_id || row.id || "");
     if (!/^\d{2,7}$/.test(id)) continue;
-    byId.set(id, row);
-  }
-
-  for (const c of CLASSIC_SEEDS) {
-    if (!byId.has(c.id)) {
-      byId.set(c.id, {
-        tmdb_id: c.id,
-        id: c.id,
-        name: c.title,
-        year: c.year,
-        poster: c.poster,
-      });
-    }
+    const y = yearNum(row.year);
+    if (!y || y > MAX_PLAYABLE_YEAR) continue;
+    if (!byId.has(id)) byId.set(id, row);
   }
 
   await prisma.content.deleteMany({ where: { type: "movie" } });
 
   const ordered = [...byId.values()].sort(sortByYearDesc);
-
   let total = 0;
   for (const row of ordered) {
     const id = String(row.tmdb_id || row.id || "");
@@ -139,13 +163,13 @@ export async function importElitePlexMovies(force = false): Promise<number> {
     where: { category: "movie" },
     create: {
       category: "movie",
-      name: "ElitePlex Movies",
+      name: "ElitePlex Movies (playable)",
       url: `${BASE}/api/movies`,
       notes: MOVIE_TAG,
       enabled: true,
     },
     update: {
-      name: "ElitePlex Movies",
+      name: "ElitePlex Movies (playable)",
       url: `${BASE}/api/movies`,
       notes: MOVIE_TAG,
       enabled: true,
@@ -161,10 +185,10 @@ export async function importElitePlexDrama(force = false): Promise<number> {
     return prisma.content.count({ where: { type: "drama", status: "published" } });
   }
 
-  const series = await fetchPages("/api/series", [1, 2, 3, 4, 5, 6, 8, 10, 12]);
+  const series = await fetchPages("/api/series", [1, 2, 3, 4, 5, 6, 8, 10]);
   let anime: EliteItem[] = [];
   try {
-    anime = await fetchPages("/api/anime", [1, 2, 3, 4, 5]);
+    anime = await fetchPages("/api/anime", [1, 2, 3]);
   } catch {
     /* optional */
   }
@@ -179,6 +203,8 @@ export async function importElitePlexDrama(force = false): Promise<number> {
     const title = String(row.name || row.title || "").trim();
     if (!id || !title || seen.has(id)) continue;
     if (!/^\d{2,7}$/.test(id)) continue;
+    const y = yearNum(row.year);
+    if (y && y > MAX_PLAYABLE_YEAR) continue;
     seen.add(id);
 
     const isAnime = anime.some((a) => String(a.tmdb_id || a.id) === id);
@@ -232,6 +258,7 @@ export async function ensureElitePlexContent(
     if (!src || src.notes !== MOVIE_TAG) {
       return importElitePlexMovies(true);
     }
+    await purgeUnplayableMovies();
     const count = await prisma.content.count({
       where: { type: "movie", status: "published" },
     });
