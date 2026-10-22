@@ -30,46 +30,91 @@ export async function POST(req: Request) {
     const isAdmin =
       userCount === 0 || (adminEmail.length > 0 && email === adminEmail);
 
-    // Resolve inviter
     let referredById: string | null = null;
     const rawInvite = (parsed.data.inviteCode || "").trim().toUpperCase();
     if (rawInvite) {
-      const inviter = await prisma.user.findFirst({
-        where: { inviteCode: rawInvite },
-        select: { id: true },
-      });
-      if (inviter) referredById = inviter.id;
+      try {
+        const inviter = await prisma.user.findFirst({
+          where: { inviteCode: rawInvite },
+          select: { id: true },
+        });
+        if (inviter) referredById = inviter.id;
+      } catch {
+        /* invite_code column may not exist yet */
+      }
     }
 
-    // Unique invite code for new user
     let inviteCode = generateInviteCode();
-    for (let i = 0; i < 5; i++) {
-      const clash = await prisma.user.findFirst({ where: { inviteCode } });
-      if (!clash) break;
-      inviteCode = generateInviteCode();
+    try {
+      for (let i = 0; i < 5; i++) {
+        const clash = await prisma.user.findFirst({ where: { inviteCode } });
+        if (!clash) break;
+        inviteCode = generateInviteCode();
+      }
+    } catch {
+      /* ignore */
     }
 
     const passwordHash = await hashPassword(parsed.data.password);
-    const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        fullName: parsed.data.fullName?.trim() || null,
-        role: isAdmin ? "admin" : "user",
-        points: POINTS.SIGNUP,
-        inviteCode,
-        referredById,
-        pointLogs: {
-          create: {
-            amount: POINTS.SIGNUP,
-            reason: "signup_bonus",
-            meta: "Point 10 za kuanza",
+    const fullName = parsed.data.fullName?.trim() || null;
+    const role = isAdmin ? "admin" : "user";
+
+    // Try full points schema first; fallback if DB not migrated yet
+    let user: {
+      id: string;
+      email: string;
+      fullName: string | null;
+      role: string;
+      points?: number;
+      inviteCode?: string | null;
+    };
+
+    try {
+      user = await prisma.user.create({
+        data: {
+          email,
+          passwordHash,
+          fullName,
+          role,
+          points: POINTS.SIGNUP,
+          inviteCode,
+          referredById,
+          pointLogs: {
+            create: {
+              amount: POINTS.SIGNUP,
+              reason: "signup_bonus",
+              meta: "Point 10 za kuanza",
+            },
           },
         },
-      },
-    });
+      });
+    } catch (e1) {
+      console.error("signup with points failed, fallback", e1);
+      try {
+        user = await prisma.user.create({
+          data: {
+            email,
+            passwordHash,
+            fullName,
+            role,
+            points: POINTS.SIGNUP,
+            inviteCode,
+          },
+        });
+      } catch (e2) {
+        console.error("signup mid fallback failed", e2);
+        // Oldest schema: only email/password/name/role
+        user = await prisma.user.create({
+          data: {
+            email,
+            passwordHash,
+            fullName,
+            role,
+          },
+        });
+      }
+    }
 
-    // Reward inviter
     if (referredById) {
       try {
         await prisma.user.update({
@@ -103,12 +148,17 @@ export async function POST(req: Request) {
         email: user.email,
         fullName: user.fullName,
         role: user.role,
-        points: user.points,
-        inviteCode: user.inviteCode,
+        points: user.points ?? POINTS.SIGNUP,
+        inviteCode: user.inviteCode ?? null,
       },
     });
   } catch (err) {
     console.error("signup error", err);
-    return NextResponse.json({ error: "Imeshindikana kuunda account" }, { status: 500 });
+    const msg = err instanceof Error ? err.message : "unknown";
+    // Help debug without leaking secrets
+    const hint = msg.includes("column") || msg.includes("does not exist")
+      ? "Database haijasasishwa — run prisma db push"
+      : "Imeshindikana kuunda account";
+    return NextResponse.json({ error: hint }, { status: 500 });
   }
 }

@@ -10,7 +10,7 @@ export async function GET() {
   }
 
   try {
-    let user = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id: session.userId },
       select: {
         id: true,
@@ -26,38 +26,44 @@ export async function GET() {
       return NextResponse.json({ user: null }, { status: 401 });
     }
 
-    // Backfill invite code for old accounts
+    // Backfill invite code when column exists
     if (!user.inviteCode) {
-      let code = generateInviteCode();
-      for (let i = 0; i < 5; i++) {
-        const clash = await prisma.user.findFirst({ where: { inviteCode: code } });
-        if (!clash) break;
-        code = generateInviteCode();
+      try {
+        let code = generateInviteCode();
+        for (let i = 0; i < 5; i++) {
+          const clash = await prisma.user.findFirst({ where: { inviteCode: code } });
+          if (!clash) break;
+          code = generateInviteCode();
+        }
+        const updated = await prisma.user.update({
+          where: { id: user.id },
+          data: { inviteCode: code },
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            role: true,
+            points: true,
+            inviteCode: true,
+          },
+        });
+        return NextResponse.json({ user: updated });
+      } catch {
+        /* column may not exist */
       }
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: { inviteCode: code },
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          role: true,
-          points: true,
-          inviteCode: true,
-        },
-      });
     }
 
     return NextResponse.json({ user });
   } catch (e) {
     console.error("me", e);
+    // Session still valid even if points columns missing
     return NextResponse.json({
       user: {
         id: session.userId,
         email: session.email,
         fullName: session.fullName,
         role: session.role,
-        points: 0,
+        points: 10,
         inviteCode: null,
       },
     });

@@ -3,13 +3,12 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { detectSocial } from "@/lib/social-embed";
 import { Play, RefreshCw, Volume2, Maximize2 } from "lucide-react";
-import PreRollGate from "@/components/PreRollGate";
 
 type Props = {
   src: string;
   poster?: string | null;
   title?: string;
-  /** When true, user must complete pre-roll ad before embed plays */
+  /** Optional — currently off so movies always play */
   requirePreRoll?: boolean;
 };
 
@@ -64,7 +63,6 @@ export default function StreamPlayer({
   src,
   poster,
   title,
-  requirePreRoll = true,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
@@ -78,7 +76,6 @@ export default function StreamPlayer({
   const [sourceIdx, setSourceIdx] = useState(0);
   const [useProxy, setUseProxy] = useState(true);
   const [needsTap, setNeedsTap] = useState(false);
-  const [contentKey, setContentKey] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -104,7 +101,6 @@ export default function StreamPlayer({
     if (social.embedUrl) {
       if (!cancelled) {
         setEmbedUrl(social.embedUrl);
-        setContentKey(social.embedUrl.slice(0, 80));
         setMode("embed");
       }
       return;
@@ -165,7 +161,6 @@ export default function StreamPlayer({
         setSources(list);
         setSourceIdx(0);
         setEmbedUrl(list[0].url);
-        setContentKey(`${tmdb.media}-${tmdb.id}`);
         setMode("embed");
       })();
       return;
@@ -174,7 +169,6 @@ export default function StreamPlayer({
     if (/^https?:\/\//i.test(raw)) {
       if (!cancelled) {
         setEmbedUrl(raw);
-        setContentKey(raw.slice(0, 80));
         setMode("embed");
       }
       return;
@@ -301,7 +295,7 @@ export default function StreamPlayer({
   }
 
   if (mode === "embed" && embedUrl) {
-    const player = (
+    return (
       <div className="space-y-3">
         <div
           className="relative w-full rounded-2xl overflow-hidden border border-slate-700 bg-black"
@@ -351,8 +345,7 @@ export default function StreamPlayer({
                 key={s.provider + i}
                 type="button"
                 onClick={() => switchSource(i)}
-                className={`px-2 py-1 rounded-md text-[10px] border ${
-                  i === sourceIdx
+                className={`px-2 py-1 rounded-md text-[10px] border ${\n                  i === sourceIdx
                     ? "border-violet-500 bg-violet-600/30 text-violet-200"
                     : "border-slate-700 text-slate-400"
                 }`}
@@ -370,16 +363,6 @@ export default function StreamPlayer({
         </p>
       </div>
     );
-
-    // Pre-roll only for movie/series embeds — not live HLS TV
-    if (requirePreRoll && contentKey) {
-      return (
-        <PreRollGate contentKey={contentKey} title={title}>
-          {player}
-        </PreRollGate>
-      );
-    }
-    return player;
   }
 
   if (mode === "video" && playUrl) {
