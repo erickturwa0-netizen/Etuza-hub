@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import LogoutButton from "./LogoutButton";
+import PointsBadge from "./PointsBadge";
 
 const links = [
   { href: "/", label: "Home" },
@@ -50,10 +51,12 @@ export default function Navbar() {
               </Link>
             );
           })}
+          <PointsBadge />
           <LogoutButton />
         </nav>
 
-        <div className="lg:hidden">
+        <div className="lg:hidden flex items-center gap-2">
+          <PointsBadge />
           <LogoutButton />
         </div>
       </div>

@@ -13,10 +13,29 @@ model User {
   passwordHash String   @map("password_hash")
   fullName     String?  @map("full_name")
   role         String   @default("user")
+  points       Int      @default(10)
+  inviteCode   String?  @unique @map("invite_code")
+  referredById String?  @map("referred_by_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
+  pointLogs PointLog[]
+
   @@map("User")
+}
+
+model PointLog {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  amount    Int
+  reason    String
+  meta      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("PointLog")
 }
 
 model Content {
