@@ -28,6 +28,7 @@ const PUBLIC_API = [
   "/api/radio/stations",
   "/api/proxy/stream",
   "/api/presence",
+  "/api/setup/db",
 ];
 
 const COOKIE_NAME = "etuza_session";

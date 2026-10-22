@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, createSessionToken, setSessionCookie } from "@/lib/auth";
 import { POINTS, generateInviteCode } from "@/lib/points";
+import { ensureUserSchema } from "@/lib/db-migrate";
 import { randomBytes } from "crypto";
 
 const schema = z.object({
@@ -12,16 +13,15 @@ const schema = z.object({
   inviteCode: z.string().optional(),
 });
 
-function cuidLike() {
-  return (
-    "c" +
-    Date.now().toString(36) +
-    randomBytes(8).toString("hex")
-  );
+function newId() {
+  return "c" + Date.now().toString(36) + randomBytes(8).toString("hex");
 }
 
 export async function POST(req: Request) {
   try {
+    // Fix missing columns before any User query
+    await ensureUserSchema();
+
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
@@ -32,7 +32,6 @@ export async function POST(req: Request) {
     const passwordHash = await hashPassword(parsed.data.password);
     const fullName = parsed.data.fullName?.trim() || null;
 
-    // Check existing — resilient
     let existing = false;
     try {
       const u = await prisma.user.findUnique({ where: { email }, select: { id: true } });
@@ -52,10 +51,14 @@ export async function POST(req: Request) {
     try {
       userCount = await prisma.user.count();
     } catch {
-      const rows = await prisma.$queryRawUnsafe<{ c: number }[]>(
-        `SELECT COUNT(*)::int AS c FROM "User"`
-      );
-      userCount = rows[0]?.c ?? 0;
+      try {
+        const rows = await prisma.$queryRawUnsafe<{ c: number }[]>(
+          `SELECT COUNT(*)::int AS c FROM "User"`
+        );
+        userCount = rows[0]?.c ?? 0;
+      } catch {
+        userCount = 0;
+      }
     }
 
     const adminEmail = (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
@@ -68,7 +71,7 @@ export async function POST(req: Request) {
     const rawInvite = (parsed.data.inviteCode || "")
       .trim()
       .toUpperCase()
-      .replace(/^MF\.\s*/i, ""); // ignore placeholder "MF. ETAB12CD"
+      .replace(/^MF\.\s*/i, "");
     if (rawInvite && rawInvite.length >= 4 && !rawInvite.includes("ETAB12")) {
       try {
         const inviter = await prisma.user.findFirst({
@@ -82,9 +85,8 @@ export async function POST(req: Request) {
     }
 
     const inviteCode = generateInviteCode();
-    const id = cuidLike();
+    const id = newId();
 
-    // Try Prisma create with full schema
     let user: {
       id: string;
       email: string;
@@ -115,12 +117,11 @@ export async function POST(req: Request) {
         },
       });
     } catch (e1) {
-      console.error("prisma create failed", e1);
-      // Raw insert — works even if Prisma client/DB schema mismatch
+      console.error("prisma create", e1);
       try {
         await prisma.$executeRawUnsafe(
           `INSERT INTO "User" (id, email, password_hash, full_name, role, points, invite_code, referred_by_id, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())`,
           id,
           email,
           passwordHash,
@@ -139,11 +140,10 @@ export async function POST(req: Request) {
           inviteCode,
         };
       } catch (e2) {
-        console.error("raw insert with points failed", e2);
-        // Oldest schema without points columns
+        console.error("raw insert", e2);
         await prisma.$executeRawUnsafe(
           `INSERT INTO "User" (id, email, password_hash, full_name, role, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+           VALUES ($1,$2,$3,$4,$5,NOW(),NOW())`,
           id,
           email,
           passwordHash,
@@ -161,7 +161,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Best-effort point log
     try {
       await prisma.pointLog.create({
         data: {
@@ -172,7 +171,7 @@ export async function POST(req: Request) {
         },
       });
     } catch {
-      /* table may not exist yet */
+      /* optional */
     }
 
     if (referredById) {

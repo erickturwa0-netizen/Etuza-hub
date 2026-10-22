@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword, createSessionToken, setSessionCookie } from "@/lib/auth";
+import { ensureUserSchema } from "@/lib/db-migrate";
 
 const schema = z.object({
   email: z.string().email(),
@@ -10,6 +11,8 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   try {
+    await ensureUserSchema();
+
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
@@ -18,7 +21,6 @@ export async function POST(req: Request) {
 
     const email = parsed.data.email.toLowerCase().trim();
 
-    // Select only core fields first (works even mid-migration)
     let user: {
       id: string;
       email: string;
@@ -43,7 +45,6 @@ export async function POST(req: Request) {
         },
       });
     } catch {
-      // Columns missing — raw query fallback
       const rows = await prisma.$queryRawUnsafe<
         {
           id: string;
