@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Coins, UserPlus } from "lucide-react";
+import { Coins, UserPlus, ExternalLink, Play } from "lucide-react";
 import {
   PRE_ROLL_AD_URL,
   PRE_ROLL_SECONDS,
@@ -28,11 +28,11 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
   const [counting, setCounting] = useState(false);
   const [left, setLeft] = useState(PRE_ROLL_SECONDS);
   const [ready, setReady] = useState(false);
-  const [showAd, setShowAd] = useState(false);
   const [user, setUser] = useState<MeUser | null>(null);
   const [points, setPoints] = useState<number | null>(null);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [adOpened, setAdOpened] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,7 +88,6 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
       } catch {
         /* ignore */
       }
-      setShowAd(false);
       setUnlocked(true);
       setCounting(false);
     })();
@@ -133,11 +132,35 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
     setBusy(false);
   }
 
-  /** Show ad inside page (no popup window) */
+  /**
+   * CPA links (araplhn etc.) return empty HTML and block iframes.
+   * Must open as a real top-level navigation from a user click.
+   */
   function startAd() {
-    setShowAd(true);
+    setMsg("");
+    setAdOpened(true);
     setLeft(PRE_ROLL_SECONDS);
     setCounting(true);
+
+    // User gesture → open works on most mobile browsers
+    const win = window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
+    if (!win) {
+      // Popup blocked — same-tab open; user returns with browser Back
+      try {
+        sessionStorage.setItem("etuza_ad_return", window.location.href);
+        sessionStorage.setItem(preRollStorageKey(contentKey) + "_pending", "1");
+      } catch {
+        /* ignore */
+      }
+      window.location.assign(PRE_ROLL_AD_URL);
+      return;
+    }
+
+    setMsg("Tangazo limefunguka kwenye tab mpya. Rudi hapa baada ya countdown.");
+  }
+
+  function reopenAd() {
+    window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
   }
 
   if (!ready) {
@@ -155,36 +178,52 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
 
   const hasPoints = user && (points ?? 0) >= POINTS.WATCH_COST;
 
-  if (showAd) {
+  // Active ad countdown screen (no empty iframe)
+  if (counting || adOpened) {
+    const done = left <= 0;
     return (
-      <div className="space-y-2">
-        <div
-          className="relative w-full rounded-2xl overflow-hidden border border-violet-500/40 bg-black"
-          style={{ aspectRatio: "16/9", minHeight: 240 }}
-        >
-          <iframe
-            src={PRE_ROLL_AD_URL}
-            title="Ad"
-            className="absolute inset-0 w-full h-full border-0 bg-white"
-            allow="autoplay; fullscreen; clipboard-write"
-            referrerPolicy="no-referrer-when-downgrade"
-          />
-          <div className="absolute top-2 right-2 z-10 px-3 py-1.5 rounded-full bg-black/80 text-white text-xs font-bold tabular-nums">
-            {left > 0 ? `${left}s` : "✓"}
+      <div
+        className="relative w-full rounded-2xl overflow-hidden border border-violet-500/50 bg-gradient-to-b from-violet-950 to-slate-950"
+        style={{ aspectRatio: "16/9", minHeight: 240 }}
+      >
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-4 text-center gap-3">
+          <div className="w-16 h-16 rounded-full border-4 border-violet-400 border-t-transparent animate-spin" />
+          <p className="text-3xl font-black text-white tabular-nums">
+            {done ? "0" : left}s
+          </p>
+          <p className="text-sm text-violet-200 font-medium">
+            {done
+              ? "Tayari — endelea kucheza"
+              : "Tangazo linaendelea… usifunge tab"}
+          </p>
+          <p className="text-xs text-slate-400 max-w-xs">
+            Tangazo limefunguliwa kwenye dirisha/tab jipya (si video ndani ya app).
+          </p>
+
+          <div className="flex flex-wrap gap-2 justify-center mt-1">
+            <button
+              type="button"
+              onClick={reopenAd}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Fungua tangazo tena
+            </button>
+
+            {done && (
+              <button
+                type="button"
+                onClick={() => setUnlocked(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold"
+              >
+                <Play className="w-4 h-4 fill-current" />
+                Cheza sasa
+              </button>
+            )}
           </div>
+
+          {msg && <p className="text-xs text-amber-300">{msg}</p>}
         </div>
-        {left <= 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              setShowAd(false);
-              setUnlocked(true);
-            }}
-            className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold text-sm"
-          >
-            Endelea kucheza
-          </button>
-        )}
       </div>
     );
   }
@@ -233,9 +272,10 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
           <button
             type="button"
             onClick={startAd}
-            className="px-5 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold"
           >
-            Tangazo (+{POINTS.AD_REWARD})
+            <ExternalLink className="w-4 h-4" />
+            Fungua tangazo (+{POINTS.AD_REWARD})
           </button>
 
           {user?.inviteCode && (
@@ -253,6 +293,10 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
             </button>
           )}
         </div>
+
+        <p className="text-[10px] text-slate-500 max-w-xs text-center">
+          Tangazo linafunguka nje (tab mpya). Baada ya {PRE_ROLL_SECONDS}s movie itafunguka.
+        </p>
       </div>
     </div>
   );
