@@ -30,7 +30,6 @@ function extractTmdbEmbed(src: string): { id: string; media: "movie" | "tv" } | 
   return { id: m[2], media: m[1].toLowerCase() as "movie" | "tv" };
 }
 
-/** Providers that allow iframe embed */
 function buildSources(id: string, media: "movie" | "tv"): Source[] {
   if (media === "movie") {
     return [
@@ -242,11 +241,12 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     window.location.href = "/play?" + q.toString();
   }
 
+  // —— EMBED (movies) — red accent frame like old player ——
   if (mode === "embed" && embedUrl) {
     return (
       <div className="space-y-3">
         <div
-          className="relative w-full rounded-2xl overflow-hidden border border-slate-700 bg-black"
+          className="relative w-full rounded-2xl overflow-hidden border-2 border-red-600/80 bg-black shadow-lg shadow-red-900/20"
           style={{ aspectRatio: "16/9", minHeight: 220 }}
         >
           <iframe
@@ -265,7 +265,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
           <button
             type="button"
             onClick={goFullscreen}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold touch-manipulation"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold touch-manipulation"
           >
             <Maximize2 className="w-4 h-4" />
             Player kamili
@@ -277,7 +277,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
               onClick={() =>
                 switchSource(sourceIdx + 1 < sources.length ? sourceIdx + 1 : 0)
               }
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-sm text-slate-200 touch-manipulation"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 border border-red-900/50 text-sm text-slate-200 touch-manipulation"
             >
               <RefreshCw className="w-4 h-4" />
               Source nyingine
@@ -295,7 +295,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
                 className={
                   "px-2 py-1 rounded-md text-[10px] border touch-manipulation " +
                   (i === sourceIdx
-                    ? "border-violet-500 bg-violet-600/30 text-violet-200"
+                    ? "border-red-500 bg-red-600/30 text-red-200"
                     : "border-slate-700 text-slate-400")
                 }
               >
@@ -313,11 +313,12 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     );
   }
 
+  // —— NATIVE VIDEO (TV m3u8) — red play button ——
   if (mode === "video" && playUrl) {
     return (
       <div className="space-y-3">
         <div
-          className="relative w-full rounded-2xl overflow-hidden border border-slate-700 bg-black"
+          className="relative w-full rounded-2xl overflow-hidden border-2 border-red-600/80 bg-black shadow-lg shadow-red-900/20"
           style={{ aspectRatio: "16/9", minHeight: 200 }}
         >
           <video
@@ -336,10 +337,10 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             <button
               type="button"
               onClick={userPlay}
-              className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 text-white touch-manipulation"
+              className="absolute inset-0 flex flex-col items-center justify-center bg-black/55 text-white touch-manipulation"
             >
-              <span className="w-16 h-16 rounded-full bg-red-600 flex items-center justify-center mb-2">
-                <Play className="w-8 h-8 fill-current ml-1" />
+              <span className="w-20 h-20 rounded-full bg-red-600 flex items-center justify-center mb-2 shadow-xl shadow-red-900/50 ring-4 ring-red-500/30">
+                <Play className="w-10 h-10 fill-current ml-1" />
               </span>
               <span className="text-sm font-semibold">Bofya kucheza</span>
             </button>
@@ -362,7 +363,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
                 setUseProxy(next);
                 setPlayUrl(next && rawHls ? proxyHls(rawHls) : rawHls);
               }}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-sm text-slate-200 touch-manipulation"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 border border-red-900/40 text-sm text-slate-200 touch-manipulation"
             >
               <RefreshCw className="w-4 h-4" />
               {useProxy ? "Bila proxy" : "Na proxy"}
