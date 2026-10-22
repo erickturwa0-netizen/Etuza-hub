@@ -2,6 +2,10 @@ import Link from "next/link";
 import { Film } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensureElitePlexContent } from "@/lib/eliteplex";
+import { getNewContentBanner } from "@/lib/catalog-sync";
+import ContentSearch from "@/components/ContentSearch";
+import NewContentBanner from "@/components/NewContentBanner";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,51 +16,89 @@ function yearFromCategory(cat: string | null): number {
   return m ? parseInt(m[1], 10) : 0;
 }
 
-export default async function MoviesPage() {
+export default async function MoviesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const sp = await searchParams;
+  const q = (sp.q || "").trim().toLowerCase();
+
   let items: {
     id: string;
     title: string;
     coverUrl: string | null;
     category: string | null;
   }[] = [];
+  let bannerTitles: string[] = [];
 
   try {
     await ensureElitePlexContent("movie");
-    await prisma.content.deleteMany({
-      where: { type: "movie", category: { startsWith: "Bongo" } },
-    });
+    const banner = await getNewContentBanner();
+    if (banner?.titles) bannerTitles = banner.titles;
+
     const raw = await prisma.content.findMany({
-      where: { type: "movie", status: "published" },
+      where: {
+        type: "movie",
+        status: "published",
+        ...(q
+          ? {
+              OR: [
+                { title: { contains: q, mode: "insensitive" } },
+                { category: { contains: q, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
       select: { id: true, title: true, coverUrl: true, category: true },
     });
-    // 2026 / newest FIRST
-    items = raw.sort((a, b) => {
-      const ya = yearFromCategory(a.category);
-      const yb = yearFromCategory(b.category);
-      if (yb !== ya) return yb - ya;
-      return a.title.localeCompare(b.title);
-    });
+
+    // Drop residual 2025+ if any
+    items = raw
+      .filter((c) => {
+        const y = yearFromCategory(c.category);
+        return !y || y <= 2024;
+      })
+      .sort((a, b) => {
+        const ya = yearFromCategory(a.category);
+        const yb = yearFromCategory(b.category);
+        if (yb !== ya) return yb - ya;
+        return a.title.localeCompare(b.title);
+      });
   } catch (e) {
     console.error("movies page", e);
   }
 
   return (
     <main className="max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-28">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-11 h-11 rounded-xl bg-violet-500/20 flex items-center justify-center text-violet-400 shrink-0">
-          <Film className="w-5 h-5" />
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-11 h-11 rounded-xl bg-violet-500/20 flex items-center justify-center text-violet-400 shrink-0">
+            <Film className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-white">Movies</h1>
+            <p className="text-sm text-slate-400">
+              {items.length} movies · zinazocheza tu
+            </p>
+          </div>
         </div>
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-white">Movies</h1>
-          <p className="text-sm text-slate-400">{items.length} movies · 2026 kwanza</p>
+        <div className="sm:ml-auto w-full sm:w-auto">
+          <Suspense fallback={null}>
+            <ContentSearch placeholder="Tafuta movie…" />
+          </Suspense>
         </div>
       </div>
+
+      {bannerTitles.length > 0 && <NewContentBanner titles={bannerTitles} />}
 
       {items.length === 0 ? (
         <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center">
           <Film className="w-10 h-10 text-slate-600 mx-auto mb-3" />
           <p className="text-slate-400 text-sm">
-            Hakuna movies bado. Fungua tena baada ya sekunde chache.
+            {q
+              ? `Hakuna matokeo ya "${q}"`
+              : "Hakuna movies bado. Fungua tena baada ya sekunde chache."}
           </p>
         </div>
       ) : (

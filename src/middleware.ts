@@ -29,6 +29,7 @@ const PUBLIC_API = [
   "/api/proxy/stream",
   "/api/presence",
   "/api/setup/db",
+  "/api/cron/sync",
 ];
 
 const COOKIE_NAME = "etuza_session";

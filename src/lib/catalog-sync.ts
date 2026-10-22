@@ -50,7 +50,6 @@ function yearNum(y?: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Persist banner of newly added titles (shown on movies page). */
 async function saveNewContentBanner(titles: string[]) {
   if (!titles.length) return;
   const payload = JSON.stringify({
@@ -81,7 +80,6 @@ export async function getNewContentBanner(): Promise<{
     if (!row?.notes || !row.enabled) return null;
     const data = JSON.parse(row.notes) as { titles?: string[]; at?: string };
     if (!data.titles?.length) return null;
-    // Hide banner older than 7 days
     if (data.at) {
       const age = Date.now() - new Date(data.at).getTime();
       if (age > 7 * 24 * 60 * 60 * 1000) return null;
@@ -92,7 +90,6 @@ export async function getNewContentBanner(): Promise<{
   }
 }
 
-/** Add NEW playable movies only (year <= 2024). */
 export async function syncNewMovies(): Promise<{
   added: number;
   total: number;
@@ -150,7 +147,11 @@ export async function syncNewMovies(): Promise<{
   return { added, total, titles };
 }
 
-export async function syncNewDrama(): Promise<{ added: number; total: number; titles: string[] }> {
+export async function syncNewDrama(): Promise<{
+  added: number;
+  total: number;
+  titles: string[];
+}> {
   const series = await fetchElitePages("/api/series", [1, 2, 3, 4, 5, 6, 8, 10]);
 
   const existing = await prisma.content.findMany({
@@ -170,7 +171,7 @@ export async function syncNewDrama(): Promise<{ added: number; total: number; ti
   const titles: string[] = [];
   for (const row of series) {
     const id = String(row.tmdb_id || row.id || "");
-    const title dec = String(row.name || row.title || "").trim();
+    const title = String(row.name || row.title || "").trim();
     if (!/^\d{2,7}$/.test(id) || !title || haveIds.has(id)) continue;
     const y = yearNum(row.year);
     if (y && y > MAX_PLAYABLE_YEAR) continue;
@@ -221,7 +222,6 @@ export async function isStreamLive(url: string, timeoutMs = 5000): Promise<boole
   }
 }
 
-/** Health-check TV and cache live IDs for 6h */
 export async function healthCheckTv(): Promise<{
   live: IptvChannel[];
   dead: string[];
@@ -230,7 +230,6 @@ export async function healthCheckTv(): Promise<{
   const dead: string[] = [];
   const liveIds: string[] = [];
 
-  // parallel batches of 6
   const batch = 6;
   for (let i = 0; i < PINNED_CHANNELS.length; i += batch) {
     const slice = PINNED_CHANNELS.slice(i, i + batch);
@@ -275,7 +274,6 @@ export async function getCachedLiveTvIds(): Promise<string[] | null> {
     if (!data.ids?.length) return null;
     if (data.at) {
       const age = Date.now() - new Date(data.at).getTime();
-      // cache 12 hours
       if (age > 12 * 60 * 60 * 1000) return null;
     }
     return data.ids;
