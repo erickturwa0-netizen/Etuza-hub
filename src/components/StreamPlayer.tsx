@@ -8,7 +8,6 @@ type Props = {
   src: string;
   poster?: string | null;
   title?: string;
-  /** Optional — currently off so movies always play */
   requirePreRoll?: boolean;
 };
 
@@ -32,38 +31,39 @@ function extractTmdbEmbed(src: string): { id: string; media: "movie" | "tv" } | 
   return null;
 }
 
+/** Order tuned for fill-rate on free embeds (popular titles first). */
 function buildInAppSources(id: string, media: "movie" | "tv"): Source[] {
   if (media === "movie") {
     return [
-      { provider: "Videasy", url: `https://player.videasy.to/movie/${id}` },
       { provider: "VidSrc", url: `https://vidsrc.to/embed/movie/${id}` },
       { provider: "VidSrc.xyz", url: `https://vidsrc.xyz/embed/movie/${id}` },
       { provider: "2Embed", url: `https://www.2embed.cc/embed/${id}` },
+      { provider: "MultiEmbed", url: `https://multiembed.mov/?video_id=${id}&tmdb=1` },
+      { provider: "EmbedSU", url: `https://embed.su/embed/movie/${id}` },
+      { provider: "VidLink", url: `https://vidlink.pro/movie/${id}` },
+      { provider: "Vidrock", url: `https://vidrock.net/movie/${id}` },
+      { provider: "Videasy", url: `https://player.videasy.to/movie/${id}` },
       { provider: "VidKing", url: `https://www.vidking.net/embed/movie/${id}` },
       { provider: "MoviesAPI", url: `https://moviesapi.to/movie/${id}` },
       { provider: "VidPlus", url: `https://player.vidplus.to/embed/movie/${id}` },
-      { provider: "VidLink", url: `https://vidlink.pro/movie/${id}` },
-      { provider: "Vidrock", url: `https://vidrock.net/movie/${id}` },
       { provider: "VidFast", url: `https://vidfast.pro/movie/${id}` },
       { provider: "111Movies", url: `https://111movies.com/movie/${id}` },
+      { provider: "AutoEmbed", url: `https://player.autoembed.cc/embed/movie/${id}` },
     ];
   }
   return [
-    { provider: "Videasy", url: `https://player.videasy.to/tv/${id}` },
     { provider: "VidSrc", url: `https://vidsrc.to/embed/tv/${id}` },
     { provider: "VidSrc.xyz", url: `https://vidsrc.xyz/embed/tv/${id}` },
     { provider: "2Embed", url: `https://www.2embed.cc/embedtv/${id}` },
-    { provider: "VidKing", url: `https://www.vidking.net/embed/tv/${id}` },
+    { provider: "EmbedSU", url: `https://embed.su/embed/tv/${id}` },
     { provider: "VidLink", url: `https://vidlink.pro/tv/${id}` },
     { provider: "Vidrock", url: `https://vidrock.net/tv/${id}` },
+    { provider: "Videasy", url: `https://player.videasy.to/tv/${id}` },
+    { provider: "VidKing", url: `https://www.vidking.net/embed/tv/${id}` },
   ];
 }
 
-export default function StreamPlayer({
-  src,
-  poster,
-  title,
-}: Props) {
+export default function StreamPlayer({ src, poster, title }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
   const [error, setError] = useState("");
@@ -76,9 +76,12 @@ export default function StreamPlayer({
   const [sourceIdx, setSourceIdx] = useState(0);
   const [useProxy, setUseProxy] = useState(true);
   const [needsTap, setNeedsTap] = useState(false);
+  const [autoNote, setAutoNote] = useState("");
+  const manualRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
+    manualRef.current = false;
     setError("");
     setMode("loading");
     setStatus("Inatafuta…");
@@ -89,6 +92,7 @@ export default function StreamPlayer({
     setSourceIdx(0);
     setUseProxy(true);
     setNeedsTap(false);
+    setAutoNote("");
 
     const raw = (src || "").trim();
     if (!raw) {
@@ -181,6 +185,24 @@ export default function StreamPlayer({
     };
   }, [src]);
 
+  // Auto-advance embed source every 10s (until user picks manually)
+  useEffect(() => {
+    if (mode !== "embed" || sources.length < 2) return;
+    if (manualRef.current) return;
+    if (sourceIdx >= sources.length - 1) {
+      setAutoNote("Sources zote zimejaribiwa — chagua manual au movie nyingine");
+      return;
+    }
+    const t = setTimeout(() => {
+      if (manualRef.current) return;
+      const next = sourceIdx + 1;
+      setSourceIdx(next);
+      setEmbedUrl(sources[next].url);
+      setAutoNote(`Inajaribu ${sources[next].provider}…`);
+    }, 10000);
+    return () => clearTimeout(t);
+  }, [mode, sourceIdx, sources]);
+
   const attachHls = useCallback(async (url: string) => {
     const el = videoRef.current;
     if (!el) return;
@@ -257,6 +279,8 @@ export default function StreamPlayer({
 
   function switchSource(i: number) {
     if (!sources[i]) return;
+    manualRef.current = true;
+    setAutoNote("");
     setSourceIdx(i);
     setEmbedUrl(sources[i].url);
     setError("");
@@ -312,6 +336,10 @@ export default function StreamPlayer({
           />
         </div>
 
+        {autoNote && (
+          <p className="text-xs text-amber-300 text-center">{autoNote}</p>
+        )}
+
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -319,16 +347,16 @@ export default function StreamPlayer({
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold"
           >
             <Maximize2 className="w-4 h-4" />
-            Player kamili (ndani ya app)
+            Player kamili
           </button>
 
           {sources.length > 1 && (
             <button
               type="button"
               onClick={() =>
-                sourceIdx + 1 < sources.length
-                  ? switchSource(sourceIdx + 1)
-                  : switchSource(0)
+                switchSource(
+                  sourceIdx + 1 < sources.length ? sourceIdx + 1 : 0
+                )
               }
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-sm text-slate-200"
             >
@@ -340,7 +368,7 @@ export default function StreamPlayer({
 
         {sources.length > 1 && (
           <div className="flex flex-wrap gap-1.5">
-            {sources.slice(0, 14).map((s, i) => (
+            {sources.slice(0, 16).map((s, i) => (
               <button
                 key={s.provider + i}
                 type="button"
@@ -357,9 +385,10 @@ export default function StreamPlayer({
         )}
 
         <p className="text-[11px] text-slate-500">
-          Inacheza <b>ndani ya app</b> · {sources[sourceIdx]?.provider || "player"}{" "}
-          ({sourceIdx + 1}/{Math.max(sources.length, 1)}). Kama tupu →{" "}
-          <b>Source nyingine</b> au <b>Player kamili</b>.
+          {sources[sourceIdx]?.provider || "player"} ({sourceIdx + 1}/
+          {Math.max(sources.length, 1)}). Kama inaandika "couldn't find" →
+          bofya <b>Source nyingine</b> (VidSrc / 2Embed). Movie mpya sana za
+          2026 zinaweza kukosa kwenye free players.
         </p>
       </div>
     );
@@ -425,8 +454,7 @@ export default function StreamPlayer({
 
           {rawHls && (
             <button
-              type="button"
-              onClick={toggleProxy}
+              type="button"/ onClick={toggleProxy}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-sm text-slate-200"
             >
               <RefreshCw className="w-4 h-4" />
