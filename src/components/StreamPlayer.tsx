@@ -2,13 +2,12 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { detectSocial } from "@/lib/social-embed";
-import { Play, RefreshCw, Volume2, Maximize2 } from "lucide-react";
+import { Play, RefreshCw, Maximize2 } from "lucide-react";
 
 type Props = {
   src: string;
   poster?: string | null;
   title?: string;
-  requirePreRoll?: boolean;
 };
 
 type Source = { provider: string; url: string };
@@ -22,33 +21,28 @@ function isHls(src: string) {
 }
 
 function proxyHls(url: string) {
-  return `/api/proxy/stream?url=${encodeURIComponent(url)}`;
+  return "/api/proxy/stream?url=" + encodeURIComponent(url);
 }
 
 function extractTmdbEmbed(src: string): { id: string; media: "movie" | "tv" } | null {
-  const m2 = src.match(/\/(movie|tv)\/(\d{3,})/i);
-  if (m2) return { id: m2[2], media: m2[1].toLowerCase() as "movie" | "tv" };
-  return null;
+  const m = src.match(/\/(movie|tv)\/(\d{3,})/i);
+  if (!m) return null;
+  return { id: m[2], media: m[1].toLowerCase() as "movie" | "tv" };
 }
 
-/** Few fast sources only — no slow eliteplex wait */
-function buildInAppSources(id: string, media: "movie" | "tv"): Source[] {
+/** Working embeds only */
+function buildSources(id: string, media: "movie" | "tv"): Source[] {
   if (media === "movie") {
     return [
-      { provider: "VidSrc", url: `https://vidsrc.to/embed/movie/${id}` },
-      { provider: "VidSrc.xyz", url: `https://vidsrc.xyz/embed/movie/${id}` },
-      { provider: "2Embed", url: `https://www.2embed.cc/embed/${id}` },
-      { provider: "EmbedSU", url: `https://embed.su/embed/movie/${id}` },
-      { provider: "MultiEmbed", url: `https://multiembed.mov/?video_id=${id}&tmdb=1` },
-      { provider: "Videasy", url: `https://player.videasy.to/movie/${id}` },
+      { provider: "VidSrc", url: "https://vidsrc.to/embed/movie/" + id },
+      { provider: "2Embed", url: "https://www.2embed.cc/embed/" + id },
+      { provider: "EmbedSU", url: "https://embed.su/embed/movie/" + id },
     ];
   }
   return [
-    { provider: "VidSrc", url: `https://vidsrc.to/embed/tv/${id}` },
-    { provider: "VidSrc.xyz", url: `https://vidsrc.xyz/embed/tv/${id}` },
-    { provider: "2Embed", url: `https://www.2embed.cc/embedtv/${id}` },
-    { provider: "EmbedSU", url: `https://embed.su/embed/tv/${id}` },
-    { provider: "Videasy", url: `https://player.videasy.to/tv/${id}` },
+    { provider: "VidSrc", url: "https://vidsrc.to/embed/tv/" + id },
+    { provider: "2Embed", url: "https://www.2embed.cc/embedtv/" + id },
+    { provider: "EmbedSU", url: "https://embed.su/embed/tv/" + id },
   ];
 }
 
@@ -64,11 +58,8 @@ export default function StreamPlayer({ src, poster, title }: Props) {
   const [sourceIdx, setSourceIdx] = useState(0);
   const [useProxy, setUseProxy] = useState(true);
   const [needsTap, setNeedsTap] = useState(false);
-  const manualRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
-    manualRef.current = false;
     setError("");
     setMode("loading");
     setPlayUrl(null);
@@ -88,56 +79,42 @@ export default function StreamPlayer({ src, poster, title }: Props) {
 
     const social = detectSocial(raw);
     if (social.embedUrl) {
-      if (!cancelled) {
-        setEmbedUrl(social.embedUrl);
-        setMode("embed");
-      }
+      setEmbedUrl(social.embedUrl);
+      setMode("embed");
       return;
     }
 
     if (isHls(raw)) {
-      if (!cancelled) {
-        setRawHls(raw);
-        setPlayUrl(proxyHls(raw));
-        setMode("video");
-      }
+      setRawHls(raw);
+      setPlayUrl(proxyHls(raw));
+      setMode("video");
       return;
     }
 
     if (isDirectMedia(raw)) {
-      if (!cancelled) {
-        setPlayUrl(raw);
-        setMode("video");
-      }
+      setPlayUrl(raw);
+      setMode("video");
       return;
     }
 
     const tmdb = extractTmdbEmbed(raw);
     if (tmdb) {
-      // Instant — no network wait for source list
-      const list = buildInAppSources(tmdb.id, tmdb.media);
-      if (!cancelled) {
-        setSources(list);
-        setSourceIdx(0);
-        setEmbedUrl(list[0].url);
-        setMode("embed");
-      }
+      const list = buildSources(tmdb.id, tmdb.media);
+      setSources(list);
+      setSourceIdx(0);
+      setEmbedUrl(list[0].url);
+      setMode("embed");
       return;
     }
 
     if (/^https?:\/\//i.test(raw)) {
-      if (!cancelled) {
-        setEmbedUrl(raw);
-        setMode("embed");
-      }
+      setEmbedUrl(raw);
+      setMode("embed");
       return;
     }
 
     setMode("fail");
     setError("Link haitambuliwi.");
-    return () => {
-      cancelled = true;
-    };
   }, [src]);
 
   const attachHls = useCallback(async (url: string) => {
@@ -184,7 +161,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             instance.startLoad();
             return;
           }
-          setError("Stream imeshindwa. Badilisha channel.");
+          setError("Stream imeshindwa.");
         });
         hlsRef.current = instance;
       } else {
@@ -206,17 +183,8 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     };
   }, [playUrl, mode, attachHls]);
 
-  function toggleProxy() {
-    if (!rawHls) return;
-    const next = !useProxy;
-    setUseProxy(next);
-    setPlayUrl(next ? proxyHls(rawHls) : rawHls);
-    setError("");
-  }
-
   function switchSource(i: number) {
     if (!sources[i]) return;
-    manualRef.current = true;
     setSourceIdx(i);
     setEmbedUrl(sources[i].url);
     setError("");
@@ -234,13 +202,10 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     }
   }
 
-  function goFullscreenPlayer() {
+  function goFullscreen() {
     if (!embedUrl) return;
-    const q = new URLSearchParams({
-      url: embedUrl,
-      title: title || "Player",
-    });
-    window.location.href = `/play?${q.toString()}`;
+    const q = new URLSearchParams({ url: embedUrl, title: title || "Player" });
+    window.location.href = "/play?" + q.toString();
   }
 
   if (mode === "loading") {
@@ -249,7 +214,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
         className="rounded-2xl border border-slate-800 bg-black flex items-center justify-center text-slate-400 text-sm"
         style={{ minHeight: 220, aspectRatio: "16/9" }}
       >
-        Inapakia…
+        Inapakia...
       </div>
     );
   }
@@ -266,7 +231,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             src={embedUrl}
             title={title || "Player"}
             className="absolute inset-0 w-full h-full border-0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen; web-share"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
             referrerPolicy="origin"
           />
@@ -275,7 +240,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={goFullscreenPlayer}
+            onClick={goFullscreen}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold touch-manipulation"
           >
             <Maximize2 className="w-4 h-4" />
@@ -300,13 +265,15 @@ export default function StreamPlayer({ src, poster, title }: Props) {
           <div className="flex flex-wrap gap-1.5">
             {sources.map((s, i) => (
               <button
-                key={s.provider + i}
+                key={s.provider + String(i)}
                 type="button"
                 onClick={() => switchSource(i)}
-                className={`px-2 py-1 rounded-md text-[10px] border touch-manipulation ${\n                  i === sourceIdx
+                className={
+                  "px-2 py-1 rounded-md text-[10px] border touch-manipulation " +
+                  (i === sourceIdx
                     ? "border-violet-500 bg-violet-600/30 text-violet-200"
-                    : "border-slate-700 text-slate-400"
-                }`}
+                    : "border-slate-700 text-slate-400")
+                }
               >
                 {s.provider}
               </button>
@@ -315,8 +282,8 @@ export default function StreamPlayer({ src, poster, title }: Props) {
         )}
 
         <p className="text-[11px] text-slate-500">
-          {sources[sourceIdx]?.provider || "player"} · kama haichezi → Source
-          nyingine
+          {(sources[sourceIdx] && sources[sourceIdx].provider) || "player"} ·
+          kama haichezi bofya Source nyingine
         </p>
       </div>
     );
@@ -339,9 +306,8 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             preload="auto"
             poster={poster || undefined}
             style={{ minHeight: 200 }}
-            onError={() => setError("Video haikucheza."})
+            onError={() => setError("Video haikucheza.")}
           />
-
           {needsTap && (
             <button
               type="button"
@@ -355,7 +321,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             </button>
           )}
         </div>
-
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -365,11 +330,14 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             <Play className="w-4 h-4 fill-current" />
             Play / Sauti
           </button>
-
           {rawHls && (
             <button
               type="button"
-              onClick={toggleProxy}
+              onClick={() => {
+                const next = !useProxy;
+                setUseProxy(next);
+                setPlayUrl(next && rawHls ? proxyHls(rawHls) : rawHls);
+              }}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-sm text-slate-200 touch-manipulation"
             >
               <RefreshCw className="w-4 h-4" />
@@ -377,7 +345,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             </button>
           )}
         </div>
-
         {error && <p className="text-sm text-amber-300">{error}</p>}
       </div>
     );
