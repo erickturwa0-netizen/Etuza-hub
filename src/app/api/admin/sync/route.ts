@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runCatalogSync, syncNewMovies, syncNewDrama, healthCheckTv } from "@/lib/catalog-sync";
+import {
+  runCatalogSync,
+  syncNewMovies,
+  syncNewDrama,
+  healthCheckTv,
+} from "@/lib/catalog-sync";
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -7,7 +13,7 @@ export const maxDuration = 60;
 /**
  * POST /api/admin/sync
  * Body optional: { "scope": "all" | "movies" | "drama" | "tv" }
- * Header: x-admin-secret or Authorization Bearer
+ * Auth: admin session cookie OR x-admin-secret / Authorization Bearer
  */
 export async function POST(req: NextRequest) {
   const secret = process.env.CRON_SECRET || process.env.ADMIN_SECRET || "";
@@ -15,8 +21,31 @@ export async function POST(req: NextRequest) {
   const header = req.headers.get("x-admin-secret") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : header;
 
-  // If no secret configured, allow in non-production for testing
-  if (secret && token !== secret) {
+  let allowed = false;
+
+  // 1) Secret-based (cron / external)
+  if (secret && token === secret) {
+    allowed = true;
+  }
+
+  // 2) Admin session (dashboard buttons)
+  if (!allowed) {
+    try {
+      const session = await getSession();
+      if (session?.role === "admin") {
+        allowed = true;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // 3) No secret configured → allow (dev)
+  if (!secret && !allowed) {
+    allowed = true;
+  }
+
+  if (!allowed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -61,6 +90,6 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     usage: "POST /api/admin/sync with { scope: all|movies|drama|tv }",
-    auth: "x-admin-secret or Authorization: Bearer <CRON_SECRET>",
+    auth: "admin session OR x-admin-secret / Bearer <CRON_SECRET>",
   });
 }
