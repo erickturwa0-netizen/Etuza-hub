@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import StreamPlayer from "@/components/StreamPlayer";
+import PreRollGate from "@/components/PreRollGate";
 import GameDownloadPanel from "@/components/GameDownloadPanel";
 import PresenceTracker from "@/components/PresenceTracker";
 import WebGamePlayer from "@/components/WebGamePlayer";
@@ -29,8 +30,8 @@ function isWebGameUrl(url: string) {
     u.includes("itch.io") ||
     u.includes("gamejolt.com") ||
     u.includes("html5") ||
-    u.includes("play.google") === false &&
-      (/\/embed|\/game\//i.test(u) || u.endsWith(".html"))
+    (u.includes("play.google") === false &&
+      (/\/embed|\/game\//i.test(u) || u.endsWith(".html")))
   );
 }
 
@@ -56,7 +57,6 @@ export default async function WatchPage({
   try {
     item = await prisma.content.findUnique({ where: { id } });
     if (item) {
-      // fire-and-forget view bump
       prisma.content
         .update({
           where: { id },
@@ -85,20 +85,24 @@ export default async function WatchPage({
               ? "tv"
               : item.type;
 
-  // Download-only: explicit download, or VPN configs
-  const isDownload =
-    item.linkType === "download" || item.type === "vpn";
+  const isDownload = item.linkType === "download" || item.type === "vpn";
 
-  // Web game: type=game + stream (or detectable web-game host)
   const isWebGame =
     item.type === "game" &&
     item.linkType !== "download" &&
     (item.linkType === "stream" || isWebGameUrl(link));
 
-  // Game download (ISO/APK/MediaFire)
   const isGameDownload = item.type === "game" && isDownload;
 
-  if (isGameDownload || (item.type === "vpn")) {
+  // Points + ad gate for streamable media
+  const usePointsGate =
+    item.type === "movie" ||
+    item.type === "drama" ||
+    item.type === "tv" ||
+    item.type === "music" ||
+    item.type === "radio";
+
+  if (isGameDownload || item.type === "vpn") {
     return (
       <main className="max-w-3xl mx-auto px-4 py-8 pb-28">
         <PresenceTracker section={section} title={item.title} />
@@ -109,14 +113,12 @@ export default async function WatchPage({
           <ArrowLeft className="w-4 h-4" />
           Back
         </Link>
-
         <h1 className="text-2xl font-bold mb-2 text-white">{item.title}</h1>
         {item.category && (
           <p className="text-xs text-slate-500 mb-4 uppercase tracking-wide">
             {item.category}
           </p>
         )}
-
         {item.coverUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -125,15 +127,13 @@ export default async function WatchPage({
             className="w-full max-w-xs rounded-2xl border border-slate-800 mb-6 object-cover"
           />
         )}
-
         {!link ? (
           <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-            Content hii haina download link. Hariri tena kwenye Admin.
+            Content hii haina download link.
           </div>
         ) : (
           <GameDownloadPanel linkUrl={link} title={item.title} />
         )}
-
         {item.description && (
           <p className="mt-6 text-sm text-slate-400 leading-relaxed">
             {item.description}
@@ -170,7 +170,6 @@ export default async function WatchPage({
     );
   }
 
-  // Hybrid game: show player + download if looks like both
   if (item.type === "game") {
     return (
       <main className="max-w-3xl mx-auto px-4 py-8 pb-28">
@@ -226,10 +225,16 @@ export default async function WatchPage({
 
       {!link ? (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-          Content hii haina stream link. Hariri tena kwenye Admin.
+          Content hii haina stream link.
         </div>
       ) : (
-        <StreamPlayer src={link} poster={item.coverUrl} title={item.title} />
+        <PreRollGate
+          contentKey={`${item.type}:${item.id}`}
+          title={item.title}
+          enabled={usePointsGate}
+        >
+          <StreamPlayer src={link} poster={item.coverUrl} title={item.title} />
+        </PreRollGate>
       )}
 
       {item.description && (

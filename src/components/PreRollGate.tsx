@@ -14,7 +14,6 @@ type Props = {
   contentKey: string;
   title?: string;
   children: React.ReactNode;
-  /** When false, skip gate (movies play free). Default false for now. */
   enabled?: boolean;
 };
 
@@ -29,7 +28,7 @@ export default function PreRollGate({
   contentKey,
   title,
   children,
-  enabled = false,
+  enabled = true,
 }: Props) {
   const [unlocked, setUnlocked] = useState(!enabled);
   const [counting, setCounting] = useState(false);
@@ -40,6 +39,7 @@ export default function PreRollGate({
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [adOpened, setAdOpened] = useState(false);
+  const [awarded, setAwarded] = useState(0);
 
   useEffect(() => {
     if (!enabled) {
@@ -84,27 +84,47 @@ export default function PreRollGate({
     return () => clearTimeout(t);
   }, [counting, left]);
 
+  // Countdown finished → award points THEN unlock
   useEffect(() => {
     if (!(counting && left <= 0)) return;
+    let cancelled = false;
     (async () => {
+      let got = 0;
       try {
         const res = await fetch("/api/points/reward-ad", { method: "POST" });
         if (res.ok) {
           const d = await res.json();
-          if (typeof d.points === "number") setPoints(d.points);
+          if (typeof d.points === "number" && !cancelled) {
+            setPoints(d.points);
+          }
+          if (typeof d.awarded === "number") got = d.awarded;
         }
       } catch {
         /* ignore */
       }
-      try {
-        sessionStorage.setItem(preRollStorageKey(contentKey), "1");
-      } catch {
-        /* ignore */
+      if (!cancelled) {
+        setAwarded(got);
+        if (got > 0) {
+          setMsg(`+${got} point zimeongezwa!`);
+        } else if (!user) {
+          setMsg("Ingia account ili upate point baada ya tangazo");
+        }
+        try {
+          sessionStorage.setItem(preRollStorageKey(contentKey), "1");
+        } catch {
+          /* ignore */
+        }
+        setCounting(false);
+        // short delay so user sees +points message
+        setTimeout(() => {
+          if (!cancelled) setUnlocked(true);
+        }, 800);
       }
-      setUnlocked(true);
-      setCounting(false);
     })();
-  }, [counting, left, contentKey]);
+    return () => {
+      cancelled = true;
+    };
+  }, [counting, left, contentKey, user]);
 
   async function spendAndUnlock() {
     setBusy(true);
@@ -147,6 +167,7 @@ export default function PreRollGate({
 
   function startAd() {
     setMsg("");
+    setAwarded(0);
     setAdOpened(true);
     setLeft(PRE_ROLL_SECONDS);
     setCounting(true);
@@ -163,7 +184,7 @@ export default function PreRollGate({
       return;
     }
 
-    setMsg("Tangazo limefunguka. Rudi hapa baada ya countdown.");
+    setMsg("Tangazo limefunguka. Subiri countdown iishe ili upate point.");
   }
 
   function reopenAd() {
@@ -195,20 +216,30 @@ export default function PreRollGate({
         style={{ aspectRatio: "16/9", minHeight: 240 }}
       >
         <div className="absolute inset-0 flex flex-col items-center justify-center px-4 text-center gap-3">
-          <div className="w-16 h-16 rounded-full border-4 border-violet-400 border-t-transparent animate-spin" />
+          {!done && (
+            <div className="w-16 h-16 rounded-full border-4 border-violet-400 border-t-transparent animate-spin" />
+          )}
           <p className="text-3xl font-black text-white tabular-nums">
             {done ? "0" : left}s
           </p>
           <p className="text-sm text-violet-200 font-medium">
             {done
-              ? "Tayari — endelea kucheza"
-              : "Tangazo linaendelea…"}
+              ? awarded > 0
+                ? `+${awarded} point zimeongezwa!`
+                : "Tayari — endelea kucheza"
+              : "Tangazo linaendelea… subiri countdown"}
           </p>
+          {user && points !== null && (
+            <p className="text-xs text-amber-300 flex items-center gap-1 justify-center">
+              <Coins className="w-3.5 h-3.5" />
+              Point zako: {points}
+            </p>
+          )}
           <div className="flex flex-wrap gap-2 justify-center mt-1">
             <button
               type="button"
               onClick={reopenAd}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold touch-manipulation"
             >
               <ExternalLink className="w-4 h-4" />
               Fungua tena
@@ -217,7 +248,7 @@ export default function PreRollGate({
               <button
                 type="button"
                 onClick={() => setUnlocked(true)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold touch-manipulation"
               >
                 <Play className="w-4 h-4 fill-current" />
                 Cheza sasa
@@ -265,19 +296,19 @@ export default function PreRollGate({
               type="button"
               disabled={busy}
               onClick={spendAndUnlock}
-              className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-60"
+              className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-60 touch-manipulation"
             >
-              {busy ? "…" : `Cheza (−${POINTS.WATCH_COST})`}
+              {busy ? "…" : `Cheza (−${POINTS.WATCH_COST} point)`}
             </button>
           )}
 
           <button
             type="button"
             onClick={startAd}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold touch-manipulation"
           >
             <ExternalLink className="w-4 h-4" />
-            Fungua tangazo (+{POINTS.AD_REWARD})
+            Tazama tangazo (+{POINTS.AD_REWARD} point)
           </button>
 
           {user?.inviteCode && (
@@ -288,13 +319,18 @@ export default function PreRollGate({
                 navigator.clipboard?.writeText(url);
                 setMsg("Invite link imenakiliwa");
               }}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-slate-200 text-sm inline-flex items-center gap-1"
+              className="px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-slate-200 text-sm inline-flex items-center gap-1 touch-manipulation"
             >
               <UserPlus className="w-3.5 h-3.5" />
-              Invite
+              Invite (+{POINTS.INVITE_REWARD})
             </button>
           )}
         </div>
+
+        <p className="text-[11px] text-slate-500 text-center max-w-xs">
+          Point zinaongezwa baada ya countdown ya tangazo kuisha (ukiwa umeingia
+          account).
+        </p>
       </div>
     </div>
   );
