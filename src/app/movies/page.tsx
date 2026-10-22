@@ -22,7 +22,6 @@ export default async function MoviesPage() {
 
   try {
     await ensureElitePlexContent("movie");
-    // Ondoa Bongo za YouTube kama zilikuwepo
     await prisma.content.deleteMany({
       where: { type: "movie", category: { startsWith: "Bongo" } },
     });
@@ -30,13 +29,12 @@ export default async function MoviesPage() {
       where: { type: "movie", status: "published" },
       select: { id: true, title: true, coverUrl: true, category: true },
     });
+    // 2026 / newest FIRST
     items = raw.sort((a, b) => {
       const ya = yearFromCategory(a.category);
       const yb = yearFromCategory(b.category);
-      const fa = ya >= 2025 ? 1 : 0;
-      const fb = yb >= 2025 ? 1 : 0;
-      if (fa !== fb) return fa - fb;
-      return yb - ya;
+      if (yb !== ya) return yb - ya;
+      return a.title.localeCompare(b.title);
     });
   } catch (e) {
     console.error("movies page", e);
@@ -50,7 +48,7 @@ export default async function MoviesPage() {
         </div>
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-white">Movies</h1>
-          <p className="text-sm text-slate-400">{items.length} movies</p>
+          <p className="text-sm text-slate-400">{items.length} movies · 2026 kwanza</p>
         </div>
       </div>
 

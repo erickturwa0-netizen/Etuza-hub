@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/prisma";
 
 const BASE = "https://eliteplex-api.vercel.app";
-const MOVIE_TAG = "eliteplex-github-v6";
-const DRAMA_TAG = "eliteplex-drama-v6";
+/** Bump tag → force re-import with 2026-first order */
+const MOVIE_TAG = "eliteplex-github-v7-2026first";
+const DRAMA_TAG = "eliteplex-drama-v7";
 
 type EliteItem = {
   id?: string;
@@ -68,53 +69,46 @@ function yearNum(y?: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Newest first: 2026 → 2025 → older */
+function sortByYearDesc(a: EliteItem, b: EliteItem) {
+  return yearNum(b.year) - yearNum(a.year);
+}
+
 export async function importElitePlexMovies(force = false): Promise<number> {
   const existing = await prisma.apiSource.findUnique({ where: { category: "movie" } });
   if (!force && existing?.notes === MOVIE_TAG) {
     return prisma.content.count({ where: { type: "movie", status: "published" } });
   }
 
-  // More pages → more catalog
   const remote = await fetchPages(
     "/api/movies",
-    [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20]
+    [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]
   );
 
   const byId = new Map<string, EliteItem>();
 
-  for (const c of CLASSIC_SEEDS) {
-    byId.set(c.id, {
-      tmdb_id: c.id,
-      id: c.id,
-      name: c.title,
-      year: c.year,
-      poster: c.poster,
-    });
-  }
-
+  // Remote first so 2026 from API wins over classics list order
   for (const row of remote) {
     const id = String(row.tmdb_id || row.id || "");
     if (!/^\d{2,7}$/.test(id)) continue;
-    if (!byId.has(id)) byId.set(id, row);
+    byId.set(id, row);
+  }
+
+  for (const c of CLASSIC_SEEDS) {
+    if (!byId.has(c.id)) {
+      byId.set(c.id, {
+        tmdb_id: c.id,
+        id: c.id,
+        name: c.title,
+        year: c.year,
+        poster: c.poster,
+      });
+    }
   }
 
   await prisma.content.deleteMany({ where: { type: "movie" } });
 
-  const rest = [...byId.values()]
-    .filter((r) => !CLASSIC_SEEDS.some((c) => c.id === String(r.tmdb_id || r.id)))
-    .sort((a, b) => {
-      const ya = yearNum(a.year);
-      const yb = yearNum(b.year);
-      const fa = ya >= 2025 ? 1 : 0;
-      const fb = yb >= 2025 ? 1 : 0;
-      if (fa !== fb) return fa - fb;
-      return yb - ya;
-    });
-
-  const ordered = [
-    ...CLASSIC_SEEDS.map((c) => byId.get(c.id)!).filter(Boolean),
-    ...rest,
-  ];
+  const ordered = [...byId.values()].sort(sortByYearDesc);
 
   let total = 0;
   for (const row of ordered) {
@@ -179,16 +173,15 @@ export async function importElitePlexDrama(force = false): Promise<number> {
 
   const seen = new Set<string>();
   let total = 0;
-  for (const row of [...series, ...anime]) {
+  const all = [...series, ...anime].sort(sortByYearDesc);
+  for (const row of all) {
     const id = String(row.tmdb_id || row.id || "");
     const title = String(row.name || row.title || "").trim();
     if (!id || !title || seen.has(id)) continue;
     if (!/^\d{2,7}$/.test(id)) continue;
     seen.add(id);
 
-    const isAnime = anime.some(
-      (a) => String(a.tmdb_id || a.id) === id
-    );
+    const isAnime = anime.some((a) => String(a.tmdb_id || a.id) === id);
 
     await prisma.content.create({
       data: {
