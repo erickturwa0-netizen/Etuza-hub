@@ -20,21 +20,19 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-              "style-src 'self' 'unsafe-inline'",
+              // Adsterra + players need external scripts
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
+              "style-src 'self' 'unsafe-inline' https:",
               "img-src 'self' data: blob: https:",
-              "font-src 'self' data:",
-              // ElitePlex + HLS proxy + external APIs
+              "font-src 'self' data: https:",
               "connect-src 'self' https: blob: wss:",
-              // Native video / HLS
               "media-src 'self' https: blob:",
-              // Allow embed players (vidsrc, videasy, 2embed, etc.) + social
               "frame-src 'self' https: blob:",
               "child-src 'self' https: blob:",
               "worker-src 'self' blob:",
               "object-src 'none'",
               "base-uri 'self'",
-              "form-action 'self'",
+              "form-action 'self' https:",
             ].join("; "),
           },
         ],

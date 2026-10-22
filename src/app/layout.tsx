@@ -3,6 +3,7 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import BottomNav from "@/components/BottomNav";
+import AdsterraScripts from "@/components/AdsterraScripts";
 
 export const metadata: Metadata = {
   title: "ETUZA HUB – Movies, Games & VPN",
@@ -19,6 +20,7 @@ export default function RootLayout({
         <div className="flex-1 flex flex-col pb-16 md:pb-0">{children}</div>
         <Footer />
         <BottomNav />
+        <AdsterraScripts />
       </body>
     </html>
   );

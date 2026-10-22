@@ -14,6 +14,8 @@ type Props = {
   contentKey: string;
   title?: string;
   children: React.ReactNode;
+  /** When false, skip gate (movies play free). Default false for now. */
+  enabled?: boolean;
 };
 
 type MeUser = {
@@ -23,8 +25,13 @@ type MeUser = {
   role?: string;
 };
 
-export default function PreRollGate({ contentKey, title, children }: Props) {
-  const [unlocked, setUnlocked] = useState(false);
+export default function PreRollGate({
+  contentKey,
+  title,
+  children,
+  enabled = false,
+}: Props) {
+  const [unlocked, setUnlocked] = useState(!enabled);
   const [counting, setCounting] = useState(false);
   const [left, setLeft] = useState(PRE_ROLL_SECONDS);
   const [ready, setReady] = useState(false);
@@ -35,6 +42,12 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
   const [adOpened, setAdOpened] = useState(false);
 
   useEffect(() => {
+    if (!enabled) {
+      setUnlocked(true);
+      setReady(true);
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       try {
@@ -63,7 +76,7 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [contentKey]);
+  }, [contentKey, enabled]);
 
   useEffect(() => {
     if (!counting || left <= 0) return;
@@ -132,20 +145,14 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
     setBusy(false);
   }
 
-  /**
-   * CPA links (araplhn etc.) return empty HTML and block iframes.
-   * Must open as a real top-level navigation from a user click.
-   */
   function startAd() {
     setMsg("");
     setAdOpened(true);
     setLeft(PRE_ROLL_SECONDS);
     setCounting(true);
 
-    // User gesture → open works on most mobile browsers
     const win = window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
     if (!win) {
-      // Popup blocked — same-tab open; user returns with browser Back
       try {
         sessionStorage.setItem("etuza_ad_return", window.location.href);
         sessionStorage.setItem(preRollStorageKey(contentKey) + "_pending", "1");
@@ -156,12 +163,14 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
       return;
     }
 
-    setMsg("Tangazo limefunguka kwenye tab mpya. Rudi hapa baada ya countdown.");
+    setMsg("Tangazo limefunguka. Rudi hapa baada ya countdown.");
   }
 
   function reopenAd() {
     window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
   }
+
+  if (!enabled) return <>{children}</>;
 
   if (!ready) {
     return (
@@ -178,7 +187,6 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
 
   const hasPoints = user && (points ?? 0) >= POINTS.WATCH_COST;
 
-  // Active ad countdown screen (no empty iframe)
   if (counting || adOpened) {
     const done = left <= 0;
     return (
@@ -194,12 +202,8 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
           <p className="text-sm text-violet-200 font-medium">
             {done
               ? "Tayari — endelea kucheza"
-              : "Tangazo linaendelea… usifunge tab"}
+              : "Tangazo linaendelea…"}
           </p>
-          <p className="text-xs text-slate-400 max-w-xs">
-            Tangazo limefunguliwa kwenye dirisha/tab jipya (si video ndani ya app).
-          </p>
-
           <div className="flex flex-wrap gap-2 justify-center mt-1">
             <button
               type="button"
@@ -207,9 +211,8 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold"
             >
               <ExternalLink className="w-4 h-4" />
-              Fungua tangazo tena
+              Fungua tena
             </button>
-
             {done && (
               <button
                 type="button"
@@ -221,7 +224,6 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
               </button>
             )}
           </div>
-
           {msg && <p className="text-xs text-amber-300">{msg}</p>}
         </div>
       </div>
@@ -293,10 +295,6 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
             </button>
           )}
         </div>
-
-        <p className="text-[10px] text-slate-500 max-w-xs text-center">
-          Tangazo linafunguka nje (tab mpya). Baada ya {PRE_ROLL_SECONDS}s movie itafunguka.
-        </p>
       </div>
     </div>
   );
