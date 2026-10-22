@@ -267,7 +267,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     };
   }, [playUrl, mode, attachHls]);
 
-  function toggleProxyProxy() {
+  function toggleProxy() {
     if (!rawHls) return;
     const next = !useProxy;
     setUseProxy(next);
