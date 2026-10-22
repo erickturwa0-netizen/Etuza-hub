@@ -155,7 +155,6 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
 
   const hasPoints = user && (points ?? 0) >= POINTS.WATCH_COST;
 
-  // Full-bleed ad view inside the player box
   if (showAd) {
     return (
       <div className="space-y-2">
@@ -241,7 +240,7 @@ export default function PreRollGate({ contentKey, title, children }: Props) {
 
           {user?.inviteCode && (
             <button
-              type="button"box_onclick": true,
+              type="button"
               onClick={() => {
                 const url = `${window.location.origin}/signup?ref=${user.inviteCode}`;
                 navigator.clipboard?.writeText(url);
