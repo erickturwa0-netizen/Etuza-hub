@@ -31,7 +31,6 @@ function extractTmdbEmbed(src: string): { id: string; media: "movie" | "tv" } | 
   return null;
 }
 
-/** Order tuned for fill-rate on free embeds (popular titles first). */
 function buildInAppSources(id: string, media: "movie" | "tv"): Source[] {
   if (media === "movie") {
     return [
@@ -185,7 +184,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     };
   }, [src]);
 
-  // Auto-advance embed source every 10s (until user picks manually)
   useEffect(() => {
     if (mode !== "embed" || sources.length < 2) return;
     if (manualRef.current) return;
@@ -269,7 +267,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     };
   }, [playUrl, mode, attachHls]);
 
-  function toggleProxy() {
+  function toggleProxyProxy() {
     if (!rawHls) return;
     const next = !useProxy;
     setUseProxy(next);
@@ -354,9 +352,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             <button
               type="button"
               onClick={() =>
-                switchSource(
-                  sourceIdx + 1 < sources.length ? sourceIdx + 1 : 0
-                )
+                switchSource(sourceIdx + 1 < sources.length ? sourceIdx + 1 : 0)
               }
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-sm text-slate-200"
             >
@@ -386,9 +382,9 @@ export default function StreamPlayer({ src, poster, title }: Props) {
 
         <p className="text-[11px] text-slate-500">
           {sources[sourceIdx]?.provider || "player"} ({sourceIdx + 1}/
-          {Math.max(sources.length, 1)}). Kama inaandika "couldn't find" →
-          bofya <b>Source nyingine</b> (VidSrc / 2Embed). Movie mpya sana za
-          2026 zinaweza kukosa kwenye free players.
+          {Math.max(sources.length, 1)}). Kama inaandika couldnt find → bofya{" "}
+          <b>Source nyingine</b>. Movie mpya za 2026 zinaweza kukosa kwenye free
+          players — jaribu movie maarufu zaidi.
         </p>
       </div>
     );
@@ -454,7 +450,8 @@ export default function StreamPlayer({ src, poster, title }: Props) {
 
           {rawHls && (
             <button
-              type="button"/ onClick={toggleProxy}
+              type="button"
+              onClick={toggleProxy}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-sm text-slate-200"
             >
               <RefreshCw className="w-4 h-4" />
