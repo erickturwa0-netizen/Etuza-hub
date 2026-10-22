@@ -36,18 +36,10 @@ export default async function TvPage({
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 pb-28">
       <PresenceTrackerClient section="tv" title="TV Channels" />
-      <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-white">TV Channels</h1>
-          <p className="text-sm text-slate-400">
-            {channels.length} channels · zilizo hai
-          </p>
-        </div>
-        <div className="sm:ml-auto w-full sm:w-auto">
-          <Suspense fallback={null}>
-            <ContentSearch placeholder="Tafuta channel…" />
-          </Suspense>
-        </div>
+      <div className="mb-4 w-full sm:max-w-md sm:ml-auto">
+        <Suspense fallback={null}>
+          <ContentSearch placeholder="Tafuta channel…" />
+        </Suspense>
       </div>
       <TvChannelGrid channels={channels} />
     </main>

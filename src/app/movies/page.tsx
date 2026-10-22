@@ -33,7 +33,15 @@ export default async function MoviesPage({
   let bannerTitles: string[] = [];
 
   try {
-    await ensureElitePlexContent("movie");
+    // Fast path: list from DB first
+    let count = await prisma.content.count({
+      where: { type: "movie", status: "published" },
+    });
+    if (count < 10) {
+      // Only heavy import when catalog empty/thin
+      await ensureElitePlexContent("movie");
+    }
+
     const banner = await getNewContentBanner();
     if (banner?.titles) bannerTitles = banner.titles;
 
@@ -51,9 +59,9 @@ export default async function MoviesPage({
           : {}),
       },
       select: { id: true, title: true, coverUrl: true, category: true },
+      take: 200,
     });
 
-    // Drop residual 2025+ if any
     items = raw
       .filter((c) => {
         const y = yearFromCategory(c.category);
@@ -107,7 +115,7 @@ export default async function MoviesPage({
             <Link
               key={c.id}
               href={`/watch/${c.id}`}
-              className="block rounded-2xl border border-slate-700 bg-slate-900 overflow-hidden active:scale-[0.98] transition group"
+              className="block rounded-2xl border border-slate-700 bg-slate-900 overflow-hidden active:scale-[0.98] transition group touch-manipulation"
             >
               <div className="relative w-full aspect-[2/3] bg-violet-950">
                 {c.coverUrl ? (
@@ -116,6 +124,7 @@ export default async function MoviesPage({
                     src={c.coverUrl}
                     alt={c.title}
                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition"
+                    loading="lazy"
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center">

@@ -23,8 +23,11 @@ export default function BottomNav() {
   }
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-slate-800 bg-[#0a0a0f]">
-      <div className="flex items-center justify-around h-14">
+    <nav
+      className="md:hidden fixed bottom-0 left-0 right-0 border-t border-slate-800 bg-[#0a0a0f]"
+      style={{ zIndex: 99999, pointerEvents: "auto" }}
+    >
+      <div className="flex items-center justify-around h-14 max-w-lg mx-auto">
         {tabs.map((t) => {
           const active =
             t.href === "/" ? pathname === "/" : pathname.startsWith(t.href);
@@ -32,8 +35,7 @@ export default function BottomNav() {
             <Link
               key={t.href}
               href={t.href}
-              className={`flex flex-col items-center justify-center flex-1 h-full text-[10px] ${
-                active ? "text-violet-400" : "text-slate-500"
+              className={`flex flex-col items-center justify-center flex-1 h-full text-[10px] touch-manipulation ${\n                active ? "text-violet-400" : "text-slate-500"
               }`}
             >
               <t.icon className="w-5 h-5 mb-0.5" />
