@@ -13,6 +13,7 @@ import {
   Clock,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import AdminSyncButtons from "@/components/AdminSyncButtons";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -123,6 +124,9 @@ export default async function AdminDashboard() {
           Add Content
         </Link>
       </div>
+
+      {/* Sync buttons – TMDB + Elite */}
+      <AdminSyncButtons />
 
       {/* Live viewers */}
       <div className="glass-card p-5 mb-6">
