@@ -16,7 +16,6 @@ function sourceOf(c: IptvChannel): string {
   const id = String(c.id || "");
   if (id.startsWith("mfalme")) return "mfalme";
   if (id.startsWith("sf-")) return "streamfree";
-  if (id.startsWith("modobo")) return "modobo";
   if (id.startsWith("pin")) return "free";
   return "other";
 }
@@ -25,8 +24,7 @@ const SOURCES: { id: string; label: string }[] = [
   { id: "all", label: "Zote" },
   { id: "free", label: "Free (zinacheza)" },
   { id: "mfalme", label: "Mfalme TV" },
-  { id: "streamfree", label: "StreamFree / Mechi" },
-  { id: "modobo", label: "Modobo" },
+  { id: "streamfree", label: "Orizon / Mechi" },
 ];
 
 export default function TvChannelGrid({ channels }: { channels: IptvChannel[] }) {
@@ -72,7 +70,6 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
         </p>
       </div>
 
-      {/* Source buttons — Mfalme, StreamFree, Modobo, Free */}
       <div className="flex gap-2 mb-4 flex-wrap">
         {SOURCES.map((s) => {
           const n = s.id === "all" ? counts.all : counts[s.id] || 0;
@@ -98,7 +95,6 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
         })}
       </div>
 
-      {/* Group chips within selected source */}
       {groups.length > 1 && (
         <div className="flex gap-2 mb-5 flex-wrap">
           {["All", ...groups].map((g) => (
@@ -144,7 +140,13 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
                   </span>
                 )}
                 <span className="absolute top-1 left-1 text-[9px] px-1.5 py-0.5 rounded bg-black/70 text-slate-200 capitalize">
-                  {src === "free" ? "Free" : src === "streamfree" ? "Mechi" : src}
+                  {src === "free"
+                    ? "Free"
+                    : src === "streamfree"
+                      ? "Orizon"
+                      : src === "mfalme"
+                        ? "Mfalme"
+                        : src}
                 </span>
               </div>
               <div className="p-3 border-t border-slate-800">
@@ -159,11 +161,11 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
               <div
                 key={c.id + "-" + c.title}
                 className="block rounded-2xl border border-slate-700 bg-slate-900 overflow-hidden opacity-80"
-                title="Catalog — stream haipatikani moja kwa moja"
+                title="Catalog"
                 onClick={() =>
                   alert(
                     c.title +
-                      "\n\nHii ni catalog. Stream haipatikani bure (inahitaji app / subscription)."
+                      "\n\nHii ni catalog. Stream haipatikani moja kwa moja."
                   )
                 }
               >
@@ -186,7 +188,7 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
 
       {filtered.length === 0 && (
         <p className="text-sm text-slate-500 mt-4">
-          Hakuna channel kwenye sehemu hii. Chagua button nyingine juu.
+          Hakuna channel kwenye sehemu hii.
         </p>
       )}
     </>
