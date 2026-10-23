@@ -23,6 +23,8 @@ const PUBLIC_API = [
   "/api/auth/me",
   "/api/tv/channels",
   "/api/tv/modobo",
+  "/api/tv/mfalme",
+  "/api/tv/streamfree",
   "/api/content",
   "/api/resolve-downloads",
   "/api/public-feed",

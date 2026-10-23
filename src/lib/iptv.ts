@@ -1,5 +1,7 @@
 import { tvCover } from "@/lib/covers";
 import { fetchModoboFreeChannels } from "@/lib/modobo";
+import { fetchMfalmePlayable, fetchMfalmeChannels, isDirectPlayable } from "@/lib/mfalme";
+import { fetchStreamFreeMatches } from "@/lib/streamfree";
 
 export type IptvChannel = {
   id: string;
@@ -30,6 +32,7 @@ function ch(
 
 /** Free/public m3u8 — health-checked */
 export const PINNED_CHANNELS: IptvChannel[] = [
+  ch("pin-safari", "Safari Channel", "Tanzania", "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_12bb7dc0590211f1951119e8afeb4224/index.fmp4.m3u8", "Safari.tz"),
   ch("pin-tbc2", "TBC2", "Tanzania", "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_44ed95e05b6d11f18d5d85805abbdd6f/index.m3u8", "TBC2.tz", "https://i.imgur.com/VkUJt2q.png"),
   ch("pin-dodoma", "Dodoma TV", "Tanzania", "https://goliveafrica.media:9998/live/625965017ed69/index.m3u8", "DodomaTV.tz"),
   ch("pin-mahaasin", "Mahaasin TV", "Tanzania", "https://mahaasintv.livebox.co.in/mahaasintvhls/mahaasintv.m3u8", "MahaasinTV.tz"),
@@ -60,11 +63,12 @@ export const PINNED_CHANNELS: IptvChannel[] = [
   ch("pin-cgtn", "CGTN", "News", "https://news.cgtn.com/resource/live/english/cgtn-news.m3u8", "CGTN.en"),
 ];
 
-/** Known public m3u8 by title keyword */
 function publicStreamForTitle(title: string): string {
   const t = title.toLowerCase().trim();
   if (t.includes("mahaasin"))
     return "https://mahaasintv.livebox.co.in/mahaasintvhls/mahaasintv.m3u8";
+  if (t.includes("safari"))
+    return "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_12bb7dc0590211f1951119e8afeb4224/index.fmp4.m3u8";
   if (t.includes("france 24"))
     return "https://static.france24.com/live/F24_EN_LO_HLS/live_web.m3u8";
   if (t.includes("al jazeera"))
@@ -86,9 +90,11 @@ function publicStreamForTitle(title: string): string {
 
 export function isPlayableStream(url: string): boolean {
   if (!url || !/^https?:\/\//i.test(url)) return false;
+  if (url.startsWith("catalog://")) return false;
   if (url.includes("cdn.apisfast.top")) return false;
   if (url.includes("/api/v1/channels")) return false;
-  return true;
+  if (/player\.php|osmanitv\.com\/v3\/player/i.test(url)) return false;
+  return isDirectPlayable(url) || /m3u8|castr\.net|\.mp4/i.test(url);
 }
 
 export async function loadIptvChannels(opts?: {
@@ -111,6 +117,48 @@ export async function loadIptvChannels(opts?: {
     channels.map((c) => c.title.toLowerCase().replace(/\s+/g, " "))
   );
 
+  // 1) Mfalme playable free streams
+  try {
+    const mfalme = await fetchMfalmePlayable();
+    for (const m of mfalme) {
+      const key = m.title.toLowerCase().replace(/\s+/g, " ");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      channels.push({
+        id: `mfalme-${m.id}`,
+        title: m.title,
+        group: m.group || "Mfalme Free",
+        url: m.url,
+        tvgId: null,
+        logo: tvCover(m.title, m.logo),
+      });
+    }
+  } catch (e) {
+    console.error("mfalme merge", e);
+  }
+
+  // 2) StreamFree matches (playable only if sources present)
+  try {
+    const matches = await fetchStreamFreeMatches();
+    for (const m of matches) {
+      if (liveOnly && !m.playable) continue;
+      const key = m.title.toLowerCase().replace(/\s+/g, " ");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      channels.push({
+        id: `sf-${m.id}`,
+        title: m.title,
+        group: m.group,
+        url: m.url || `catalog://streamfree/${m.id}`,
+        tvgId: null,
+        logo: tvCover(m.title, m.logo),
+      });
+    }
+  } catch (e) {
+    console.error("streamfree merge", e);
+  }
+
+  // 3) Modobo free (static) — mapped public streams or catalog
   try {
     const modobo = await fetchModoboFreeChannels();
     for (const m of modobo) {
@@ -126,23 +174,42 @@ export async function loadIptvChannels(opts?: {
         "Modobo Free";
 
       const mapped = publicStreamForTitle(title);
-      const url = mapped || "";
-
-      // Skip pure-catalog when liveOnly (default true for cleaner grid)
-      // Still include catalog if liveOnly=false
-      if (liveOnly && !url) continue;
+      if (liveOnly && !mapped) continue;
 
       channels.push({
         id: `modobo-${m.id}`,
         title,
         group: grp,
-        url: url || `catalog://modobo/${m.id}`,
+        url: mapped || `catalog://modobo/${m.id}`,
         tvgId: null,
         logo: tvCover(title, m.logo),
       });
     }
   } catch (e) {
     console.error("modobo merge", e);
+  }
+
+  // 4) Optional: all Mfalme free catalog (including player.php) when ?all=1
+  if (!liveOnly) {
+    try {
+      const all = await fetchMfalmeChannels();
+      for (const m of all) {
+        if (m.access !== "free") continue;
+        const key = m.title.toLowerCase().replace(/\s+/g, " ");
+        if (seen.has(key)) continue;
+        seen.add(key);
+        channels.push({
+          id: `mfalme-cat-${m.id}`,
+          title: m.title,
+          group: "Mfalme Free",
+          url: m.url || `catalog://mfalme/${m.id}`,
+          tvgId: null,
+          logo: tvCover(m.title, m.logo),
+        });
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   if (q) {
@@ -156,7 +223,6 @@ export async function loadIptvChannels(opts?: {
     channels = channels.filter((c) => c.group.toLowerCase().includes(group));
   }
 
-  // Prefer playable first
   const sorted = [...channels].sort((a, b) => {
     const aOk = isPlayableStream(a.url) ? 0 : 1;
     const bOk = isPlayableStream(b.url) ? 0 : 1;
@@ -166,8 +232,8 @@ export async function loadIptvChannels(opts?: {
   return {
     channels: sorted.slice(0, limit),
     total: sorted.length,
-    source: "pinned+modobo-free",
+    source: "pinned+mfalme+streamfree+modobo",
   };
 }
 
-export const IPTV_SOURCE_URL = "https://cdn.apisfast.top/api/v1/channels";
+export const IPTV_SOURCE_URL = "https://api.mfalmeapp.online/api/channels";
