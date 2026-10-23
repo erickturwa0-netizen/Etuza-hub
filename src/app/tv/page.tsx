@@ -11,19 +11,19 @@ export const metadata = { title: "TV Channels – ETUZA HUB" };
 export default async function TvPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; group?: string; all?: string }>;
+  searchParams: Promise<{ q?: string; group?: string; live?: string }>;
 }) {
   const sp = await searchParams;
   const q = sp.q || "";
   const group = sp.group || "";
-  // ?all=1 shows catalog-only too; default = playable only
-  const liveOnly = sp.all !== "1";
+  // Default: full catalog. ?live=1 = playable streams only
+  const liveOnly = sp.live === "1";
 
   let channels = PINNED_CHANNELS;
 
   try {
     const result = await loadIptvChannels({
-      limit: 250,
+      limit: 300,
       q,
       group,
       liveOnly,
