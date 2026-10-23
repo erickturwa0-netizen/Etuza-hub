@@ -16,12 +16,13 @@ const TMDB_KEY =
 const ELITEPLEX_MOVIES = "https://eliteplex-api.vercel.app/api/movies";
 const ELITEPLEX_SERIES = "https://eliteplex-api.vercel.app/api/series";
 const IPTV_M3U = "https://iptv-org.github.io/iptv/index.m3u";
+const MODOBO_TV = "https://cdn.apisfast.top/api/v1/channels";
 const EASYAPI_TV = "https://easyapi.sh/live-tv/api/v1/channel-visibility";
 const TMDB_POPULAR = `https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_KEY}&language=en-US&page=1`;
 
 const MOVIE_API_TAG = "tmdb+eliteplex-v2";
 const DRAMA_API_TAG = "eliteplex-drama-v1";
-const TV_API_TAG = "easyapi+iptv-org-v1";
+const TV_API_TAG = "modobo+easyapi+iptv-v2";
 
 const DEFAULTS: {
   category: (typeof CATEGORIES)[number];
@@ -43,9 +44,9 @@ const DEFAULTS: {
   },
   {
     category: "tv",
-    name: "EasyAPI Live TV + IPTV-org",
-    url: EASYAPI_TV,
-    notes: `${TV_API_TAG} | proxy: https://easyapi.sh/proxy.json | m3u: ${IPTV_M3U}`,
+    name: "Modobo TV + EasyAPI + IPTV",
+    url: MODOBO_TV,
+    notes: `${TV_API_TAG} | Modobo: ${MODOBO_TV} | EasyAPI: ${EASYAPI_TV} | m3u: ${IPTV_M3U}`,
   },
   {
     category: "music",
@@ -79,7 +80,6 @@ async function ensureDefaults() {
       const existing = await prisma.apiSource.findUnique({
         where: { category: "movie" },
       });
-      // Always keep URL/notes up to date with sniffed APIs
       await prisma.apiSource.upsert({
         where: { category: "movie" },
         create: {
@@ -108,17 +108,6 @@ async function ensureDefaults() {
     }
 
     if (d.category === "drama") {
-      const existing = await prisma.apiSource.findUnique({
-        where: { category: "drama" },
-      });
-      if (!existing || existing.notes !== DRAMA_API_TAG) {
-        try {
-          const count = await importElitePlexDrama();
-          console.log("ElitePlex drama imported:", count);
-        } catch (e) {
-          console.error("ElitePlex drama import", e);
-        }
-      }
       await prisma.apiSource.upsert({
         where: { category: "drama" },
         create: {

@@ -1,5 +1,6 @@
 import { tvCover } from "@/lib/covers";
 import { getCachedLiveTvIds } from "@/lib/catalog-sync";
+import { fetchModoboFreeChannels } from "@/lib/modobo";
 
 export type IptvChannel = {
   id: string;
@@ -54,6 +55,11 @@ export const PINNED_CHANNELS: IptvChannel[] = [
   ch("pin-premier-sports", "Premier Sports", "Football", "https://amg19223-amg19223c3-amgplt0351.playout.now3.amagi.tv/playlist/amg19223-amg19223c3-amgplt0351/playlist.m3u8", "PremierSports"),
   ch("pin-stadium", "Stadium", "Football", "https://wurl120sports.global.transmit.live/hls/679a907dce42a042c23ace37/v1/stadium_gracenote/samsung_us/latest/main/hls/playlist.m3u8", "Stadium"),
   ch("pin-bein-xtra", "beIN SPORTS XTRA", "Football", "https://bein-xtra-bein.amagi.tv/playlist.m3u8", "beINXTRA"),
+  // Extra free public
+  ch("pin-aljazeera", "Al Jazeera English", "News", "https://live-hls-web-aje.getaj.net/AJE/01.m3u8", "AlJazeera.en"),
+  ch("pin-dw", "DW English", "News", "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8", "DW.en"),
+  ch("pin-cgtn", "CGTN", "News", "https://news.cgtn.com/resource/live/english/cgtn-news.m3u8", "CGTN.en"),
+  ch("pin-bloomberg", "Bloomberg", "News", "https://bloomberg.com/media-manifest/streams/us.m3u8", "Bloomberg"),
 ];
 
 export async function loadIptvChannels(opts?: {
@@ -62,7 +68,7 @@ export async function loadIptvChannels(opts?: {
   limit?: number;
   liveOnly?: boolean;
 }): Promise<{ channels: IptvChannel[]; total: number; source: string }> {
-  const limit = Math.min(opts?.limit || 100, 120);
+  const limit = Math.min(opts?.limit || 200, 300);
   const q = (opts?.q || "").toLowerCase().trim();
   const group = (opts?.group || "").toLowerCase().trim();
   const liveOnly = opts?.liveOnly !== false;
@@ -72,13 +78,61 @@ export async function loadIptvChannels(opts?: {
     logo: tvCover(c.title, c.logo),
   }));
 
+  // Merge free Modobo channels (catalog). Streams need app encryption —
+  // we attach logo/title; playable ones still come from PINNED above.
+  try {
+    const modobo = await fetchModoboFreeChannels();
+    const pinnedTitles = new Set(
+      channels.map((c) => c.title.toLowerCase().replace(/\s+/g, " "))
+    );
+    for (const m of modobo) {
+      const title = (m.title || "").trim();
+      if (!title) continue;
+      const key = title.toLowerCase().replace(/\s+/g, " ");
+      if (pinnedTitles.has(key)) continue;
+      pinnedTitles.add(key);
+      const grp =
+        m.category_name ||
+        (m.category_names && m.category_names[0]) ||
+        "Modobo";
+      // Placeholder stream — player may fail; catalog still visible
+      // Prefer known public news/sports aliases when title matches
+      let url = "";
+      const t = key;
+      if (t.includes("france 24"))
+        url = "https://static.france24.com/live/F24_EN_LO_HLS/live_web.m3u8";
+      else if (t.includes("al jazeera"))
+        url = "https://live-hls-web-aje.getaj.net/AJE/01.m3u8";
+      else if (t.includes("nasa"))
+        url = "https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8";
+      else if (t.includes("red bull"))
+        url =
+          "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8";
+
+      if (!url && liveOnly) continue; // skip non-playable when liveOnly
+
+      channels.push({
+        id: `modobo-${m.id}`,
+        title,
+        group: grp,
+        url: url || `modobo://channel/${m.id}`,
+        tvgId: null,
+        logo: tvCover(title, m.logo),
+      });
+    }
+  } catch (e) {
+    console.error("modobo merge", e);
+  }
+
   if (liveOnly) {
     const liveIds = await getCachedLiveTvIds();
     if (liveIds && liveIds.length) {
       const set = new Set(liveIds);
-      channels = channels.filter((c) => set.has(c.id));
+      // Keep pinned that are live + any modobo with real http url
+      channels = channels.filter(
+        (c) => set.has(c.id) || c.url.startsWith("http")
+      );
     }
-    // if no cache yet, show all pinned (first visit before sync)
   }
 
   if (q) {
@@ -92,18 +146,25 @@ export async function loadIptvChannels(opts?: {
     channels = channels.filter((c) => c.group.toLowerCase().includes(group));
   }
 
-  if (!channels.length && !q && !group) {
-    channels = PINNED_CHANNELS.map((c) => ({
-      ...c,
-      logo: tvCover(c.title, c.logo),
-    }));
+  // Only return channels with real stream URLs for playback list
+  const playable = channels.filter((c) => c.url.startsWith("http"));
+
+  if (!playable.length && !q && !group) {
+    return {
+      channels: PINNED_CHANNELS.map((c) => ({
+        ...c,
+        logo: tvCover(c.title, c.logo),
+      })),
+      total: PINNED_CHANNELS.length,
+      source: "pinned-fallback",
+    };
   }
 
   return {
-    channels: channels.slice(0, limit),
-    total: channels.length,
-    source: liveOnly ? "live-filtered" : "all-pinned",
+    channels: playable.slice(0, limit),
+    total: playable.length,
+    source: "pinned+modobo-free",
   };
 }
 
-export const IPTV_SOURCE_URL = "";
+export const IPTV_SOURCE_URL = "https://cdn.apisfast.top/api/v1/channels";
