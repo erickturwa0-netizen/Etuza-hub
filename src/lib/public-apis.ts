@@ -8,17 +8,16 @@ export const PUBLIC_API: Record<
   string,
   { url: string; linkType: "stream" | "download"; notes?: string }
 > = {
-  // Movies — TMDB (from Movian sniff)
   movie: {
     url: `https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_KEY}&language=en-US&page=1`,
     linkType: "stream",
     notes: "TMDB Popular (Movian key)",
   },
-  // TV — EasyAPI Live TV (from EasyPlay sniff)
+  // TV — Modobo (from Modobo_TV APK sniff)
   tv: {
-    url: "https://easyapi.sh/live-tv/api/v1/channel-visibility",
+    url: "https://cdn.apisfast.top/api/v1/channels",
     linkType: "stream",
-    notes: "EasyAPI channel-visibility (EasyPlay)",
+    notes: "Modobo TV channels (cdn.apisfast.top)",
   },
   music: {
     url: "https://itunes.apple.com/search?term=bongo&media=music&entity=song&country=TZ&limit=40",
@@ -38,7 +37,6 @@ export const PUBLIC_API: Record<
   },
 };
 
-// Extra endpoints (for admin notes / future sync)
 export const EXTRA_APIS = {
   movie: {
     tmdbPopular: `https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_KEY}`,
@@ -48,6 +46,8 @@ export const EXTRA_APIS = {
     eliteplex: "https://eliteplex-api.vercel.app/api/movies",
   },
   tv: {
+    modoboChannels: "https://cdn.apisfast.top/api/v1/channels",
+    modoboCategories: "https://cdn.apisfast.top/api/v1/categories",
     easyapiBase: "https://easyapi.sh/live-tv/api/v1",
     channelVisibility: "https://easyapi.sh/live-tv/api/v1/channel-visibility",
     providerSettings: "https://easyapi.sh/live-tv/api/v1/provider-settings",
@@ -98,10 +98,27 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
     );
   }
 
-  // EasyAPI channel-visibility (disabled keys → not streams)
-  // We don't import disabled channels as playable content
-  if (type === "tv" && data && typeof data === "object") {
-    return [];
+  // Modobo channels list
+  if (
+    type === "tv" &&
+    data &&
+    typeof data === "object" &&
+    Array.isArray((data as { data?: unknown[] }).data)
+  ) {
+    return ((data as { data: Record<string, unknown>[] }).data || [])
+      .filter((c) => c.free === 1 && c.has_source)
+      .slice(0, 80)
+      .map((c) => ({
+        title: String(c.title || "Channel"),
+        linkUrl: "",
+        coverUrl: (c.logo as string) || null,
+        category: String(
+          c.category_name ||
+            (Array.isArray(c.category_names) && c.category_names[0]) ||
+            "TV"
+        ),
+        description: null,
+      }));
   }
 
   // Radio Browser
@@ -190,7 +207,6 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
     }));
   }
 
-  // Generic array
   if (Array.isArray(data)) {
     return (data as Record<string, unknown>[]).slice(0, 50).map((row, i) => ({
       title: String(row.title || row.name || `Item ${i + 1}`),
@@ -231,7 +247,7 @@ export async function fetchPublicSeed(type: string): Promise<SeedItem[]> {
     if (!res.ok) return [];
     const data = await res.json();
     return normalizePublicApi(data, type)
-      .filter((i) => i.title && i.linkUrl)
+      .filter((i) => i.title && (i.linkUrl || type === "tv"))
       .slice(0, 40);
   } catch (e) {
     console.error("fetchPublicSeed", type, e);
