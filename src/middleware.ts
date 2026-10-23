@@ -22,6 +22,7 @@ const PUBLIC_API = [
   "/api/auth/logout",
   "/api/auth/me",
   "/api/tv/channels",
+  "/api/tv/modobo",
   "/api/content",
   "/api/resolve-downloads",
   "/api/public-feed",
