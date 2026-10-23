@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { PUBLIC_API } from "@/lib/public-apis";
+import { PUBLIC_API, EXTRA_APIS } from "@/lib/public-apis";
 import {
   importElitePlexMovies,
   importElitePlexDrama,
@@ -10,11 +10,18 @@ import {
 
 const CATEGORIES = ["movie", "tv", "radio", "game", "vpn", "music", "drama"] as const;
 
+const TMDB_KEY =
+  process.env.TMDB_API_KEY || "a0d71cffe2d6693d462af9e4f336bc06";
+
 const ELITEPLEX_MOVIES = "https://eliteplex-api.vercel.app/api/movies";
 const ELITEPLEX_SERIES = "https://eliteplex-api.vercel.app/api/series";
 const IPTV_M3U = "https://iptv-org.github.io/iptv/index.m3u";
-const MOVIE_API_TAG = "eliteplex-v1-active";
+const EASYAPI_TV = "https://easyapi.sh/live-tv/api/v1/channel-visibility";
+const TMDB_POPULAR = `https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_KEY}&language=en-US&page=1`;
+
+const MOVIE_API_TAG = "tmdb+eliteplex-v2";
 const DRAMA_API_TAG = "eliteplex-drama-v1";
+const TV_API_TAG = "easyapi+iptv-org-v1";
 
 const DEFAULTS: {
   category: (typeof CATEGORIES)[number];
@@ -24,9 +31,9 @@ const DEFAULTS: {
 }[] = [
   {
     category: "movie",
-    name: "ElitePlex Movies",
-    url: ELITEPLEX_MOVIES,
-    notes: MOVIE_API_TAG,
+    name: "TMDB + ElitePlex Movies",
+    url: TMDB_POPULAR,
+    notes: `${MOVIE_API_TAG} | Elite: ${ELITEPLEX_MOVIES} | TMDB key from Movian APK`,
   },
   {
     category: "drama",
@@ -36,9 +43,9 @@ const DEFAULTS: {
   },
   {
     category: "tv",
-    name: "IPTV-org (index.m3u)",
-    url: IPTV_M3U,
-    notes: "iptv-org-m3u-v1",
+    name: "EasyAPI Live TV + IPTV-org",
+    url: EASYAPI_TV,
+    notes: `${TV_API_TAG} | proxy: https://easyapi.sh/proxy.json | m3u: ${IPTV_M3U}`,
   },
   {
     category: "music",
@@ -55,8 +62,8 @@ const DEFAULTS: {
   {
     category: "game",
     name: "Games",
-    url: "",
-    notes: "Manual / resolve downloads",
+    url: PUBLIC_API.game?.url || "",
+    notes: "FreeToGame / Manual",
   },
   {
     category: "vpn",
@@ -72,9 +79,30 @@ async function ensureDefaults() {
       const existing = await prisma.apiSource.findUnique({
         where: { category: "movie" },
       });
+      // Always keep URL/notes up to date with sniffed APIs
+      await prisma.apiSource.upsert({
+        where: { category: "movie" },
+        create: {
+          category: "movie",
+          name: d.name,
+          url: d.url,
+          notes: d.notes,
+          enabled: true,
+        },
+        update: {
+          name: d.name,
+          url: d.url,
+          notes: d.notes,
+          enabled: true,
+        },
+      });
       if (!existing || existing.notes !== MOVIE_API_TAG) {
-        const count = await importElitePlexMovies();
-        console.log("ElitePlex movies imported:", count);
+        try {
+          const count = await importElitePlexMovies();
+          console.log("ElitePlex movies imported:", count);
+        } catch (e) {
+          console.error("ElitePlex movie import", e);
+        }
       }
       continue;
     }
@@ -84,9 +112,29 @@ async function ensureDefaults() {
         where: { category: "drama" },
       });
       if (!existing || existing.notes !== DRAMA_API_TAG) {
-        const count = await importElitePlexDrama();
-        console.log("ElitePlex drama imported:", count);
+        try {
+          const count = await importElitePlexDrama();
+          console.log("ElitePlex drama imported:", count);
+        } catch (e) {
+          console.error("ElitePlex drama import", e);
+        }
       }
+      await prisma.apiSource.upsert({
+        where: { category: "drama" },
+        create: {
+          category: "drama",
+          name: d.name,
+          url: d.url,
+          notes: d.notes,
+          enabled: true,
+        },
+        update: {
+          name: d.name,
+          url: d.url,
+          notes: d.notes,
+          enabled: true,
+        },
+      });
       continue;
     }
 
@@ -116,8 +164,13 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     await ensureDefaults();
-    const sources = await prisma.apiSource.findMany({ orderBy: { category: "asc" } });
-    return NextResponse.json({ sources });
+    const sources = await prisma.apiSource.findMany({
+      orderBy: { category: "asc" },
+    });
+    return NextResponse.json({
+      sources,
+      extra: EXTRA_APIS,
+    });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Failed", sources: [] }, { status: 500 });

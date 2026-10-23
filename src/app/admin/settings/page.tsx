@@ -12,6 +12,7 @@ import {
   Music,
   Clapperboard,
   Download,
+  Info,
 } from "lucide-react";
 
 type Source = {
@@ -43,6 +44,26 @@ const LABELS: Record<string, string> = {
   vpn: "VPN",
 };
 
+/** Reference endpoints (sniffed) shown under each section */
+const SECTION_HINTS: Record<string, string[]> = {
+  movie: [
+    "TMDB: api.themoviedb.org/3 (key from Movian APK)",
+    "ElitePlex: eliteplex-api.vercel.app/api/movies",
+    "Sync Movies button on Dashboard pulls Popular + Top Rated + Trending",
+  ],
+  tv: [
+    "EasyAPI: easyapi.sh/live-tv/api/v1/channel-visibility",
+    "Proxy: easyapi.sh/proxy.json",
+    "Sports: popflix.dev/live-tv/api/v1/sports/events",
+    "Free streams: pinned m3u8 + IPTV-org",
+  ],
+  drama: ["ElitePlex Series: eliteplex-api.vercel.app/api/series"],
+  music: ["iTunes Search (Bongo / TZ)"],
+  radio: ["Radio Browser (Tanzania)"],
+  game: ["FreeToGame API"],
+  vpn: ["Manual only"],
+};
+
 export default function AdminSettingsPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +76,9 @@ export default function AdminSettingsPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/admin/api-sources", { credentials: "include" });
+      const res = await fetch("/api/admin/api-sources", {
+        credentials: "include",
+      });
       const data = await res.json();
       if (!res.ok) setError(data.error || "Failed");
       setSources(data.sources || []);
@@ -108,7 +131,6 @@ export default function AdminSettingsPage() {
     setMsg("");
     setError("");
     try {
-      // Refresh API URLs first
       await fetch("/api/admin/api-sources", { credentials: "include" });
       const res = await fetch("/api/admin/import-all", {
         method: "POST",
@@ -138,7 +160,9 @@ export default function AdminSettingsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold">Settings</h1>
-          <p className="text-sm text-slate-500 mt-1">Public API kwa kila kipengele</p>
+          <p className="text-sm text-slate-500 mt-1">
+            API kwa kila sehemu (Movies, TV, Drama…)
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -163,10 +187,14 @@ export default function AdminSettingsPage() {
       </div>
 
       {msg && (
-        <div className="mb-4 px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-sm">{msg}</div>
+        <div className="mb-4 px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-sm">
+          {msg}
+        </div>
       )}
       {error && (
-        <div className="mb-4 px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-sm">{error}</div>
+        <div className="mb-4 px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-sm">
+          {error}
+        </div>
       )}
 
       {loading ? (
@@ -175,6 +203,7 @@ export default function AdminSettingsPage() {
         <div className="space-y-4 max-w-2xl">
           {sources.map((s) => {
             const Icon = ICONS[s.category] || Link2;
+            const hints = SECTION_HINTS[s.category] || [];
             return (
               <div key={s.category} className="glass-card p-4 space-y-3">
                 <div className="flex items-center justify-between">
@@ -183,9 +212,13 @@ export default function AdminSettingsPage() {
                       <Icon className="w-4 h-4" />
                     </div>
                     <div>
-                      <p className="font-semibold text-sm">{LABELS[s.category] || s.category}</p>
+                      <p className="font-semibold text-sm">
+                        {LABELS[s.category] || s.category}
+                      </p>
                       {s.notes && (
-                        <p className="text-[11px] text-slate-500">{s.notes}</p>
+                        <p className="text-[11px] text-slate-500 line-clamp-2">
+                          {s.notes}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -193,7 +226,9 @@ export default function AdminSettingsPage() {
                     <input
                       type="checkbox"
                       checked={s.enabled}
-                      onChange={(e) => update(s.category, { enabled: e.target.checked })}
+                      onChange={(e) =>
+                        update(s.category, { enabled: e.target.checked })
+                      }
                     />
                     On
                   </label>
@@ -208,8 +243,20 @@ export default function AdminSettingsPage() {
                   value={s.url}
                   onChange={(e) => update(s.category, { url: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm font-mono"
-                  placeholder="https://public-api…"
+                  placeholder="https://api…"
                 />
+                {hints.length > 0 && (
+                  <div className="rounded-lg bg-slate-900/80 border border-slate-800 px-3 py-2">
+                    <p className="text-[11px] text-slate-400 flex items-center gap-1 mb-1">
+                      <Info className="w-3 h-3" /> APIs za sehemu hii
+                    </p>
+                    <ul className="text-[11px] text-slate-500 space-y-0.5 list-disc list-inside">
+                      {hints.map((h) => (
+                        <li key={h}>{h}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             );
           })}

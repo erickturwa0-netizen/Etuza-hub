@@ -1,10 +1,25 @@
-/** Public APIs (no key) used to auto-fill catalog when DB is empty */
+/** Public APIs used to auto-fill catalog when DB is empty */
+
+// TMDB key from Movian Media Center APK (fallback)
+const TMDB_KEY =
+  process.env.TMDB_API_KEY || "a0d71cffe2d6693d462af9e4f336bc06";
 
 export const PUBLIC_API: Record<
   string,
-  { url: string; linkType: "stream" | "download" }
+  { url: string; linkType: "stream" | "download"; notes?: string }
 > = {
-  // movie: admin supplies API — no Internet Archive
+  // Movies — TMDB (from Movian sniff)
+  movie: {
+    url: `https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_KEY}&language=en-US&page=1`,
+    linkType: "stream",
+    notes: "TMDB Popular (Movian key)",
+  },
+  // TV — EasyAPI Live TV (from EasyPlay sniff)
+  tv: {
+    url: "https://easyapi.sh/live-tv/api/v1/channel-visibility",
+    linkType: "stream",
+    notes: "EasyAPI channel-visibility (EasyPlay)",
+  },
   music: {
     url: "https://itunes.apple.com/search?term=bongo&media=music&entity=song&country=TZ&limit=40",
     linkType: "stream",
@@ -23,6 +38,29 @@ export const PUBLIC_API: Record<
   },
 };
 
+// Extra endpoints (for admin notes / future sync)
+export const EXTRA_APIS = {
+  movie: {
+    tmdbPopular: `https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_KEY}`,
+    tmdbTopRated: `https://api.themoviedb.org/3/movie/top_rated?api_key=${TMDB_KEY}`,
+    tmdbTrending: `https://api.themoviedb.org/3/trending/movie/week?api_key=${TMDB_KEY}`,
+    tmdbSearch: `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}`,
+    eliteplex: "https://eliteplex-api.vercel.app/api/movies",
+  },
+  tv: {
+    easyapiBase: "https://easyapi.sh/live-tv/api/v1",
+    channelVisibility: "https://easyapi.sh/live-tv/api/v1/channel-visibility",
+    providerSettings: "https://easyapi.sh/live-tv/api/v1/provider-settings",
+    proxyJson: "https://easyapi.sh/proxy.json",
+    sportsEvents: "https://popflix.dev/live-tv/api/v1/sports/events",
+    iptvOrg: "https://iptv-org.github.io/iptv/index.m3u",
+  },
+  drama: {
+    eliteplex: "https://eliteplex-api.vercel.app/api/series",
+    tvmaze: "https://api.tvmaze.com/search/shows?q=drama",
+  },
+};
+
 export type SeedItem = {
   title: string;
   linkUrl: string;
@@ -32,6 +70,40 @@ export type SeedItem = {
 };
 
 export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
+  // TMDB movie list
+  if (
+    type === "movie" &&
+    data &&
+    typeof data === "object" &&
+    Array.isArray((data as { results?: unknown[] }).results)
+  ) {
+    return ((data as { results: Record<string, unknown>[] }).results || []).map(
+      (m) => {
+        const id = String(m.id || "");
+        const poster = m.poster_path
+          ? `https://image.tmdb.org/t/p/w500${m.poster_path}`
+          : null;
+        return {
+          title: String(m.title || m.name || "Untitled"),
+          linkUrl: id ? `https://player.videasy.to/movie/${id}` : "",
+          coverUrl: poster,
+          category: m.release_date
+            ? `Movie · ${String(m.release_date).slice(0, 4)}`
+            : "Movie",
+          description: m.overview
+            ? String(m.overview).slice(0, 400)
+            : null,
+        };
+      }
+    );
+  }
+
+  // EasyAPI channel-visibility (disabled keys → not streams)
+  // We don't import disabled channels as playable content
+  if (type === "tv" && data && typeof data === "object") {
+    return [];
+  }
+
   // Radio Browser
   if (
     Array.isArray(data) &&
@@ -70,7 +142,12 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
   }
 
   // TVmaze
-  if (Array.isArray(data) && data[0] && typeof data[0] === "object" && "show" in (data[0] as object)) {
+  if (
+    Array.isArray(data) &&
+    data[0] &&
+    typeof data[0] === "object" &&
+    "show" in (data[0] as object)
+  ) {
     return (data as {
       show: {
         id: number;
@@ -92,7 +169,12 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
   }
 
   // FreeToGame
-  if (Array.isArray(data) && data[0] && typeof data[0] === "object" && "game_url" in (data[0] as object)) {
+  if (
+    Array.isArray(data) &&
+    data[0] &&
+    typeof data[0] === "object" &&
+    "game_url" in (data[0] as object)
+  ) {
     return (data as {
       title: string;
       thumbnail?: string;
