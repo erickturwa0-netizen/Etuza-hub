@@ -11,11 +11,13 @@ export const metadata = { title: "TV Channels – ETUZA HUB" };
 export default async function TvPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; group?: string }>;
+  searchParams: Promise<{ q?: string; group?: string; all?: string }>;
 }) {
   const sp = await searchParams;
   const q = sp.q || "";
   const group = sp.group || "";
+  // ?all=1 shows catalog-only too; default = playable only
+  const liveOnly = sp.all !== "1";
 
   let channels = PINNED_CHANNELS;
 
@@ -24,7 +26,7 @@ export default async function TvPage({
       limit: 250,
       q,
       group,
-      liveOnly: false,
+      liveOnly,
     });
     if (result.channels.length > 0) channels = result.channels;
   } catch (e) {

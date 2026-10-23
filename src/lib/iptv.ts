@@ -1,5 +1,4 @@
 import { tvCover } from "@/lib/covers";
-import { getCachedLiveTvIds } from "@/lib/catalog-sync";
 import { fetchModoboFreeChannels } from "@/lib/modobo";
 
 export type IptvChannel = {
@@ -29,10 +28,11 @@ function ch(
   };
 }
 
-/** Free/public m3u8 — health-checked at sync time */
+/** Free/public m3u8 — health-checked */
 export const PINNED_CHANNELS: IptvChannel[] = [
   ch("pin-tbc2", "TBC2", "Tanzania", "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_44ed95e05b6d11f18d5d85805abbdd6f/index.m3u8", "TBC2.tz", "https://i.imgur.com/VkUJt2q.png"),
   ch("pin-dodoma", "Dodoma TV", "Tanzania", "https://goliveafrica.media:9998/live/625965017ed69/index.m3u8", "DodomaTV.tz"),
+  ch("pin-mahaasin", "Mahaasin TV", "Tanzania", "https://mahaasintv.livebox.co.in/mahaasintvhls/mahaasintv.m3u8", "MahaasinTV.tz"),
   ch("pin-akili", "Akili Kids!", "Kenya", "https://m6.livecdn.io/akilikids.co.ke/akilikids.smil/playlist.m3u8", "AkiliKids.ke", "https://i.imgur.com/xFm2co6.png"),
   ch("pin-inooro", "Inooro TV", "Kenya", "https://live-onesignal.royalmedia.co.ke/live/T-MxRsFebq6zx7k2QFMbLw.m3u8", "InooroTV.ke", "https://i.imgur.com/5qFJtmo.png"),
   ch("pin-meru", "MERU TV", "Kenya", "https://goliveafrica.media:9998/live/628e5c1991061/index.m3u8", "MeruTV.ke"),
@@ -60,9 +60,11 @@ export const PINNED_CHANNELS: IptvChannel[] = [
   ch("pin-cgtn", "CGTN", "News", "https://news.cgtn.com/resource/live/english/cgtn-news.m3u8", "CGTN.en"),
 ];
 
-/** Map common titles to known public streams */
+/** Known public m3u8 by title keyword */
 function publicStreamForTitle(title: string): string {
-  const t = title.toLowerCase();
+  const t = title.toLowerCase().trim();
+  if (t.includes("mahaasin"))
+    return "https://mahaasintv.livebox.co.in/mahaasintvhls/mahaasintv.m3u8";
   if (t.includes("france 24"))
     return "https://static.france24.com/live/F24_EN_LO_HLS/live_web.m3u8";
   if (t.includes("al jazeera"))
@@ -77,7 +79,16 @@ function publicStreamForTitle(title: string): string {
     return "https://news.cgtn.com/resource/live/english/cgtn-news.m3u8";
   if (t.includes("fifa"))
     return "https://d2w9q46ikgrcwx.cloudfront.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-of5cbk3sav3w5/v1/sysdata_s_p_a_fifa_7/samsungheadend_us/latest/main/hls/playlist.m3u8";
+  if (t.includes("dodoma"))
+    return "https://goliveafrica.media:9998/live/625965017ed69/index.m3u8";
   return "";
+}
+
+export function isPlayableStream(url: string): boolean {
+  if (!url || !/^https?:\/\//i.test(url)) return false;
+  if (url.includes("cdn.apisfast.top")) return false;
+  if (url.includes("/api/v1/channels")) return false;
+  return true;
 }
 
 export async function loadIptvChannels(opts?: {
@@ -89,6 +100,7 @@ export async function loadIptvChannels(opts?: {
   const limit = Math.min(opts?.limit || 250, 400);
   const q = (opts?.q || "").toLowerCase().trim();
   const group = (opts?.group || "").toLowerCase().trim();
+  const liveOnly = opts?.liveOnly !== false;
 
   let channels: IptvChannel[] = PINNED_CHANNELS.map((c) => ({
     ...c,
@@ -99,7 +111,6 @@ export async function loadIptvChannels(opts?: {
     channels.map((c) => c.title.toLowerCase().replace(/\s+/g, " "))
   );
 
-  // ALL free Modobo channels (list from cdn.apisfast.top / channels JSON)
   try {
     const modobo = await fetchModoboFreeChannels();
     for (const m of modobo) {
@@ -115,12 +126,17 @@ export async function loadIptvChannels(opts?: {
         "Modobo Free";
 
       const mapped = publicStreamForTitle(title);
-      // Always include free channels in catalog
+      const url = mapped || "";
+
+      // Skip pure-catalog when liveOnly (default true for cleaner grid)
+      // Still include catalog if liveOnly=false
+      if (liveOnly && !url) continue;
+
       channels.push({
         id: `modobo-${m.id}`,
         title,
         group: grp,
-        url: mapped || `https://cdn.apisfast.top/api/v1/channels?id=${m.id}`,
+        url: url || `catalog://modobo/${m.id}`,
         tvgId: null,
         logo: tvCover(title, m.logo),
       });
@@ -140,10 +156,10 @@ export async function loadIptvChannels(opts?: {
     channels = channels.filter((c) => c.group.toLowerCase().includes(group));
   }
 
-  // Prefer channels with real http(s) stream, but keep all free catalog
+  // Prefer playable first
   const sorted = [...channels].sort((a, b) => {
-    const aOk = a.url.startsWith("http") && !a.url.includes("apisfast") ? 0 : 1;
-    const bOk = b.url.startsWith("http") && !b.url.includes("apisfast") ? 0 : 1;
+    const aOk = isPlayableStream(a.url) ? 0 : 1;
+    const bOk = isPlayableStream(b.url) ? 0 : 1;
     return aOk - bOk;
   });
 

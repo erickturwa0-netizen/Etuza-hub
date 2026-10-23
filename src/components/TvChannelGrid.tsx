@@ -4,18 +4,12 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Tv } from "lucide-react";
 import type { IptvChannel } from "@/lib/iptv";
+import { isPlayableStream } from "@/lib/iptv";
 
 function logoSrc(c: IptvChannel) {
   if (c.logo && /^https?:\/\//i.test(c.logo)) return c.logo;
   const n = encodeURIComponent((c.title || "TV").slice(0, 24));
   return `https://ui-avatars.com/api/?name=${n}&background=1e293b&color=f87171&size=256&bold=true`;
-}
-
-function isPlayable(url: string) {
-  return (
-    /^https?:\/\//i.test(url) &&
-    !url.includes("cdn.apisfast.top/api/v1/channels")
-  );
 }
 
 export default function TvChannelGrid({ channels }: { channels: IptvChannel[] }) {
@@ -31,7 +25,7 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
       ? channels
       : channels.filter((c) => c.group.toLowerCase() === active.toLowerCase());
 
-  const playableCount = filtered.filter((c) => isPlayable(c.url)).length;
+  const playableCount = filtered.filter((c) => isPlayableStream(c.url)).length;
 
   return (
     <>
@@ -41,7 +35,7 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
           TV Channels
         </h1>
         <p className="text-sm text-slate-400 mt-1">
-          {filtered.length} channels · {playableCount} zina stream ya free
+          {playableCount} channels zinacheza · bonyeza channel kucheza
         </p>
       </div>
 
@@ -64,8 +58,9 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {filtered.map((c) => {
-          const play = isPlayable(c.url);
-          const inner = (
+          const play = isPlayableStream(c.url);
+
+          const card = (
             <>
               <div className="aspect-video flex items-center justify-center bg-slate-950 relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -82,7 +77,7 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
                 />
                 {!play && (
                   <span className="absolute bottom-1 right-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-600/90 text-white">
-                    Catalog
+                    Hakuna stream
                   </span>
                 )}
               </div>
@@ -97,10 +92,16 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
             return (
               <div
                 key={c.id + "-" + c.title}
-                className="block rounded-2xl border border-slate-700 bg-slate-900 overflow-hidden opacity-90"
-                title="Stream inahitaji Modobo encryption — catalog only"
+                className="block rounded-2xl border border-slate-700 bg-slate-900 overflow-hidden opacity-75 cursor-not-allowed"
+                title="Stream haipatikani (Modobo encrypted)"
+                onClick={() =>
+                  alert(
+                    c.title +
+                      "\n\nStream haipatikani bure. Channel hii inahitaji encryption ya Modobo app."
+                  )
+                }
               >
-                {inner}
+                {card}
               </div>
             );
           }
@@ -111,7 +112,7 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
               href={`/watch/live?url=${encodeURIComponent(c.url)}&title=${encodeURIComponent(c.title)}`}
               className="block rounded-2xl border border-slate-700 bg-slate-900 overflow-hidden active:border-red-500"
             >
-              {inner}
+              {card}
             </Link>
           );
         })}

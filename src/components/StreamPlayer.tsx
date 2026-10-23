@@ -20,6 +20,14 @@ function isHls(src: string) {
   return /\.m3u8(\?|$)/i.test(src) || src.includes("m3u8");
 }
 
+function isCatalogOnly(src: string) {
+  return (
+    src.startsWith("catalog://") ||
+    src.includes("cdn.apisfast.top") ||
+    src.includes("/api/v1/channels")
+  );
+}
+
 function proxyHls(url: string) {
   return "/api/proxy/stream?url=" + encodeURIComponent(url);
 }
@@ -56,6 +64,14 @@ type Resolved =
 function resolveSrc(src: string): Resolved {
   const raw = (src || "").trim();
   if (!raw) return { kind: "fail", error: "Hakuna link." };
+
+  if (isCatalogOnly(raw)) {
+    return {
+      kind: "fail",
+      error:
+        "Channel hii inaonekana kwenye catalog tu. Stream inahitaji encryption ya Modobo app — haiwezi kucheza hapa bure.",
+    };
+  }
 
   const social = detectSocial(raw);
   if (social.embedUrl) {
@@ -194,7 +210,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             instance.startLoad();
             return;
           }
-          setError("Stream imeshindwa.");
+          setError("Stream imeshindwa kucheza. Jaribu channel nyingine.");
         });
         hlsRef.current = instance;
       } else {
@@ -241,7 +257,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     window.location.href = "/play?" + q.toString();
   }
 
-  // —— EMBED (movies) — red accent frame like old player ——
   if (mode === "embed" && embedUrl) {
     return (
       <div className="space-y-3">
@@ -285,35 +300,11 @@ export default function StreamPlayer({ src, poster, title }: Props) {
           )}
         </div>
 
-        {sources.length > 1 && (
-          <div className="flex flex-wrap gap-1.5">
-            {sources.map((s, i) => (
-              <button
-                key={s.provider + String(i)}
-                type="button"
-                onClick={() => switchSource(i)}
-                className={
-                  "px-2 py-1 rounded-md text-[10px] border touch-manipulation " +
-                  (i === sourceIdx
-                    ? "border-red-500 bg-red-600/30 text-red-200"
-                    : "border-slate-700 text-slate-400")
-                }
-              >
-                {s.provider}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <p className="text-[11px] text-slate-500">
-          {(sources[sourceIdx] && sources[sourceIdx].provider) || "player"} ·
-          haioneshi? bofya Source nyingine
-        </p>
+        {error && <p className="text-sm text-amber-300">{error}</p>}
       </div>
     );
   }
 
-  // —— NATIVE VIDEO (TV m3u8) — red play button ——
   if (mode === "video" && playUrl) {
     return (
       <div className="space-y-3">
@@ -376,8 +367,11 @@ export default function StreamPlayer({ src, poster, title }: Props) {
   }
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-      <p className="text-sm text-slate-300">{error || "Haiwezi kucheza."}</p>
+    <div className="rounded-2xl border border-amber-800/50 bg-slate-900 p-6 space-y-2">
+      <p className="text-sm text-amber-200 font-medium">{error || "Haiwezi kucheza."}</p>
+      <p className="text-xs text-slate-500">
+        Jaribu channel zenye stream ya free: TBC2, France 24, FIFA+, Dodoma TV, Mahaasin TV, News…
+      </p>
     </div>
   );
 }
