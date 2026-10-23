@@ -11,6 +11,13 @@ function logoSrc(c: IptvChannel) {
   return `https://ui-avatars.com/api/?name=${n}&background=1e293b&color=f87171&size=256&bold=true`;
 }
 
+function isPlayable(url: string) {
+  return (
+    /^https?:\/\//i.test(url) &&
+    !url.includes("cdn.apisfast.top/api/v1/channels")
+  );
+}
+
 export default function TvChannelGrid({ channels }: { channels: IptvChannel[] }) {
   const groups = useMemo(
     () =>
@@ -24,6 +31,8 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
       ? channels
       : channels.filter((c) => c.group.toLowerCase() === active.toLowerCase());
 
+  const playableCount = filtered.filter((c) => isPlayable(c.url)).length;
+
   return (
     <>
       <div className="mb-6">
@@ -32,7 +41,7 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
           TV Channels
         </h1>
         <p className="text-sm text-slate-400 mt-1">
-          {filtered.length} channels · kila channel ina cover
+          {filtered.length} channels · {playableCount} zina stream ya free
         </p>
       </div>
 
@@ -54,32 +63,58 @@ export default function TvChannelGrid({ channels }: { channels: IptvChannel[] })
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {filtered.map((c) => (
-          <Link
-            key={c.id + "-" + c.url}
-            href={`/watch/live?url=${encodeURIComponent(c.url)}&title=${encodeURIComponent(c.title)}`}
-            className="block rounded-2xl border border-slate-700 bg-slate-900 overflow-hidden active:border-red-500"
-          >
-            <div className="aspect-video flex items-center justify-center bg-slate-950">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={logoSrc(c)}
-                alt={c.title}
-                className="w-full h-full object-contain p-2"
-                onError={(e) => {
-                  const el = e.target as HTMLImageElement;
-                  el.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                    c.title.slice(0, 16)
-                  )}&background=7f1d1d&color=fff&size=256&bold=true`;
-                }}
-              />
-            </div>
-            <div className="p-3 border-t border-slate-800">
-              <p className="font-semibold text-sm text-white truncate">{c.title}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">{c.group}</p>
-            </div>
-          </Link>
-        ))}
+        {filtered.map((c) => {
+          const play = isPlayable(c.url);
+          const inner = (
+            <>
+              <div className="aspect-video flex items-center justify-center bg-slate-950 relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={logoSrc(c)}
+                  alt={c.title}
+                  className="w-full h-full object-contain p-2"
+                  onError={(e) => {
+                    const el = e.target as HTMLImageElement;
+                    el.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      c.title.slice(0, 16)
+                    )}&background=7f1d1d&color=fff&size=256&bold=true`;
+                  }}
+                />
+                {!play && (
+                  <span className="absolute bottom-1 right-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-600/90 text-white">
+                    Catalog
+                  </span>
+                )}
+              </div>
+              <div className="p-3 border-t border-slate-800">
+                <p className="font-semibold text-sm text-white truncate">{c.title}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">{c.group}</p>
+              </div>
+            </>
+          );
+
+          if (!play) {
+            return (
+              <div
+                key={c.id + "-" + c.title}
+                className="block rounded-2xl border border-slate-700 bg-slate-900 overflow-hidden opacity-90"
+                title="Stream inahitaji Modobo encryption — catalog only"
+              >
+                {inner}
+              </div>
+            );
+          }
+
+          return (
+            <Link
+              key={c.id + "-" + c.url}
+              href={`/watch/live?url=${encodeURIComponent(c.url)}&title=${encodeURIComponent(c.title)}`}
+              className="block rounded-2xl border border-slate-700 bg-slate-900 overflow-hidden active:border-red-500"
+            >
+              {inner}
+            </Link>
+          );
+        })}
       </div>
 
       {filtered.length === 0 && (

@@ -21,10 +21,10 @@ export default async function TvPage({
 
   try {
     const result = await loadIptvChannels({
-      limit: 80,
+      limit: 250,
       q,
       group,
-      liveOnly: true,
+      liveOnly: false,
     });
     if (result.channels.length > 0) channels = result.channels;
   } catch (e) {

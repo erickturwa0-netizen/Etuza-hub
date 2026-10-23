@@ -55,12 +55,30 @@ export const PINNED_CHANNELS: IptvChannel[] = [
   ch("pin-premier-sports", "Premier Sports", "Football", "https://amg19223-amg19223c3-amgplt0351.playout.now3.amagi.tv/playlist/amg19223-amg19223c3-amgplt0351/playlist.m3u8", "PremierSports"),
   ch("pin-stadium", "Stadium", "Football", "https://wurl120sports.global.transmit.live/hls/679a907dce42a042c23ace37/v1/stadium_gracenote/samsung_us/latest/main/hls/playlist.m3u8", "Stadium"),
   ch("pin-bein-xtra", "beIN SPORTS XTRA", "Football", "https://bein-xtra-bein.amagi.tv/playlist.m3u8", "beINXTRA"),
-  // Extra free public
   ch("pin-aljazeera", "Al Jazeera English", "News", "https://live-hls-web-aje.getaj.net/AJE/01.m3u8", "AlJazeera.en"),
   ch("pin-dw", "DW English", "News", "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8", "DW.en"),
   ch("pin-cgtn", "CGTN", "News", "https://news.cgtn.com/resource/live/english/cgtn-news.m3u8", "CGTN.en"),
-  ch("pin-bloomberg", "Bloomberg", "News", "https://bloomberg.com/media-manifest/streams/us.m3u8", "Bloomberg"),
 ];
+
+/** Map common titles to known public streams */
+function publicStreamForTitle(title: string): string {
+  const t = title.toLowerCase();
+  if (t.includes("france 24"))
+    return "https://static.france24.com/live/F24_EN_LO_HLS/live_web.m3u8";
+  if (t.includes("al jazeera"))
+    return "https://live-hls-web-aje.getaj.net/AJE/01.m3u8";
+  if (t.includes("nasa"))
+    return "https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8";
+  if (t.includes("red bull"))
+    return "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8";
+  if (t.includes("dw english") || t === "dw")
+    return "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8";
+  if (t.includes("cgtn"))
+    return "https://news.cgtn.com/resource/live/english/cgtn-news.m3u8";
+  if (t.includes("fifa"))
+    return "https://d2w9q46ikgrcwx.cloudfront.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-of5cbk3sav3w5/v1/sysdata_s_p_a_fifa_7/samsungheadend_us/latest/main/hls/playlist.m3u8";
+  return "";
+}
 
 export async function loadIptvChannels(opts?: {
   q?: string;
@@ -68,71 +86,47 @@ export async function loadIptvChannels(opts?: {
   limit?: number;
   liveOnly?: boolean;
 }): Promise<{ channels: IptvChannel[]; total: number; source: string }> {
-  const limit = Math.min(opts?.limit || 200, 300);
+  const limit = Math.min(opts?.limit || 250, 400);
   const q = (opts?.q || "").toLowerCase().trim();
   const group = (opts?.group || "").toLowerCase().trim();
-  const liveOnly = opts?.liveOnly !== false;
 
-  let channels = PINNED_CHANNELS.map((c) => ({
+  let channels: IptvChannel[] = PINNED_CHANNELS.map((c) => ({
     ...c,
     logo: tvCover(c.title, c.logo),
   }));
 
-  // Merge free Modobo channels (catalog). Streams need app encryption —
-  // we attach logo/title; playable ones still come from PINNED above.
+  const seen = new Set(
+    channels.map((c) => c.title.toLowerCase().replace(/\s+/g, " "))
+  );
+
+  // ALL free Modobo channels (list from cdn.apisfast.top / channels JSON)
   try {
     const modobo = await fetchModoboFreeChannels();
-    const pinnedTitles = new Set(
-      channels.map((c) => c.title.toLowerCase().replace(/\s+/g, " "))
-    );
     for (const m of modobo) {
       const title = (m.title || "").trim();
       if (!title) continue;
       const key = title.toLowerCase().replace(/\s+/g, " ");
-      if (pinnedTitles.has(key)) continue;
-      pinnedTitles.add(key);
+      if (seen.has(key)) continue;
+      seen.add(key);
+
       const grp =
         m.category_name ||
         (m.category_names && m.category_names[0]) ||
-        "Modobo";
-      // Placeholder stream — player may fail; catalog still visible
-      // Prefer known public news/sports aliases when title matches
-      let url = "";
-      const t = key;
-      if (t.includes("france 24"))
-        url = "https://static.france24.com/live/F24_EN_LO_HLS/live_web.m3u8";
-      else if (t.includes("al jazeera"))
-        url = "https://live-hls-web-aje.getaj.net/AJE/01.m3u8";
-      else if (t.includes("nasa"))
-        url = "https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8";
-      else if (t.includes("red bull"))
-        url =
-          "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8";
+        "Modobo Free";
 
-      if (!url && liveOnly) continue; // skip non-playable when liveOnly
-
+      const mapped = publicStreamForTitle(title);
+      // Always include free channels in catalog
       channels.push({
         id: `modobo-${m.id}`,
         title,
         group: grp,
-        url: url || `modobo://channel/${m.id}`,
+        url: mapped || `https://cdn.apisfast.top/api/v1/channels?id=${m.id}`,
         tvgId: null,
         logo: tvCover(title, m.logo),
       });
     }
   } catch (e) {
     console.error("modobo merge", e);
-  }
-
-  if (liveOnly) {
-    const liveIds = await getCachedLiveTvIds();
-    if (liveIds && liveIds.length) {
-      const set = new Set(liveIds);
-      // Keep pinned that are live + any modobo with real http url
-      channels = channels.filter(
-        (c) => set.has(c.id) || c.url.startsWith("http")
-      );
-    }
   }
 
   if (q) {
@@ -146,23 +140,16 @@ export async function loadIptvChannels(opts?: {
     channels = channels.filter((c) => c.group.toLowerCase().includes(group));
   }
 
-  // Only return channels with real stream URLs for playback list
-  const playable = channels.filter((c) => c.url.startsWith("http"));
-
-  if (!playable.length && !q && !group) {
-    return {
-      channels: PINNED_CHANNELS.map((c) => ({
-        ...c,
-        logo: tvCover(c.title, c.logo),
-      })),
-      total: PINNED_CHANNELS.length,
-      source: "pinned-fallback",
-    };
-  }
+  // Prefer channels with real http(s) stream, but keep all free catalog
+  const sorted = [...channels].sort((a, b) => {
+    const aOk = a.url.startsWith("http") && !a.url.includes("apisfast") ? 0 : 1;
+    const bOk = b.url.startsWith("http") && !b.url.includes("apisfast") ? 0 : 1;
+    return aOk - bOk;
+  });
 
   return {
-    channels: playable.slice(0, limit),
-    total: playable.length,
+    channels: sorted.slice(0, limit),
+    total: sorted.length,
     source: "pinned+modobo-free",
   };
 }
