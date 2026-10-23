@@ -15,7 +15,7 @@ export const POPUNDER_SCRIPT =
   process.env.NEXT_PUBLIC_POPUNDER_SCRIPT ||
   "https://abscloud.org/1/40a2e8fb8de8383aecf62857df61188a";
 
-/** Seconds user must wait after opening smartlink */
+/** Seconds user must wait after opening smartlink before points award */
 export const PRE_ROLL_SECONDS = Number(
   process.env.NEXT_PUBLIC_PRE_ROLL_SECONDS || 12
 );

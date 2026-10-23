@@ -5,12 +5,14 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Suspense } from "react";
 import StreamPlayer from "@/components/StreamPlayer";
+import PreRollGate from "@/components/PreRollGate";
 import PresenceTracker from "@/components/PresenceTracker";
 
 function LiveInner() {
   const sp = useSearchParams();
   const url = sp.get("url") || "";
   const title = sp.get("title") || "Live TV";
+  const key = "tv:" + (title || "live").slice(0, 40);
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-6 pb-24">
@@ -29,7 +31,9 @@ function LiveInner() {
       {!url ? (
         <p className="text-sm text-red-400">Hakuna stream URL</p>
       ) : (
-        <StreamPlayer src={url} title={title} />
+        <PreRollGate contentKey={key} title={title} enabled>
+          <StreamPlayer src={url} title={title} />
+        </PreRollGate>
       )}
     </main>
   );

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import StreamPlayer from "@/components/StreamPlayer";
+import PreRollGate from "@/components/PreRollGate";
 import GameDownloadPanel from "@/components/GameDownloadPanel";
 import PresenceTracker from "@/components/PresenceTracker";
 import WebGamePlayer from "@/components/WebGamePlayer";
@@ -92,6 +93,13 @@ export default async function WatchPage({
     (item.linkType === "stream" || isWebGameUrl(link));
 
   const isGameDownload = item.type === "game" && isDownload;
+
+  const usePointsGate =
+    item.type === "movie" ||
+    item.type === "drama" ||
+    item.type === "tv" ||
+    item.type === "music" ||
+    item.type === "radio";
 
   if (isGameDownload || item.type === "vpn") {
     return (
@@ -196,7 +204,6 @@ export default async function WatchPage({
     );
   }
 
-  // Movies / TV / drama / music / radio — play immediately (no ad gate delay)
   return (
     <main className="max-w-4xl mx-auto px-4 py-6 pb-24">
       <PresenceTracker section={section} title={item.title} />
@@ -220,7 +227,13 @@ export default async function WatchPage({
           Content hii haina stream link.
         </div>
       ) : (
-        <StreamPlayer src={link} poster={item.coverUrl} title={item.title} />
+        <PreRollGate
+          contentKey={`${item.type}:${item.id}`}
+          title={item.title}
+          enabled={usePointsGate}
+        >
+          <StreamPlayer src={link} poster={item.coverUrl} title={item.title} />
+        </PreRollGate>
       )}
 
       {item.description && (
