@@ -3,25 +3,16 @@
 import { useState, Suspense, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  LogIn,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  Film,
-  Music,
-  Radio,
-  Gamepad2,
-  Tv,
-} from "lucide-react";
+import { LogIn, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { CATEGORY_ICONS } from "@/lib/category-icons";
 
 const ICONS = [
-  { Icon: Film, color: "from-violet-500 to-purple-700", delay: "0ms" },
-  { Icon: Music, color: "from-fuchsia-500 to-pink-600", delay: "80ms" },
-  { Icon: Radio, color: "from-rose-500 to-red-600", delay: "160ms" },
-  { Icon: Tv, color: "from-red-500 to-orange-600", delay: "240ms" },
-  { Icon: Gamepad2, color: "from-emerald-500 to-teal-600", delay: "320ms" },
+  { src: CATEGORY_ICONS.movie, label: "Movies", delay: "0ms" },
+  { src: CATEGORY_ICONS.music, label: "Miziki", delay: "80ms" },
+  { src: CATEGORY_ICONS.radio, label: "Radio", delay: "160ms" },
+  { src: CATEGORY_ICONS.tv, label: "TV", delay: "240ms" },
+  { src: CATEGORY_ICONS.game, label: "Games", delay: "320ms" },
+  { src: CATEGORY_ICONS.vpn, label: "VPN", delay: "400ms" },
 ];
 
 function LoginForm() {
@@ -93,23 +84,28 @@ function LoginForm() {
         .logo-glow { animation: pulseGlow 2.5s ease-in-out infinite; }
       `}</style>
 
-      {/* Splash icons */}
       {phase === "splash" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-8 z-10">
           <div className="flex items-center gap-2 mb-2">
-            <span className="w-12 h-12 rounded-2xl bg-violet-600 flex items-center justify-center text-lg font-black text-white logo-glow">
-              E
-            </span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo.svg"
+              alt="ETUZA"
+              className="w-12 h-12 rounded-2xl logo-glow"
+              width={48}
+              height={48}
+            />
             <span className="text-2xl font-extrabold text-violet-300">ETUZA HUB</span>
           </div>
-          <div className="flex gap-3 sm:gap-4">
-            {ICONS.map(({ Icon, color, delay }) => (
+          <div className="flex flex-wrap justify-center gap-3 sm:gap-4 max-w-xs">
+            {ICONS.map(({ src, label, delay }) => (
               <div
-                key={color}
-                className={`icon-fall w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br ${color} flex items-center justify-center text-white shadow-xl`}
+                key={label}
+                className="icon-fall w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-900 border border-slate-700 flex items-center justify-center shadow-xl p-2"
                 style={{ animationDelay: delay }}
               >
-                <Icon className="w-7 h-7 sm:w-8 sm:h-8" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt={label} className="w-full h-full object-contain" />
               </div>
             ))}
           </div>
@@ -117,31 +113,37 @@ function LoginForm() {
         </div>
       )}
 
-      {/* Login form */}
       {phase === "form" && (
         <div className="w-full max-w-md form-in relative z-20">
           <div className="text-center mb-8">
             <div className="inline-flex items-center gap-2 mb-5">
-              <span className="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center text-sm font-black text-white logo-glow">
-                E
-              </span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/logo.svg"
+                alt="ETUZA"
+                className="w-10 h-10 rounded-xl logo-glow"
+                width={40}
+                height={40}
+              />
               <span className="text-xl font-extrabold text-violet-300">ETUZA HUB</span>
             </div>
 
-            <div className="flex justify-center gap-2 mb-5">
-              {ICONS.map(({ Icon, color }) => (
+            <div className="flex flex-wrap justify-center gap-2 mb-5">
+              {ICONS.map(({ src, label }) => (
                 <div
-                  key={color}
-                  className={`w-10 h-10 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center text-white shadow-md`}
+                  key={label}
+                  className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center p-1.5"
+                  title={label}
                 >
-                  <Icon className="w-5 h-5" />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt={label} className="w-full h-full object-contain" />
                 </div>
               ))}
             </div>
 
             <h1 className="text-2xl font-bold">Karibu tena</h1>
             <p className="text-sm text-slate-500 mt-1">
-              Movies · Music · Radio · TV · Games
+              Movies · Music · Radio · TV · Games · VPN
             </p>
           </div>
 

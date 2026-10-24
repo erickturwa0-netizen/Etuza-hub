@@ -8,6 +8,10 @@ import AdsterraScripts from "@/components/AdsterraScripts";
 export const metadata: Metadata = {
   title: "ETUZA HUB – Movies, Games & VPN",
   description: "Movies, Android Games & VPN configs – ETUZA HUB Tanzania",
+  icons: {
+    icon: "/logo.svg",
+    apple: "/logo.svg",
+  },
 };
 
 export default function RootLayout({
