@@ -1,10 +1,4 @@
 import { tvCover } from "@/lib/covers";
-import {
-  fetchMfalmePlayable,
-  fetchMfalmeChannels,
-  isDirectPlayable,
-} from "@/lib/mfalme";
-import { fetchStreamFreeMatches } from "@/lib/streamfree";
 
 export type IptvChannel = {
   id: string;
@@ -33,7 +27,7 @@ function ch(
   };
 }
 
-/** Free/public m3u8 */
+/** Free public m3u8 only — Modobo / Mfalme removed (no playable public streams) */
 export const PINNED_CHANNELS: IptvChannel[] = [
   ch("pin-safari", "Safari Channel", "Tanzania", "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_12bb7dc0590211f1951119e8afeb4224/index.fmp4.m3u8", "Safari.tz"),
   ch("pin-tbc2", "TBC2", "Tanzania", "https://stream-134630.castr.net/5fe35eae8c53540cab83659a/live_44ed95e05b6d11f18d5d85805abbdd6f/index.m3u8", "TBC2.tz", "https://i.imgur.com/VkUJt2q.png"),
@@ -70,9 +64,8 @@ export function isPlayableStream(url: string): boolean {
   if (!url || !/^https?:\/\//i.test(url)) return false;
   if (url.startsWith("catalog://")) return false;
   if (url.includes("cdn.apisfast.top")) return false;
-  if (url.includes("/api/v1/channels")) return false;
-  if (/player\.php|osmanitv\.com\/v3\/player/i.test(url)) return false;
-  return isDirectPlayable(url) || /m3u8|castr\.net|\.mp4/i.test(url);
+  if (/player\.php/i.test(url)) return false;
+  return /m3u8|castr\.net|\.mp4/i.test(url);
 }
 
 export async function loadIptvChannels(opts?: {
@@ -81,80 +74,14 @@ export async function loadIptvChannels(opts?: {
   limit?: number;
   liveOnly?: boolean;
 }): Promise<{ channels: IptvChannel[]; total: number; source: string }> {
-  const limit = Math.min(opts?.limit || 300, 400);
+  const limit = Math.min(opts?.limit || 100, 200);
   const q = (opts?.q || "").toLowerCase().trim();
   const group = (opts?.group || "").toLowerCase().trim();
-  const liveOnly = opts?.liveOnly === true;
 
   let channels: IptvChannel[] = PINNED_CHANNELS.map((c) => ({
     ...c,
     logo: tvCover(c.title, c.logo),
   }));
-
-  const seen = new Set(
-    channels.map((c) => c.title.toLowerCase().replace(/\s+/g, " "))
-  );
-
-  // 1) Mfalme TV — playable + free catalog (NO Modobo)
-  try {
-    const mfalmePlayable = await fetchMfalmePlayable();
-    for (const m of mfalmePlayable) {
-      const key = m.title.toLowerCase().replace(/\s+/g, " ");
-      if (seen.has(key)) continue;
-      seen.add(key);
-      channels.push({
-        id: `mfalme-${m.id}`,
-        title: m.title,
-        group: m.group || "Mfalme Free",
-        url: m.url,
-        tvgId: null,
-        logo: tvCover(m.title, m.logo),
-      });
-    }
-
-    if (!liveOnly) {
-      const all = await fetchMfalmeChannels();
-      for (const m of all) {
-        if (m.access !== "free") continue;
-        const key = m.title.toLowerCase().replace(/\s+/g, " ");
-        if (seen.has(key)) continue;
-        seen.add(key);
-        channels.push({
-          id: `mfalme-cat-${m.id}`,
-          title: m.title,
-          group: "Mfalme Free",
-          url: m.url || `catalog://mfalme/${m.id}`,
-          tvgId: null,
-          logo: tvCover(m.title, m.logo),
-        });
-      }
-    }
-  } catch (e) {
-    console.error("mfalme merge", e);
-  }
-
-  // 2) StreamFree / Orizon — mechi catalog
-  try {
-    const matches = await fetchStreamFreeMatches();
-    for (const m of matches) {
-      if (liveOnly && !m.playable) continue;
-      const key = m.title.toLowerCase().replace(/\s+/g, " ");
-      if (seen.has(key)) continue;
-      seen.add(key);
-      channels.push({
-        id: `sf-${m.id}`,
-        title: m.title,
-        group: m.group,
-        url: m.url || `catalog://streamfree/${m.id}`,
-        tvgId: null,
-        logo: tvCover(m.title, m.logo),
-      });
-    }
-  } catch (e) {
-    console.error("streamfree merge", e);
-  }
-
-  // Modobo intentionally removed — encryption / no public streams
 
   if (q) {
     channels = channels.filter(
@@ -167,17 +94,11 @@ export async function loadIptvChannels(opts?: {
     channels = channels.filter((c) => c.group.toLowerCase().includes(group));
   }
 
-  const sorted = [...channels].sort((a, b) => {
-    const aOk = isPlayableStream(a.url) ? 0 : 1;
-    const bOk = isPlayableStream(b.url) ? 0 : 1;
-    return aOk - bOk;
-  });
-
   return {
-    channels: sorted.slice(0, limit),
-    total: sorted.length,
-    source: "pinned+mfalme+streamfree",
+    channels: channels.slice(0, limit),
+    total: channels.length,
+    source: "pinned-free",
   };
 }
 
-export const IPTV_SOURCE_URL = "https://api.mfalmeapp.online/api/channels";
+export const IPTV_SOURCE_URL = "pinned-free-m3u8";
