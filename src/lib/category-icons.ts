@@ -6,6 +6,8 @@ export const CATEGORY_ICONS = {
   drama: "https://files.catbox.moe/epp0oc.png",
   music: "https://files.catbox.moe/gmndvd.png",
   radio: "https://files.catbox.moe/hiwv5k.png",
+  vpn: "https://files.catbox.moe/8fg10p.png",
+  game: "https://files.catbox.moe/ax0i1r.png",
 } as const;
 
 export type CategoryIconKey = keyof typeof CATEGORY_ICONS;

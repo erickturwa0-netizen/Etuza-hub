@@ -1,9 +1,5 @@
 import Link from "next/link";
-import {
-  Gamepad2,
-  Shield,
-  ArrowRight,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import ContentCard from "@/components/ContentCard";
 import HomeHeroSlideshow, { type HeroSlide } from "@/components/HomeHeroSlideshow";
 import { getPublishedContent } from "@/lib/content";
@@ -13,55 +9,14 @@ import { CATEGORY_ICONS } from "@/lib/category-icons";
 
 export const dynamic = "force-dynamic";
 
-const CATS: {
-  href: string;
-  title: string;
-  iconUrl?: string;
-  lucide?: typeof Gamepad2;
-  grad: string;
-}[] = [
-  {
-    href: "/movies",
-    title: "Movies",
-    iconUrl: CATEGORY_ICONS.movie,
-    grad: "from-violet-500 to-purple-700",
-  },
-  {
-    href: "/tv",
-    title: "TV",
-    iconUrl: CATEGORY_ICONS.tv,
-    grad: "from-red-500 to-orange-600",
-  },
-  {
-    href: "/drama",
-    title: "Tamthilia",
-    iconUrl: CATEGORY_ICONS.drama,
-    grad: "from-amber-500 to-orange-700",
-  },
-  {
-    href: "/music",
-    title: "Miziki",
-    iconUrl: CATEGORY_ICONS.music,
-    grad: "from-fuchsia-500 to-pink-600",
-  },
-  {
-    href: "/radio",
-    title: "Radio",
-    iconUrl: CATEGORY_ICONS.radio,
-    grad: "from-rose-500 to-red-600",
-  },
-  {
-    href: "/games",
-    title: "Games",
-    lucide: Gamepad2,
-    grad: "from-emerald-500 to-teal-600",
-  },
-  {
-    href: "/vpn",
-    title: "VPN",
-    lucide: Shield,
-    grad: "from-blue-500 to-indigo-700",
-  },
+const CATS: { href: string; title: string; iconUrl: string }[] = [
+  { href: "/movies", title: "Movies", iconUrl: CATEGORY_ICONS.movie },
+  { href: "/tv", title: "TV", iconUrl: CATEGORY_ICONS.tv },
+  { href: "/drama", title: "Tamthilia", iconUrl: CATEGORY_ICONS.drama },
+  { href: "/music", title: "Miziki", iconUrl: CATEGORY_ICONS.music },
+  { href: "/radio", title: "Radio", iconUrl: CATEGORY_ICONS.radio },
+  { href: "/games", title: "Games", iconUrl: CATEGORY_ICONS.game },
+  { href: "/vpn", title: "VPN", iconUrl: CATEGORY_ICONS.vpn },
 ];
 
 export default async function HomePage() {
@@ -150,21 +105,16 @@ export default async function HomePage() {
             <Link
               key={c.href}
               href={c.href}
-              className="rounded-xl border border-slate-800 bg-slate-900/80 p-2.5 sm:p-3 flex flex-col items-center gap-1.5 hover:border-violet-500/40 transition text-center"
+              className="rounded-xl border border-slate-800/80 bg-slate-900/50 p-2.5 sm:p-3 flex flex-col items-center gap-1.5 hover:border-violet-500/40 transition text-center"
             >
-              <div
-                className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br ${c.grad} flex items-center justify-center shadow-md overflow-hidden p-1.5`}
-              >
-                {c.iconUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={c.iconUrl}
-                    alt={c.title}
-                    className="w-full h-full object-contain"
-                  />
-                ) : c.lucide ? (
-                  <c.lucide className="w-5 h-5 text-white" />
-                ) : null}
+              {/* Icon only — no colored background */}
+              <div className="w-11 h-11 sm:w-12 sm:h-12 flex items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={c.iconUrl}
+                  alt={c.title}
+                  className="w-9 h-9 sm:w-10 sm:h-10 object-contain"
+                />
               </div>
               <p className="font-medium text-[11px] sm:text-xs text-white leading-tight">
                 {c.title}
