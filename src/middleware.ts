@@ -26,6 +26,7 @@ const PUBLIC_API = [
   "/api/tv/mfalme",
   "/api/tv/streamfree",
   "/api/content",
+  "/api/covers",
   "/api/resolve-downloads",
   "/api/public-feed",
   "/api/radio/stations",
