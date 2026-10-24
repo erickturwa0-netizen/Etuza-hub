@@ -70,14 +70,16 @@ const CATS = [
 ];
 
 export default async function HomePage() {
-  const [movies, dramas, music, radios] = await Promise.all([
+  const [movies, dramas, music, radios, tvs, games, vpns] = await Promise.all([
     getPublishedContent("movie"),
     getPublishedContent("drama"),
     getPublishedContent("music"),
     getPublishedContent("radio"),
+    getPublishedContent("tv"),
+    getPublishedContent("game"),
+    getPublishedContent("vpn"),
   ]);
 
-  // Hero slides: mix of covers (normal size display in slideshow)
   const slides: HeroSlide[] = [];
 
   for (const m of movies.slice(0, 4)) {
@@ -120,7 +122,6 @@ export default async function HomePage() {
       category: r.category,
     });
   }
-  // Free TV channels as slides too
   for (const ch of PINNED_CHANNELS.slice(0, 3)) {
     slides.push({
       id: ch.id,
@@ -132,30 +133,20 @@ export default async function HomePage() {
     });
   }
 
-  const [tvs, games, vpns] = await Promise.all([
-    getPublishedContent("tv"),
-    getPublishedContent("game"),
-    getPublishedContent("vpn"),
-  ]);
-
   return (
     <main className="flex-1 pb-8">
-      {/* Hero slideshow */}
       <section className="max-w-6xl mx-auto px-3 sm:px-4 pt-4 sm:pt-6">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-              ETUZA HUB
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Movies · TV · Tamthilia · Miziki · Radio
-            </p>
-          </div>
+        <div className="mb-3">
+          <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+            ETUZA HUB
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Movies · TV · Tamthilia · Miziki · Radio
+          </p>
         </div>
         <HomeHeroSlideshow slides={slides} />
       </section>
 
-      {/* Category grid – compact */}
       <section className="max-w-6xl mx-auto px-3 sm:px-4 mt-6 mb-8">
         <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">
           Explore
@@ -168,7 +159,7 @@ export default async function HomePage() {
               className="rounded-xl border border-slate-800 bg-slate-900/80 p-2.5 sm:p-3 flex flex-col items-center gap-1.5 hover:border-violet-500/40 transition text-center"
             >
               <div
-                className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br ${c.grad} flex items-center justify-center text-white shadow-md"`}
+                className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br ${c.grad} flex items-center justify-center text-white shadow-md`}
               >
                 <c.icon className="w-5 h-5" />
               </div>
@@ -189,40 +180,40 @@ export default async function HomePage() {
       {music.length > 0 && (
         <Section title="Miziki" href="/music" items={music.slice(0, 6)} />
       )}
-      {(tvs.length > 0 || PINNED_CHANNELS.length > 0) && (
-        <section className="max-w-6xl mx-auto px-3 sm:px-4 pb-8">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-bold text-white">TV Channels</h2>
+
+      <section className="max-w-6xl mx-auto px-3 sm:px-4 pb-8">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-bold text-white">TV Channels</h2>
+          <Link
+            href="/tv"
+            className="text-xs text-violet-400 inline-flex items-center gap-1"
+          >
+            View all <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+        <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 snap-x">
+          {PINNED_CHANNELS.slice(0, 10).map((ch) => (
             <Link
-              href="/tv"
-              className="text-xs text-violet-400 inline-flex items-center gap-1"
+              key={ch.id}
+              href={`/watch/live?url=${encodeURIComponent(ch.url)}&title=${encodeURIComponent(ch.title)}`}
+              className="snap-start shrink-0 w-[100px] sm:w-[112px]"
             >
-              View all <ArrowRight className="w-3.5 h-3.5" />
+              <div className="aspect-square rounded-xl border border-slate-800 bg-slate-900 overflow-hidden flex items-center justify-center p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={ch.logo || contentCover("tv", ch.title, null)}
+                  alt={ch.title}
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <p className="text-[11px] text-white mt-1.5 truncate text-center">
+                {ch.title}
+              </p>
             </Link>
-          </div>
-          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 snap-x">
-            {PINNED_CHANNELS.slice(0, 10).map((ch) => (
-              <Link
-                key={ch.id}
-                href={`/watch/live?url=${encodeURIComponent(ch.url)}&title=${encodeURIComponent(ch.title)}`}
-                className="snap-start shrink-0 w-[100px] sm:w-[112px]"
-              >
-                <div className="aspect-square rounded-xl border border-slate-800 bg-slate-900 overflow-hidden flex items-center justify-center p-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={ch.logo || contentCover("tv", ch.title, null)}
-                    alt={ch.title}
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-                <p className="text-[11px] text-white mt-1.5 truncate text-center">
-                  {ch.title}
-                </p>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+          ))}
+        </div>
+      </section>
+
       {radios.length > 0 && (
         <Section title="Radio" href="/radio" items={radios.slice(0, 6)} />
       )}
@@ -256,7 +247,6 @@ function Section({
           View all <ArrowRight className="w-3.5 h-3.5" />
         </Link>
       </div>
-      {/* Horizontal scroll row – normal poster size */}
       <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 snap-x">
         {items.map((c) => (
           <div key={c.id} className="snap-start shrink-0 w-[120px] sm:w-[140px]">
