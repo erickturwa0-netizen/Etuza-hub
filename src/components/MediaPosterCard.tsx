@@ -13,6 +13,15 @@ type Props = {
   kind?: "movie" | "drama";
 };
 
+function looksBroken(url?: string | null) {
+  if (!url || !/^https?:\/\//i.test(url)) return true;
+  if (url.includes("image.tmdb.org")) {
+    const file = url.split("/").pop() || "";
+    if (file.length < 20) return true;
+  }
+  return false;
+}
+
 export default function MediaPosterCard({
   id,
   title,
@@ -22,34 +31,44 @@ export default function MediaPosterCard({
 }: Props) {
   const fallback =
     kind === "drama" ? dramaCover(title, null) : movieCover(title, null);
-  const initial =
-    coverUrl && /^https?:\/\//i.test(coverUrl) && coverUrl.length > 40
-      ? coverUrl
-      : fallback;
+  const initial = looksBroken(coverUrl) ? fallback : coverUrl!;
 
   const [src, setSrc] = useState(initial);
-  const [triedItunes, setTriedItunes] = useState(false);
+  const [tried, setTried] = useState(false);
 
-  async function onImgError() {
-    if (!triedItunes) {
-      setTriedItunes(true);
-      try {
-        const res = await fetch(
-          `/api/covers/movie?title=${encodeURIComponent(title)}`,
-          { cache: "force-cache" }
-        );
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.cover && typeof data.cover === "string") {
-            setSrc(data.cover);
-            return;
-          }
+  async function loadRealPoster() {
+    if (tried) {
+      setSrc(fallback);
+      return;
+    }
+    setTried(true);
+    try {
+      const res = await fetch(
+        `/api/covers/movie?title=${encodeURIComponent(title)}`,
+        { cache: "force-cache" }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.cover && typeof data.cover === "string" && data.cover.startsWith("http")) {
+          setSrc(data.cover);
+          return;
         }
-      } catch {
-        /* fall through */
       }
+    } catch {
+      /* ignore */
     }
     setSrc(fallback);
+  }
+
+  // Auto-fetch real poster when URL is broken/missing
+  if (looksBroken(coverUrl) && !tried && src === fallback) {
+    // fire once
+    if (typeof window !== "undefined") {
+      // schedule microtask to avoid setState during render issues in strict mode
+      queueMicrotask(() => {
+        if (!tried) loadRealPoster();
+      });
+    }
   }
 
   return (
@@ -64,7 +83,7 @@ export default function MediaPosterCard({
           alt={title}
           className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition"
           loading="lazy"
-          onError={onImgError}
+          onError={() => loadRealPoster()}
         />
         {src === fallback && (
           <div className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/40 flex items-center justify-center">
