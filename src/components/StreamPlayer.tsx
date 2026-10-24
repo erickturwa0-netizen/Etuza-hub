@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { detectSocial } from "@/lib/social-embed";
-import { Play, RefreshCw, Maximize2 } from "lucide-react";
+import { Play, RefreshCw, Maximize2, ExternalLink } from "lucide-react";
 
 type Props = {
   src: string;
@@ -26,6 +26,20 @@ function isCatalogOnly(src: string) {
     src.includes("cdn.apisfast.top") ||
     src.includes("/api/v1/channels")
   );
+}
+
+/** Sites that block iframe embed (Vercel bot checkpoint, X-Frame-Options, etc.) */
+function blocksIframe(src: string) {
+  try {
+    const u = new URL(src);
+    const host = u.hostname.toLowerCase();
+    // Other Vercel apps often enable Attack Challenge → Code 99 in iframe
+    if (host.endsWith(".vercel.app")) return true;
+    if (host.includes("avdisk")) return true;
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 function proxyHls(url: string) {
@@ -57,6 +71,7 @@ function buildSources(id: string, media: "movie" | "tv"): Source[] {
 
 type Resolved =
   | { kind: "embed"; url: string; sources: Source[]; idx: number }
+  | { kind: "external"; url: string }
   | { kind: "hls"; url: string; raw: string }
   | { kind: "video"; url: string }
   | { kind: "fail"; error: string };
@@ -69,7 +84,7 @@ function resolveSrc(src: string): Resolved {
     return {
       kind: "fail",
       error:
-        "Channel hii inaonekana kwenye catalog tu. Stream inahitaji encryption ya Modobo app — haiwezi kucheza hapa bure.",
+        "Channel hii inaonekana kwenye catalog tu. Stream haipatikani bure hapa.",
     };
   }
 
@@ -93,6 +108,10 @@ function resolveSrc(src: string): Resolved {
   }
 
   if (/^https?:\/\//i.test(raw)) {
+    // Vercel Security Checkpoint blocks iframe → open externally
+    if (blocksIframe(raw)) {
+      return { kind: "external", url: raw };
+    }
     return { kind: "embed", url: raw, sources: [], idx: 0 };
   }
 
@@ -116,18 +135,25 @@ export default function StreamPlayer({ src, poster, title }: Props) {
   const [embedUrl, setEmbedUrl] = useState<string | null>(
     initial.kind === "embed" ? initial.url : null
   );
+  const [externalUrl, setExternalUrl] = useState<string | null>(
+    initial.kind === "external" ? initial.url : null
+  );
   const [playUrl, setPlayUrl] = useState<string | null>(
     initial.kind === "hls" || initial.kind === "video" ? initial.url : null
   );
   const [rawHls, setRawHls] = useState<string | null>(
     initial.kind === "hls" ? initial.raw : null
   );
-  const [mode, setMode] = useState<"video" | "embed" | "fail">(
+  const [mode, setMode] = useState<
+    "video" | "embed" | "external" | "fail"
+  >(
     initial.kind === "fail"
       ? "fail"
       : initial.kind === "embed"
         ? "embed"
-        : "video"
+        : initial.kind === "external"
+          ? "external"
+          : "video"
   );
   const [useProxy, setUseProxy] = useState(true);
   const [needsTap, setNeedsTap] = useState(false);
@@ -138,12 +164,22 @@ export default function StreamPlayer({ src, poster, title }: Props) {
       setMode("fail");
       setError(r.error);
       setEmbedUrl(null);
+      setExternalUrl(null);
       setPlayUrl(null);
+      return;
+    }
+    if (r.kind === "external") {
+      setMode("external");
+      setExternalUrl(r.url);
+      setEmbedUrl(null);
+      setPlayUrl(null);
+      setError("");
       return;
     }
     if (r.kind === "embed") {
       setMode("embed");
       setEmbedUrl(r.url);
+      setExternalUrl(null);
       setSources(r.sources);
       setSourceIdx(r.idx);
       setPlayUrl(null);
@@ -156,6 +192,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
       setPlayUrl(r.url);
       setRawHls(r.raw);
       setEmbedUrl(null);
+      setExternalUrl(null);
       setError("");
       return;
     }
@@ -163,6 +200,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
     setPlayUrl(r.url);
     setRawHls(null);
     setEmbedUrl(null);
+    setExternalUrl(null);
     setError("");
   }, [src]);
 
@@ -252,9 +290,45 @@ export default function StreamPlayer({ src, poster, title }: Props) {
   }
 
   function goFullscreen() {
-    if (!embedUrl) return;
-    const q = new URLSearchParams({ url: embedUrl, title: title || "Player" });
+    const u = embedUrl || externalUrl;
+    if (!u) return;
+    const q = new URLSearchParams({ url: u, title: title || "Player" });
     window.location.href = "/play?" + q.toString();
+  }
+
+  if (mode === "external" && externalUrl) {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-2xl border border-amber-600/40 bg-slate-900 p-5">
+          <p className="text-sm text-amber-100 font-medium mb-1">
+            Link hii hawezi kucheza ndani ya player (Vercel Security)
+          </p>
+          <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+            Tovuti ya <span className="text-slate-300">{externalUrl.replace(/^https?:\/\//, "").split("/")[0]}</span>"
+            inazuia embed (Code 99). Fungua moja kwa moja kwenye browser.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={externalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Fungua video
+            </a>
+            <button
+              type="button"
+              onClick={goFullscreen}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-sm text-slate-200"
+            >
+              <Maximize2 className="w-4 h-4" />
+              Player kamili
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (mode === "embed" && embedUrl) {
@@ -271,7 +345,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             className="absolute inset-0 w-full h-full border-0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
-            referrerPolicy="origin"
+            referrerPolicy="no-referrer-when-downgrade"
             loading="eager"
           />
         </div>
@@ -285,6 +359,15 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             <Maximize2 className="w-4 h-4" />
             Player kamili
           </button>
+          <a
+            href={embedUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-sm text-slate-200"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Fungua nje
+          </a>
 
           {sources.length > 1 && (
             <button
@@ -369,9 +452,6 @@ export default function StreamPlayer({ src, poster, title }: Props) {
   return (
     <div className="rounded-2xl border border-amber-800/50 bg-slate-900 p-6 space-y-2">
       <p className="text-sm text-amber-200 font-medium">{error || "Haiwezi kucheza."}</p>
-      <p className="text-xs text-slate-500">
-        Jaribu channel zenye stream ya free: TBC2, France 24, FIFA+, Dodoma TV, Mahaasin TV, News…
-      </p>
     </div>
   );
 }
