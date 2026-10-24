@@ -18,16 +18,26 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [msg, setMsg] = useState("");
+  const [editId, setEditId] = useState("");
+  const [editVal, setEditVal] = useState("");
 
   function load() {
     setLoading(true);
-    fetch("/api/admin/users")
-      .then((r) => r.json())
-      .then((d) => {
-        setUsers(d.users || []);
+    fetch("/api/admin/users", { credentials: "include" })
+      .then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) {
+          setMsg(d.error || `Error ${r.status}`);
+          setUsers([]);
+        } else {
+          setUsers(d.users || []);
+        }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        setMsg("Imeshindwa kupakia users");
+        setLoading(false);
+      });
   }
 
   useEffect(() => {
@@ -40,6 +50,7 @@ export default function AdminUsersPage() {
     try {
       const res = await fetch("/api/admin/users", {
         method: "PATCH",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, addPoints }),
       });
@@ -49,10 +60,12 @@ export default function AdminUsersPage() {
       } else {
         setUsers((prev) =>
           prev.map((u) =>
-            u.id === userId ? { ...u, points: d.user.points, role: d.user.role } : u
+            u.id === userId
+              ? { ...u, points: d.user.points, role: d.user.role }
+              : u
           )
         );
-        setMsg(`Point zimebadilishwa (${d.user.email}: ${d.user.points})`);
+        setMsg(`✓ ${d.user.email}: ${d.user.points} points`);
       }
     } catch {
       setMsg("Tatizo la mtandao");
@@ -60,29 +73,36 @@ export default function AdminUsersPage() {
     setBusyId("");
   }
 
-  async function setPoints(userId: string) {
-    const raw = window.prompt("Weka point mpya (namba):");
-    if (raw == null) return;
-    const n = parseInt(raw, 10);
-    if (!Number.isFinite(n) || n < 0) {
-      setMsg("Namba si sahihi");
+  async function savePoints(userId: string) {
+    const n = parseInt(editVal, 10);
+    if (!Number.isFinite(n) || n < 0 || n > 100000) {
+      setMsg("Weka namba sahihi (0–100000)");
       return;
     }
     setBusyId(userId);
+    setMsg("");
     try {
       const res = await fetch("/api/admin/users", {
         method: "PATCH",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, points: n }),
       });
       const d = await res.json();
       if (res.ok) {
         setUsers((prev) =>
-          prev.map((u) => (u.id === userId ? { ...u, points: d.user.points } : u))
+          prev.map((u) =>
+            u.id === userId ? { ...u, points: d.user.points } : u
+          )
         );
-      } else setMsg(d.error || "Fail");
+        setMsg(`✓ Point zimewekwa: ${d.user.email} = ${d.user.points}`);
+        setEditId("");
+        setEditVal("");
+      } else {
+        setMsg(d.error || "Imeshindikana kuhifadhi");
+      }
     } catch {
-      setMsg("Tatizo");
+      setMsg("Tatizo la mtandao");
     }
     setBusyId("");
   }
@@ -95,16 +115,25 @@ export default function AdminUsersPage() {
           Users & Points
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          {loading ? "…" : `${users.length} users`} · Signup +10 · Invite +5 · Ad +3 · Watch −1
+          {loading ? "…" : `${users.length} users`} · Signup +10 · Invite +5 · Ad
+          +3 · Watch −1
         </p>
-        {msg && <p className="text-sm text-amber-300 mt-2">{msg}</p>}
+        {msg && (
+          <p className="text-sm text-amber-300 mt-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+            {msg}
+          </p>
+        )}
       </div>
 
       <div className="glass-card overflow-x-auto">
         {loading ? (
           <p className="p-6 text-slate-500 text-sm">Inapakia…</p>
+        ) : users.length === 0 ? (
+          <p className="p-6 text-slate-500 text-sm">
+            Hakuna users au huna ruhusa ya admin.
+          </p>
         ) : (
-          <table className="w-full text-sm min-w-[640px]">
+          <table className="w-full text-sm min-w-[720px]">
             <thead>
               <tr className="border-b border-slate-800 text-left text-slate-500">
                 <th className="px-4 py-3 font-medium">Email</th>
@@ -136,7 +165,43 @@ export default function AdminUsersPage() {
                       {u.role}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-bold text-amber-300">{u.points ?? 0}</td>
+                  <td className="px-4 py-3">
+                    {editId === u.id ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100000}
+                          value={editVal}
+                          onChange={(e) => setEditVal(e.target.value)}
+                          className="w-24 px-2 py-1 rounded-lg bg-slate-950 border border-slate-600 text-amber-200 text-sm"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          disabled={busyId === u.id}
+                          onClick={() => savePoints(u.id)}
+                          className="px-2 py-1 rounded-md text-[11px] bg-violet-600 text-white"
+                        >
+                          Hifadhi
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditId("");
+                            setEditVal("");
+                          }}
+                          className="px-2 py-1 rounded-md text-[11px] text-slate-400"
+                        >
+                          Ghairi
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="font-bold text-amber-300">
+                        {u.points ?? 0}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-xs text-slate-400 font-mono">
                     {u.inviteCode || "—"}
                   </td>
@@ -169,10 +234,13 @@ export default function AdminUsersPage() {
                       <button
                         type="button"
                         disabled={busyId === u.id}
-                        onClick={() => setPoints(u.id)}
+                        onClick={() => {
+                          setEditId(u.id);
+                          setEditVal(String(u.points ?? 0));
+                        }}
                         className="px-2 py-1 rounded-md text-[11px] bg-slate-700 text-slate-200"
                       >
-                        Set…
+                        Set
                       </button>
                     </div>
                   </td>

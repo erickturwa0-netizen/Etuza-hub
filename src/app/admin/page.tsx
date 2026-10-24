@@ -11,6 +11,7 @@ import {
   Radio,
   Users,
   Clock,
+  Clapperboard,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import AdminSyncButtons from "@/components/AdminSyncButtons";
@@ -22,7 +23,7 @@ export const metadata = { title: "Admin Dashboard – ETUZA HUB" };
 const ACTIVE_MS = 90_000;
 
 export default async function AdminDashboard() {
-  let all: {
+  let recent: {
     id: string;
     title: string;
     type: string;
@@ -30,7 +31,22 @@ export default async function AdminDashboard() {
     viewsCount: number;
   }[] = [];
 
-  let counts = {
+  // Real DB counts (not capped at 200)
+  let totalContent = 0;
+  let publishedCount = 0;
+  let draftCount = 0;
+  let totalViews = 0;
+  let byType: Record<string, number> = {
+    movie: 0,
+    drama: 0,
+    music: 0,
+    game: 0,
+    tv: 0,
+    radio: 0,
+    vpn: 0,
+  };
+
+  let liveCounts = {
     movie: 0,
     music: 0,
     game: 0,
@@ -46,19 +62,40 @@ export default async function AdminDashboard() {
   }[] = [];
 
   try {
-    all = await prisma.content.findMany({
-      orderBy: { updatedAt: "desc" },
-      take: 200,
-      select: {
-        id: true,
-        title: true,
-        type: true,
-        status: true,
-        viewsCount: true,
-      },
-    });
+    const [total, published, drafts, viewsAgg, typeGroups, recentRows] =
+      await Promise.all([
+        prisma.content.count(),
+        prisma.content.count({ where: { status: "published" } }),
+        prisma.content.count({ where: { status: "draft" } }),
+        prisma.content.aggregate({ _sum: { viewsCount: true } }),
+        prisma.content.groupBy({
+          by: ["type"],
+          _count: { _all: true },
+        }),
+        prisma.content.findMany({
+          orderBy: { updatedAt: "desc" },
+          take: 10,
+          select: {
+            id: true,
+            title: true,
+            type: true,
+            status: true,
+            viewsCount: true,
+          },
+        }),
+      ]);
+
+    totalContent = total;
+    publishedCount = published;
+    draftCount = drafts;
+    totalViews = viewsAgg._sum.viewsCount || 0;
+    recent = recentRows;
+
+    for (const g of typeGroups) {
+      byType[g.type] = g._count._all;
+    }
   } catch (e) {
-    console.error("admin content", e);
+    console.error("admin content stats", e);
   }
 
   try {
@@ -70,8 +107,8 @@ export default async function AdminDashboard() {
     });
     totalActive = active.length;
     for (const a of active) {
-      if (a.section in counts) {
-        counts[a.section as keyof typeof counts] += 1;
+      if (a.section in liveCounts) {
+        liveCounts[a.section as keyof typeof liveCounts] += 1;
       }
     }
     activeList = active.map((a) => ({
@@ -86,27 +123,30 @@ export default async function AdminDashboard() {
     console.error("admin presence", e);
   }
 
-  const published = all.filter((c) => c.status === "published");
-  const drafts = all.filter((c) => c.status === "draft");
-  const movies = all.filter((c) => c.type === "movie");
-  const games = all.filter((c) => c.type === "game");
-  const vpns = all.filter((c) => c.type === "vpn");
-  const totalViews = all.reduce((s, c) => s + (c.viewsCount || 0), 0);
-
   const stats = [
-    { label: "Total Content", value: all.length, icon: FileText },
-    { label: "Published", value: published.length, icon: Eye },
-    { label: "Drafts", value: drafts.length, icon: FileText },
-    { label: "Total Views", value: totalViews.toLocaleString(), icon: Eye },
+    { label: "Jumla ya Content", value: totalContent, icon: FileText },
+    { label: "Published", value: publishedCount, icon: Eye },
+    { label: "Drafts", value: draftCount, icon: FileText },
+    { label: "Views zote", value: totalViews.toLocaleString(), icon: Eye },
+  ];
+
+  const catalog = [
+    { type: "Movies", count: byType.movie || 0, icon: Film, href: "/admin/content?type=movie" },
+    { type: "Drama", count: byType.drama || 0, icon: Clapperboard, href: "/admin/content?type=drama" },
+    { type: "Music", count: byType.music || 0, icon: Music, href: "/admin/content?type=music" },
+    { type: "Games", count: byType.game || 0, icon: Gamepad2, href: "/admin/content?type=game" },
+    { type: "TV", count: byType.tv || 0, icon: Tv, href: "/admin/content?type=tv" },
+    { type: "Radio", count: byType.radio || 0, icon: Radio, href: "/admin/content?type=radio" },
+    { type: "VPN", count: byType.vpn || 0, icon: Shield, href: "/admin/content?type=vpn" },
   ];
 
   const live = [
-    { label: "Movies", value: counts.movie, icon: Film, color: "text-violet-400" },
-    { label: "Miziki", value: counts.music, icon: Music, color: "text-fuchsia-400" },
-    { label: "Games", value: counts.game, icon: Gamepad2, color: "text-emerald-400" },
-    { label: "TV", value: counts.tv, icon: Tv, color: "text-red-400" },
-    { label: "Radio", value: counts.radio, icon: Radio, color: "text-pink-400" },
-    { label: "Drama", value: counts.drama, icon: Film, color: "text-orange-400" },
+    { label: "Movies", value: liveCounts.movie, icon: Film, color: "text-violet-400" },
+    { label: "Miziki", value: liveCounts.music, icon: Music, color: "text-fuchsia-400" },
+    { label: "Games", value: liveCounts.game, icon: Gamepad2, color: "text-emerald-400" },
+    { label: "TV", value: liveCounts.tv, icon: Tv, color: "text-red-400" },
+    { label: "Radio", value: liveCounts.radio, icon: Radio, color: "text-pink-400" },
+    { label: "Drama", value: liveCounts.drama, icon: Film, color: "text-orange-400" },
   ];
 
   return (
@@ -114,7 +154,9 @@ export default async function AdminDashboard() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-1">ETUZA HUB Admin Panel</p>
+          <p className="text-sm text-slate-500 mt-1">
+            Hesabu halisi kutoka database · ETUZA HUB
+          </p>
         </div>
         <Link
           href="/admin/content/new"
@@ -125,8 +167,26 @@ export default async function AdminDashboard() {
         </Link>
       </div>
 
-      {/* Sync buttons – TMDB + Elite */}
       <AdminSyncButtons />
+
+      {/* Catalog counts by type */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
+        {catalog.map((c) => (
+          <Link
+            key={c.type}
+            href={c.href}
+            className="glass-card p-4 flex items-center gap-3 hover:border-violet-500/40 transition"
+          >
+            <div className="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center text-violet-400 shrink-0">
+              <c.icon className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xl font-bold">{c.count}</p>
+              <p className="text-xs text-slate-500">{c.type}</p>
+            </div>
+          </Link>
+        ))}
+      </div>
 
       {/* Live viewers */}
       <div className="glass-card p-5 mb-6">
@@ -173,8 +233,7 @@ export default async function AdminDashboard() {
           </div>
         ) : (
           <p className="text-sm text-slate-500">
-            Hakuna mtu active sasa. Fungua movie/TV/radio kwenye site kuona data.
-            (Ikiwa table haipo bado: run <code className="text-violet-300">prisma db push</code>)
+            Hakuna mtu active sasa.
           </p>
         )}
       </div>
@@ -191,43 +250,6 @@ export default async function AdminDashboard() {
         ))}
       </div>
 
-      <div className="grid sm:grid-cols-3 gap-4 mb-10">
-        {[
-          {
-            type: "Movies",
-            count: movies.length,
-            icon: Film,
-            href: "/admin/content?type=movie",
-          },
-          {
-            type: "Games",
-            count: games.length,
-            icon: Gamepad2,
-            href: "/admin/content?type=game",
-          },
-          {
-            type: "VPN",
-            count: vpns.length,
-            icon: Shield,
-            href: "/admin/content?type=vpn",
-          },
-        ].map((c) => (
-          <Link
-            key={c.type}
-            href={c.href}
-            className="glass-card p-5 flex items-center gap-4 hover:border-violet-500/30 transition"
-          >
-            <div className="w-11 h-11 rounded-xl bg-violet-500/15 flex items-center justify-center text-violet-400">
-              <c.icon className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="font-semibold">{c.type}</p>
-              <p className="text-sm text-slate-500">{c.count} items</p>
-            </div>
-          </Link>
-        ))}
-      </div>
-
       <div className="glass-card overflow-hidden">
         <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
           <h2 className="font-semibold">Recent Content</h2>
@@ -239,7 +261,7 @@ export default async function AdminDashboard() {
           </Link>
         </div>
         <div className="divide-y divide-white/5">
-          {all.slice(0, 8).map((c) => (
+          {recent.map((c) => (
             <div key={c.id} className="px-5 py-3.5 flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
                 {c.type === "movie" ? (
@@ -247,7 +269,7 @@ export default async function AdminDashboard() {
                 ) : c.type === "game" ? (
                   <Gamepad2 className="w-4 h-4" />
                 ) : (
-                  <Shield className="w-4 h-4" />
+                  <FileText className="w-4 h-4" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
@@ -267,6 +289,9 @@ export default async function AdminDashboard() {
               </span>
             </div>
           ))}
+          {recent.length === 0 && (
+            <p className="px-5 py-6 text-sm text-slate-500">Hakuna content bado.</p>
+          )}
         </div>
       </div>
     </div>
