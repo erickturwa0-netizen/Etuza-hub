@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Film } from "lucide-react";
 import { movieCover, dramaCover } from "@/lib/covers";
@@ -31,45 +31,34 @@ export default function MediaPosterCard({
 }: Props) {
   const fallback =
     kind === "drama" ? dramaCover(title, null) : movieCover(title, null);
-  const initial = looksBroken(coverUrl) ? fallback : coverUrl!;
+  const good = !looksBroken(coverUrl);
+  const [src, setSrc] = useState(good ? coverUrl! : fallback);
+  const [loading, setLoading] = useState(!good);
 
-  const [src, setSrc] = useState(initial);
-  const [tried, setTried] = useState(false);
-
-  async function loadRealPoster() {
-    if (tried) {
-      setSrc(fallback);
-      return;
-    }
-    setTried(true);
-    try {
-      const res = await fetch(
-        `/api/covers/movie?title=${encodeURIComponent(title)}`,
-        { cache: "force-cache" }
-      );
-      if (res.ok) {
+  useEffect(() => {
+    if (good) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/covers/movie?title=${encodeURIComponent(title)}`,
+          { cache: "force-cache" }
+        );
+        if (!res.ok || cancelled) return;
         const data = await res.json();
-        if (data?.cover && typeof data.cover === "string" && data.cover.startsWith("http")) {
+        if (!cancelled && data?.cover?.startsWith("http")) {
           setSrc(data.cover);
-          return;
         }
+      } catch {
+        /* keep fallback */
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch {
-      /* ignore */
-    }
-    setSrc(fallback);
-  }
-
-  // Auto-fetch real poster when URL is broken/missing
-  if (looksBroken(coverUrl) && !tried && src === fallback) {
-    // fire once
-    if (typeof window !== "undefined") {
-      // schedule microtask to avoid setState during render issues in strict mode
-      queueMicrotask(() => {
-        if (!tried) loadRealPoster();
-      });
-    }
-  }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [title, good]);
 
   return (
     <Link
@@ -83,9 +72,12 @@ export default function MediaPosterCard({
           alt={title}
           className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition"
           loading="lazy"
-          onError={() => loadRealPoster()}
+          onError={() => setSrc(fallback)}
         />
-        {src === fallback && (
+        {loading && (
+          <div className="absolute inset-0 bg-violet-950/40 animate-pulse" />
+        )}
+        {src === fallback && !loading && (
           <div className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/40 flex items-center justify-center">
             <Film className="w-3.5 h-3.5 text-white/50" />
           </div>
