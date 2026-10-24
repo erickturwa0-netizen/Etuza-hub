@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { fetchPublicSeed, PUBLIC_API } from "@/lib/public-apis";
+import { contentCover } from "@/lib/covers";
 import type { Content, ContentType } from "@/types/database";
 
 const SEED_TAG = "media-apis-v2";
@@ -24,12 +25,13 @@ function mapRow(c: {
   createdAt: Date;
   updatedAt: Date;
 }): Content {
+  const cover = contentCover(c.type, c.title, c.coverUrl);
   return {
     id: c.id,
     type: c.type as ContentType,
     title: c.title,
     description: c.description,
-    cover_url: c.coverUrl,
+    cover_url: cover,
     link_url: c.linkUrl,
     link_type: c.linkType as "stream" | "download",
     category: c.category,
@@ -49,7 +51,6 @@ function mapRow(c: {
 }
 
 async function seedIfEmpty(type: ContentType): Promise<Content[]> {
-  // Never auto-seed movies — admin supplies API
   if (type === "movie" || type === "game" || type === "vpn") return [];
 
   const cfg = PUBLIC_API[type];
@@ -72,7 +73,7 @@ async function seedIfEmpty(type: ContentType): Promise<Content[]> {
           title: item.title.slice(0, 200),
           description: item.description,
           linkUrl: item.linkUrl,
-          coverUrl: item.coverUrl,
+          coverUrl: item.coverUrl || contentCover(type, item.title, null),
           linkType: cfg.linkType,
           category: item.category?.slice(0, 100) || null,
           status: "published",
@@ -106,7 +107,6 @@ async function seedIfEmpty(type: ContentType): Promise<Content[]> {
 export async function getPublishedContent(type?: ContentType): Promise<Content[]> {
   try {
     if (type) {
-      // Movies: never auto-seed; only show what's in DB
       if (type === "movie") {
         const items = await prisma.content.findMany({
           where: { status: "published", type: "movie" },

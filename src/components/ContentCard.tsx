@@ -1,6 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { Film, Gamepad2, Shield, Tv, Radio, Music, Clapperboard } from "lucide-react";
 import type { ContentType } from "@/types/database";
+import { contentCover } from "@/lib/covers";
 
 interface ContentCardProps {
   id: string;
@@ -22,16 +26,6 @@ const icons = {
   drama: Clapperboard,
 };
 
-const bg: Record<string, string> = {
-  movie: "#4c1d95",
-  game: "#064e3b",
-  vpn: "#1e3a8a",
-  tv: "#7f1d1d",
-  radio: "#831843",
-  music: "#5b21b6",
-  drama: "#9a3412",
-};
-
 export default function ContentCard({
   id,
   title,
@@ -42,30 +36,40 @@ export default function ContentCard({
 }: ContentCardProps) {
   const Icon = icons[type] || Film;
   const link = href ?? `/watch/${id}`;
+  const initial = contentCover(type, title, coverUrl);
+  const [src, setSrc] = useState(initial);
 
   return (
     <Link href={link} className="block">
-      <div
-        className="relative aspect-[2/3] rounded-2xl overflow-hidden border border-slate-800"
-        style={{ background: coverUrl ? "#111827" : bg[type] || "#111827" }}
-      >
-        {coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={coverUrl} alt={title} className="absolute inset-0 w-full h-full object-cover" />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Icon className="w-12 h-12 text-white opacity-30" />
-          </div>
-        )}
+      <div className="relative aspect-[2/3] rounded-2xl overflow-hidden border border-slate-800 bg-slate-900">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={title}
+          className="absolute inset-0 w-full h-full object-cover"
+          onError={() => {
+            // Final fallback: colored avatar with title
+            setSrc(contentCover(type, title, null));
+          }}
+        />
         <div
           className="absolute bottom-0 left-0 right-0 p-3"
           style={{ background: "rgba(0,0,0,0.75)" }}
         >
-          <p className="font-semibold text-[13px] leading-snug line-clamp-2 text-white">{title}</p>
+          <p className="font-semibold text-[13px] leading-snug line-clamp-2 text-white">
+            {title}
+          </p>
           {category && (
-            <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wide">{category}</p>
+            <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wide">
+              {category}
+            </p>
           )}
         </div>
+        {!coverUrl && (
+          <span className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/50 flex items-center justify-center">
+            <Icon className="w-3.5 h-3.5 text-white/70" />
+          </span>
+        )}
       </div>
     </Link>
   );

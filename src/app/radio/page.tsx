@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Radio, Search } from "lucide-react";
 import PresenceTracker from "@/components/PresenceTracker";
+import { radioCover } from "@/lib/covers";
 
 type Station = {
   id: string;
@@ -13,12 +14,6 @@ type Station = {
   country: string;
   bitrate: number;
 };
-
-function coverFor(s: Station) {
-  if (s.favicon && /^https?:\/\//i.test(s.favicon)) return s.favicon;
-  const name = encodeURIComponent(s.name.slice(0, 24) || "Radio");
-  return `https://ui-avatars.com/api/?name=${name}&background=831843&color=fff&size=128&bold=true`;
-}
 
 export default function RadioPage() {
   const [stations, setStations] = useState<Station[]>([]);
@@ -123,9 +118,12 @@ export default function RadioPage() {
           <div className="flex items-center gap-3 mb-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={coverFor(playing)}
+              src={radioCover(playing.name, playing.favicon)}
               alt=""
               className="w-12 h-12 rounded-xl object-cover border border-slate-700"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = radioCover(playing.name, null);
+              }}
             />
             <p className="text-sm font-semibold text-white truncate">
               Now playing: {playing.name}
@@ -155,13 +153,11 @@ export default function RadioPage() {
               <div className="w-14 h-14 rounded-xl bg-pink-950 flex items-center justify-center overflow-hidden shrink-0 border border-slate-800">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={coverFor(s)}
+                  src={radioCover(s.name, s.favicon)}
                   alt=""
                   className="w-full h-full object-cover"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                      s.name.slice(0, 16)
-                    )}&background=831843&color=fff&size=128`;
+                    (e.target as HTMLImageElement).src = radioCover(s.name, null);
                   }}
                 />
               </div>
