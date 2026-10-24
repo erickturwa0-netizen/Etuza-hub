@@ -2,14 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Film, Tv, Radio, Music } from "lucide-react";
+import { Home } from "lucide-react";
+import { CATEGORY_ICONS } from "@/lib/category-icons";
 
-const tabs = [
-  { href: "/", label: "Home", icon: Home },
-  { href: "/movies", label: "Movies", icon: Film },
-  { href: "/tv", label: "TV", icon: Tv },
-  { href: "/music", label: "Miziki", icon: Music },
-  { href: "/radio", label: "Radio", icon: Radio },
+const tabs: {
+  href: string;
+  label: string;
+  iconUrl?: string;
+  lucide?: typeof Home;
+}[] = [
+  { href: "/", label: "Home", lucide: Home },
+  { href: "/movies", label: "Movies", iconUrl: CATEGORY_ICONS.movie },
+  { href: "/tv", label: "TV", iconUrl: CATEGORY_ICONS.tv },
+  { href: "/music", label: "Miziki", iconUrl: CATEGORY_ICONS.music },
+  { href: "/radio", label: "Radio", iconUrl: CATEGORY_ICONS.radio },
 ];
 
 export default function BottomNav() {
@@ -37,7 +43,19 @@ export default function BottomNav() {
                 (active ? "text-violet-400" : "text-slate-500")
               }
             >
-              <t.icon className="w-5 h-5 mb-0.5" />
+              {t.iconUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={t.iconUrl}
+                  alt=""
+                  className={
+                    "w-6 h-6 mb-0.5 object-contain " +
+                    (active ? "opacity-100" : "opacity-70")
+                  }
+                />
+              ) : t.lucide ? (
+                <t.lucide className="w-5 h-5 mb-0.5" />
+              ) : null}
               {t.label}
             </Link>
           );

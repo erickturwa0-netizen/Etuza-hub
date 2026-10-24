@@ -1,12 +1,7 @@
 import Link from "next/link";
 import {
-  Film,
   Gamepad2,
   Shield,
-  Tv,
-  Radio,
-  Music,
-  Clapperboard,
   ArrowRight,
 } from "lucide-react";
 import ContentCard from "@/components/ContentCard";
@@ -14,68 +9,67 @@ import HomeHeroSlideshow, { type HeroSlide } from "@/components/HomeHeroSlidesho
 import { getPublishedContent } from "@/lib/content";
 import { contentCover } from "@/lib/covers";
 import { PINNED_CHANNELS } from "@/lib/iptv";
+import { CATEGORY_ICONS } from "@/lib/category-icons";
 
 export const dynamic = "force-dynamic";
 
-const CATS = [
+const CATS: {
+  href: string;
+  title: string;
+  iconUrl?: string;
+  lucide?: typeof Gamepad2;
+  grad: string;
+}[] = [
   {
     href: "/movies",
-    icon: Film,
     title: "Movies",
-    sub: "Filamu",
+    iconUrl: CATEGORY_ICONS.movie,
     grad: "from-violet-500 to-purple-700",
   },
   {
     href: "/tv",
-    icon: Tv,
     title: "TV",
-    sub: "Channels",
+    iconUrl: CATEGORY_ICONS.tv,
     grad: "from-red-500 to-orange-600",
   },
   {
     href: "/drama",
-    icon: Clapperboard,
     title: "Tamthilia",
-    sub: "Drama",
+    iconUrl: CATEGORY_ICONS.drama,
     grad: "from-amber-500 to-orange-700",
   },
   {
     href: "/music",
-    icon: Music,
     title: "Miziki",
-    sub: "Audio",
+    iconUrl: CATEGORY_ICONS.music,
     grad: "from-fuchsia-500 to-pink-600",
   },
   {
     href: "/radio",
-    icon: Radio,
     title: "Radio",
-    sub: "Live FM",
+    iconUrl: CATEGORY_ICONS.radio,
     grad: "from-rose-500 to-red-600",
   },
   {
     href: "/games",
-    icon: Gamepad2,
     title: "Games",
-    sub: "Play & APK",
+    lucide: Gamepad2,
     grad: "from-emerald-500 to-teal-600",
   },
   {
     href: "/vpn",
-    icon: Shield,
     title: "VPN",
-    sub: "Configs",
+    lucide: Shield,
     grad: "from-blue-500 to-indigo-700",
   },
 ];
 
 export default async function HomePage() {
-  const [movies, dramas, music, radios, tvs, games, vpns] = await Promise.all([
+  const [movies, dramas, music, radios, games, vpns] = await Promise.all([
     getPublishedContent("movie"),
     getPublishedContent("drama"),
     getPublishedContent("music"),
     getPublishedContent("radio"),
-    getPublishedContent("tv"),
     getPublishedContent("game"),
     getPublishedContent("vpn"),
   ]);
@@ -159,9 +153,18 @@ export default async function HomePage() {
               className="rounded-xl border border-slate-800 bg-slate-900/80 p-2.5 sm:p-3 flex flex-col items-center gap-1.5 hover:border-violet-500/40 transition text-center"
             >
               <div
-                className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br ${c.grad} flex items-center justify-center text-white shadow-md`}
+                className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br ${c.grad} flex items-center justify-center shadow-md overflow-hidden p-1.5`}
               >
-                <c.icon className="w-5 h-5" />
+                {c.iconUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={c.iconUrl}
+                    alt={c.title}
+                    className="w-full h-full object-contain"
+                  />
+                ) : c.lucide ? (
+                  <c.lucide className="w-5 h-5 text-white" />
+                ) : null}
               </div>
               <p className="font-medium text-[11px] sm:text-xs text-white leading-tight">
                 {c.title}
