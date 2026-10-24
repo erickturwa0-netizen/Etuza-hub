@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { Film } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensureElitePlexContent } from "@/lib/eliteplex";
 import { getNewContentBanner } from "@/lib/catalog-sync";
 import ContentSearch from "@/components/ContentSearch";
 import NewContentBanner from "@/components/NewContentBanner";
+import MediaPosterCard from "@/components/MediaPosterCard";
 import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +33,6 @@ export default async function MoviesPage({
   let bannerTitles: string[] = [];
 
   try {
-    // ALWAYS check tag — replaces old unplayable catalog when tag bumps
     await ensureElitePlexContent("movie");
 
     const banner = await getNewContentBanner();
@@ -101,37 +100,14 @@ export default async function MoviesPage({
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4">
           {items.map((c) => (
-            <Link
+            <MediaPosterCard
               key={c.id}
-              href={`/watch/${c.id}`}
-              className="block rounded-2xl border border-slate-700 bg-slate-900 overflow-hidden active:scale-[0.98] transition group touch-manipulation"
-            >
-              <div className="relative w-full aspect-[2/3] bg-violet-950">
-                {c.coverUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={c.coverUrl}
-                    alt={c.title}
-                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Film className="w-12 h-12 text-white/20" />
-                  </div>
-                )}
-              </div>
-              <div className="p-2.5 sm:p-3">
-                <p className="text-sm font-semibold text-white leading-snug line-clamp-2">
-                  {c.title}
-                </p>
-                {c.category && (
-                  <p className="text-[11px] text-violet-300/80 mt-1 truncate">
-                    {c.category}
-                  </p>
-                )}
-              </div>
-            </Link>
+              id={c.id}
+              title={c.title}
+              coverUrl={c.coverUrl}
+              category={c.category}
+              kind="movie"
+            />
           ))}
         </div>
       )}

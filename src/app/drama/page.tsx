@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { Clapperboard } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensureElitePlexContent } from "@/lib/eliteplex";
+import MediaPosterCard from "@/components/MediaPosterCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -47,24 +47,14 @@ export default async function DramaPage() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {items.map((c) => (
-            <Link key={c.id} href={`/watch/${c.id}`} className="block group">
-              <div className="aspect-[2/3] rounded-2xl border border-slate-800 bg-pink-950 overflow-hidden relative">
-                {c.coverUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={c.coverUrl}
-                    alt={c.title}
-                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition"
-                  />
-                ) : null}
-                <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/90 to-transparent">
-                  <p className="text-xs font-semibold line-clamp-2">{c.title}</p>
-                  {c.category && (
-                    <p className="text-[10px] text-slate-400 mt-0.5">{c.category}</p>
-                  )}
-                </div>
-              </div>
-            </Link>
+            <MediaPosterCard
+              key={c.id}
+              id={c.id}
+              title={c.title}
+              coverUrl={c.coverUrl}
+              category={c.category}
+              kind="drama"
+            />
           ))}
         </div>
       )}
