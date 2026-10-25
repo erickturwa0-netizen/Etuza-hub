@@ -14,6 +14,8 @@ const PUBLIC_PATHS = [
   "/vpn",
   "/watch",
   "/play",
+  "/privacy",
+  "/terms",
 ];
 
 const PUBLIC_API = [
