@@ -18,6 +18,8 @@ const schema = z.object({
   network: z.string().optional().nullable(),
   configText: z.string().optional().nullable(),
   fileUrl: z.string().optional().nullable(),
+  priceMode: z.enum(["free", "once", "week", "month", "year"]).optional(),
+  priceTzs: z.number().int().min(0).optional(),
 });
 
 export async function GET(req: Request) {
@@ -26,7 +28,6 @@ export async function GET(req: Request) {
     const type = searchParams.get("type");
     const publishedOnly = searchParams.get("published") === "1";
 
-    // Auto-fill movies / tamthilia from ElitePlex when empty
     if (type === "movie" || type === "drama") {
       try {
         await ensureElitePlexContent(type);
@@ -84,6 +85,8 @@ export async function POST(req: Request) {
         network: d.network || null,
         configText: d.configText || null,
         fileUrl: d.fileUrl || null,
+        priceMode: d.priceMode || "free",
+        priceTzs: d.priceTzs ?? 0,
         createdBy: session.userId,
       },
     });

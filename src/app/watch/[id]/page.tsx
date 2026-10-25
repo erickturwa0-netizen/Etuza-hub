@@ -7,6 +7,7 @@ import PreRollGate from "@/components/PreRollGate";
 import GameDownloadPanel from "@/components/GameDownloadPanel";
 import PresenceTracker from "@/components/PresenceTracker";
 import WebGamePlayer from "@/components/WebGamePlayer";
+import WatchPaywallGate from "@/components/WatchPaywallGate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -52,6 +53,9 @@ export default async function WatchPage({
     coverUrl: string | null;
     category: string | null;
     status: string;
+    priceMode?: string;
+    priceTzs?: number;
+    fileUrl?: string | null;
   } | null = null;
 
   try {
@@ -70,7 +74,7 @@ export default async function WatchPage({
 
   if (!item) notFound();
 
-  const link = (item.linkUrl || "").trim();
+  const link = (item.fileUrl || item.linkUrl || "").trim();
   const backHref = getBackHref(item.type);
   const section =
     item.type === "drama"
@@ -86,14 +90,11 @@ export default async function WatchPage({
               : item.type;
 
   const isDownload = item.linkType === "download" || item.type === "vpn";
-
   const isWebGame =
     item.type === "game" &&
     item.linkType !== "download" &&
     (item.linkType === "stream" || isWebGameUrl(link));
-
   const isGameDownload = item.type === "game" && isDownload;
-
   const usePointsGate =
     item.type === "movie" ||
     item.type === "drama" ||
@@ -101,111 +102,66 @@ export default async function WatchPage({
     item.type === "music" ||
     item.type === "radio";
 
-  if (isGameDownload || item.type === "vpn") {
-    return (
-      <main className="max-w-3xl mx-auto px-4 py-8 pb-28">
-        <PresenceTracker section={section} title={item.title} />
-        <Link
-          href={backHref}
-          className="inline-flex items-center gap-2 text-sm text-slate-400 mb-6"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </Link>
-        <h1 className="text-2xl font-bold mb-2 text-white">{item.title}</h1>
-        {item.category && (
-          <p className="text-xs text-slate-500 mb-4 uppercase tracking-wide">
-            {item.category}
-          </p>
-        )}
-        {item.coverUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={item.coverUrl}
-            alt=""
-            className="w-full max-w-xs rounded-2xl border border-slate-800 mb-6 object-cover"
-          />
-        )}
-        {!link ? (
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-            Content hii haina download link.
-          </div>
-        ) : (
+  const body = (() => {
+    if (isGameDownload || item.type === "vpn") {
+      return (
+        <>
+          {item.coverUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={item.coverUrl}
+              alt=""
+              className="w-full max-w-xs rounded-2xl border border-slate-800 mb-6 object-cover"
+            />
+          )}
+          {!link ? (
+            <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+              Content hii haina download link.
+            </div>
+          ) : (
+            <GameDownloadPanel linkUrl={link} title={item.title} />
+          )}
+        </>
+      );
+    }
+    if (isWebGame) {
+      return <WebGamePlayer src={link} title={item.title} />;
+    }
+    if (item.type === "game") {
+      return (
+        <>
+          {item.coverUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={item.coverUrl}
+              alt=""
+              className="w-full max-w-xs rounded-2xl border border-slate-800 mb-6 object-cover"
+            />
+          )}
           <GameDownloadPanel linkUrl={link} title={item.title} />
-        )}
-        {item.description && (
-          <p className="mt-6 text-sm text-slate-400 leading-relaxed">
-            {item.description}
-          </p>
-        )}
-      </main>
-    );
-  }
-
-  if (isWebGame) {
+        </>
+      );
+    }
+    if (!link) {
+      return (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+          Content hii haina stream link.
+        </div>
+      );
+    }
     return (
-      <main className="max-w-4xl mx-auto px-4 py-6 pb-28">
-        <PresenceTracker section="game" title={item.title} />
-        <Link
-          href={backHref}
-          className="inline-flex items-center gap-2 text-sm text-slate-400 mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </Link>
-        <h1 className="text-xl sm:text-2xl font-bold mb-1 text-white">{item.title}</h1>
-        {item.category && (
-          <p className="text-xs text-slate-500 mb-4 uppercase tracking-wide">
-            {item.category}
-          </p>
-        )}
-        <WebGamePlayer src={link} title={item.title} />
-        {item.description && (
-          <p className="mt-4 text-sm text-slate-400 leading-relaxed">
-            {item.description}
-          </p>
-        )}
-      </main>
+      <PreRollGate
+        contentKey={`${item.type}:${item.id}`}
+        title={item.title}
+        enabled={usePointsGate}
+      >
+        <StreamPlayer src={link} poster={item.coverUrl} title={item.title} />
+      </PreRollGate>
     );
-  }
-
-  if (item.type === "game") {
-    return (
-      <main className="max-w-3xl mx-auto px-4 py-8 pb-28">
-        <PresenceTracker section="game" title={item.title} />
-        <Link
-          href={backHref}
-          className="inline-flex items-center gap-2 text-sm text-slate-400 mb-6"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </Link>
-        <h1 className="text-2xl font-bold mb-2 text-white">{item.title}</h1>
-        {item.category && (
-          <p className="text-xs text-slate-500 mb-4 uppercase tracking-wide">
-            {item.category}
-          </p>
-        )}
-        {item.coverUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={item.coverUrl}
-            alt=""
-            className="w-full max-w-xs rounded-2xl border border-slate-800 mb-6 object-cover"
-          />
-        )}
-        <GameDownloadPanel linkUrl={link} title={item.title} />
-        {item.description && (
-          <p className="mt-6 text-sm text-slate-400 leading-relaxed">
-            {item.description}
-          </p>
-        )}
-      </main>
-    );
-  }
+  })();
 
   return (
-    <main className="max-w-4xl mx-auto px-4 py-6 pb-24">
+    <main className="max-w-4xl mx-auto px-4 py-6 pb-28">
       <PresenceTracker section={section} title={item.title} />
       <Link
         href={backHref}
@@ -214,7 +170,6 @@ export default async function WatchPage({
         <ArrowLeft className="w-4 h-4" />
         Back
       </Link>
-
       <h1 className="text-xl sm:text-2xl font-bold mb-1 text-white">{item.title}</h1>
       {item.category && (
         <p className="text-xs text-slate-500 mb-4 uppercase tracking-wide">
@@ -222,19 +177,14 @@ export default async function WatchPage({
         </p>
       )}
 
-      {!link ? (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-          Content hii haina stream link.
-        </div>
-      ) : (
-        <PreRollGate
-          contentKey={`${item.type}:${item.id}`}
-          title={item.title}
-          enabled={usePointsGate}
-        >
-          <StreamPlayer src={link} poster={item.coverUrl} title={item.title} />
-        </PreRollGate>
-      )}
+      <WatchPaywallGate
+        contentId={item.id}
+        title={item.title}
+        priceMode={item.priceMode}
+        priceTzs={item.priceTzs}
+      >
+        {body}
+      </WatchPaywallGate>
 
       {item.description && (
         <p className="mt-4 text-sm text-slate-400 leading-relaxed">
