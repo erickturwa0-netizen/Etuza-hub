@@ -19,12 +19,35 @@ const FIREBASE_API_KEY =
   process.env.FIREBASE_API_KEY ||
   "AIzaSyCZBWGkbLcMvpstxUfWVeW2TE7z0cn4cZU";
 
-async function verifyFirebaseIdToken(idToken: string): Promise<{
-  email: string;
-  name?: string;
-  picture?: string;
-  localId: string;
-} | null> {
+type Profile = { email: string; name?: string; picture?: string };
+
+/** Verify Google / Firebase ID token via Google tokeninfo (works for GIS credentials). */
+async function verifyGoogleIdToken(idToken: string): Promise<Profile | null> {
+  try {
+    const res = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
+    );
+    if (res.ok) {
+      const data = (await res.json()) as {
+        email?: string;
+        email_verified?: string;
+        name?: string;
+        picture?: string;
+        aud?: string;
+      };
+      if (data.email && data.email_verified !== "false") {
+        return {
+          email: data.email.toLowerCase().trim(),
+          name: data.name,
+          picture: data.picture,
+        };
+      }
+    }
+  } catch (e) {
+    console.error("tokeninfo", e);
+  }
+
+  // Fallback: Firebase Identity Toolkit lookup
   try {
     const res = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_API_KEY}`,
@@ -35,30 +58,21 @@ async function verifyFirebaseIdToken(idToken: string): Promise<{
       }
     );
     const data = (await res.json()) as {
-      users?: {
-        localId: string;
-        email?: string;
-        displayName?: string;
-        photoUrl?: string;
-      }[];
-      error?: { message?: string };
+      users?: { email?: string; displayName?: string; photoUrl?: string }[];
     };
-    if (!res.ok) {
-      console.error("firebase lookup", data?.error?.message || res.status);
-      return null;
-    }
     const u = data.users?.[0];
-    if (!u?.email) return null;
-    return {
-      email: u.email.toLowerCase().trim(),
-      name: u.displayName,
-      picture: u.photoUrl,
-      localId: u.localId,
-    };
+    if (u?.email) {
+      return {
+        email: u.email.toLowerCase().trim(),
+        name: u.displayName,
+        picture: u.photoUrl,
+      };
+    }
   } catch (e) {
-    console.error("verifyFirebaseIdToken", e);
-    return null;
+    console.error("firebase lookup", e);
   }
+
+  return null;
 }
 
 export async function POST(req: Request) {
@@ -71,12 +85,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Token si sahihi" }, { status: 400 });
     }
 
-    const profile = await verifyFirebaseIdToken(parsed.data.idToken);
+    const profile = await verifyGoogleIdToken(parsed.data.idToken);
     if (!profile) {
       return NextResponse.json(
         {
           error:
-            "Google token imeshindikana kuthibitishwa. Jaribu tena au tumia email.",
+            "Google token imeshindikana. Hakikisha Web client ID iko sahihi kwenye Vercel.",
         },
         { status: 401 }
       );
@@ -99,9 +113,8 @@ export async function POST(req: Request) {
       .catch(() => null);
 
     if (!user) {
-      const randomPass = randomBytes(32).toString("hex");
-      const passwordHash = await hashPassword(randomPass);
-      let inviteCode = generateInviteCode();
+      const passwordHash = await hashPassword(randomBytes(32).toString("hex"));
+      const inviteCode = generateInviteCode();
 
       try {
         user = await prisma.user.create({
@@ -122,8 +135,7 @@ export async function POST(req: Request) {
             inviteCode: true,
           },
         });
-      } catch (createErr) {
-        // Race: user created between find and create
+      } catch {
         user = await prisma.user.findUnique({
           where: { email },
           select: {
@@ -136,13 +148,8 @@ export async function POST(req: Request) {
           },
         });
         if (!user) {
-          console.error("google create user", createErr);
           return NextResponse.json(
-            {
-              error: "Imeshindikana kuunda account",
-              detail:
-                createErr instanceof Error ? createErr.message : "create failed",
-            },
+            { error: "Imeshindikana kuunda account" },
             { status: 500 }
           );
         }
@@ -154,7 +161,7 @@ export async function POST(req: Request) {
             userId: user.id,
             amount: POINTS.SIGNUP,
             reason: "signup_google",
-            meta: "Google sign-up bonus",
+            meta: "Google sign-up",
           },
         })
         .catch(() => {});
