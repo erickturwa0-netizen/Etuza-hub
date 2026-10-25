@@ -48,6 +48,10 @@ export default function NewContentPage() {
   const [status, setStatus] = useState<"draft" | "published">("published");
   const [protocol, setProtocol] = useState("");
   const [configText, setConfigText] = useState("");
+  const [priceMode, setPriceMode] = useState<
+    "free" | "once" | "week" | "month" | "year"
+  >("free");
+  const [priceTzs, setPriceTzs] = useState(0);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [resolving, setResolving] = useState(false);
@@ -93,7 +97,7 @@ export default function NewContentPage() {
 
   async function chimbaLinks() {
     if (!linkUrl.trim()) {
-      setError("Weka link ya ukurasa kwanza (mf. dzgurus)");
+      setError("Weka link ya ukurasa kwanza");
       return;
     }
     setResolving(true);
@@ -108,20 +112,18 @@ export default function NewContentPage() {
         body: JSON.stringify({ url: linkUrl.trim() }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Chimba imeshindikana");
-      } else if (!(data.links || []).length) {
-        setError("Hakuna MediaFire / file host iliyopatikana kwenye ukurasa huu");
+      if (!res.ok) setError(data.error || "Chimba imeshindikana");
+      else if (!(data.links || []).length) {
+        setError("Hakuna file host iliyopatikana");
       } else {
         setResolved(data.links);
-        // Auto-pick first MediaFire as main link
         const first = data.links[0] as ResolvedLink;
         setLinkUrl(first.url);
         setLinkType("download");
         if (!title.trim() && data.title) {
           setTitle(String(data.title).replace(/\s*[|–-].*$/, "").slice(0, 120));
         }
-        setInfo(`${data.links.length} download link(s) ✓ — umechagua: ${first.label}`);
+        setInfo(`${data.links.length} download link(s) ✓`);
       }
     } catch {
       setError("Tatizo la mtandao");
@@ -182,7 +184,6 @@ export default function NewContentPage() {
     setSaving(true);
     try {
       if (apiUrl.trim()) await saveApiToSettings();
-
       if (!linkUrl.trim()) {
         if (apiUrl.trim()) {
           setSaving(false);
@@ -193,13 +194,11 @@ export default function NewContentPage() {
         setSaving(false);
         return;
       }
-
       if (!title.trim()) {
         setError("Weka Title");
         setSaving(false);
         return;
       }
-
       const res = await fetch("/api/content", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -215,6 +214,9 @@ export default function NewContentPage() {
           status,
           protocol: protocol || null,
           configText: configText || null,
+          fileUrl: type === "vpn" ? linkUrl : null,
+          priceMode,
+          priceTzs: Number(priceTzs) || 0,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -239,7 +241,7 @@ export default function NewContentPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold">Add Content</h1>
-          <p className="text-sm text-slate-500">Stream link, Download, au chimba MediaFire</p>
+          <p className="text-sm text-slate-500">VPN upload, bei, stream/download</p>
         </div>
       </div>
 
@@ -336,28 +338,23 @@ export default function NewContentPage() {
             value={linkUrl}
             onChange={(e) => setLinkUrl(e.target.value)}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-            placeholder="https://www.dzgurus.com/... au MediaFire..."
+            placeholder="https://…"
           />
           <div className="flex flex-wrap gap-2 mt-2">
             <button
               type="button"
               onClick={chimbaLinks}
               disabled={resolving || !linkUrl.trim()}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-sm font-medium text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-700 text-sm font-medium text-white disabled:opacity-50"
             >
               <Wand2 className="w-4 h-4" />
               {resolving ? "Inachimba…" : "Chimba MediaFire"}
             </button>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            Weka link ya blog (dzgurus n.k.) kisha bofya <b>Chimba MediaFire</b> —
-            itatoa file links moja kwa moja.
-          </p>
         </div>
 
         {resolved.length > 0 && (
           <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-3 space-y-2">
-            <p className="text-xs text-emerald-300 font-medium">Chagua file:</p>
             {resolved.map((l) => (
               <button
                 key={l.url}
@@ -365,16 +362,10 @@ export default function NewContentPage() {
                 onClick={() => {
                   setLinkUrl(l.url);
                   setLinkType("download");
-                  setInfo(`Umechagua: ${l.label}`);
                 }}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm border ${
-                  linkUrl === l.url
-                    ? "border-emerald-500 bg-emerald-900/40 text-emerald-200"
-                    : "border-slate-700 text-slate-300 hover:bg-slate-800"
-                }`}
+                className="w-full text-left px-3 py-2 rounded-lg text-sm border border-slate-700"
               >
-                <span className="font-medium">{l.label}</span>
-                <span className="block text-[10px] text-slate-500 truncate">{l.url}</span>
+                {l.label}
               </button>
             ))}
           </div>
@@ -382,14 +373,12 @@ export default function NewContentPage() {
 
         <div className="rounded-xl border-2 border-violet-600/40 bg-violet-950/30 p-4 space-y-3">
           <label className="flex items-center gap-2 text-sm font-semibold text-violet-300">
-            <Link2 className="w-4 h-4" />
-            Public API URL (bila key)
+            <Link2 className="w-4 h-4" /> Public API URL
           </label>
           <input
             value={apiUrl}
             onChange={(e) => setApiUrl(e.target.value)}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-violet-800/50 text-sm font-mono"
-            placeholder="https://example.com/api/list.json"
           />
           <button
             type="button"
@@ -398,17 +387,104 @@ export default function NewContentPage() {
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-700 text-sm font-medium text-white disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
-            {importing ? "Inapakia…" : "Pakia / Import kutoka API"}
+            {importing ? "Inapakia…" : "Import kutoka API"}
           </button>
         </div>
 
         <div>
           <label className="block text-sm font-medium text-slate-400 mb-1.5">Cover URL</label>
           <input
-            value={coverUrl}
+            value={coverUrl.startsWith("data:") ? "(picha imepakiwa)" : coverUrl}
             onChange={(e) => setCoverUrl(e.target.value)}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
           />
+        </div>
+
+        {type === "vpn" && (
+          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-4 space-y-3">
+            <p className="text-sm font-semibold text-emerald-300">VPN — picha &amp; file</p>
+            <div>
+              <label className="text-xs text-slate-400">Picha / Cover (upload)</label>
+              <input
+                type="file"
+                accept="image/*"
+                className="mt-1 w-full text-sm text-slate-400"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  if (f.size > 1_500_000) {
+                    setError("Picha max ~1.5MB");
+                    return;
+                  }
+                  const r = new FileReader();
+                  r.onload = () => setCoverUrl(String(r.result || ""));
+                  r.readAsDataURL(f);
+                }}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400">File ya VPN (ndogo) au tumia link juu</label>
+              <input
+                type="file"
+                className="mt-1 w-full text-sm text-slate-400"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  if (f.size > 2_000_000) {
+                    setError("File max ~2MB — tumia link ya Drive/MediaFire");
+                    return;
+                  }
+                  const r = new FileReader();
+                  r.onload = () => {
+                    setLinkUrl(String(r.result || ""));
+                    setLinkType("download");
+                  };
+                  r.readAsDataURL(f);
+                }}
+              />
+            </div>
+            <input
+              value={protocol}
+              onChange={(e) => setProtocol(e.target.value)}
+              placeholder="Protocol"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+            />
+            <textarea
+              value={configText}
+              onChange={(e) => setConfigText(e.target.value)}
+              rows={3}
+              placeholder="Config text"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-mono"
+            />
+          </div>
+        )}
+
+        <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 p-4 space-y-3">
+          <p className="text-sm font-semibold text-amber-200">Bei / Kifurushi</p>
+          <select
+            value={priceMode}
+            onChange={(e) => setPriceMode(e.target.value as typeof priceMode)}
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+          >
+            <option value="free">Bure</option>
+            <option value="once">Moja kwa moja</option>
+            <option value="week">Wiki</option>
+            <option value="month">Mwezi</option>
+            <option value="year">Mwaka</option>
+          </select>
+          {priceMode !== "free" && (
+            <div>
+              <label className="text-xs text-slate-400">
+                Bei maalum TZS (0 = bei ya global kwenye Malipo)
+              </label>
+              <input
+                type="number"
+                value={priceTzs}
+                onChange={(e) => setPriceTzs(Number(e.target.value) || 0)}
+                className="mt-1 w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+              />
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -444,24 +520,6 @@ export default function NewContentPage() {
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
           />
         </div>
-
-        {type === "vpn" && (
-          <>
-            <input
-              value={protocol}
-              onChange={(e) => setProtocol(e.target.value)}
-              placeholder="Protocol"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-            />
-            <textarea
-              value={configText}
-              onChange={(e) => setConfigText(e.target.value)}
-              rows={3}
-              placeholder="Config text"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-mono"
-            />
-          </>
-        )}
 
         <button
           type="submit"
