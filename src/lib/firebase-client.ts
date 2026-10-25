@@ -43,15 +43,12 @@ function googleProvider() {
   return provider;
 }
 
-/** Prefer redirect on mobile (popups often blocked). */
 function shouldUseRedirect() {
   if (typeof window === "undefined") return true;
   const ua = navigator.userAgent || "";
-  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
-  return isMobile;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
 }
 
-/** Start Google sign-in (redirect on mobile, popup on desktop). */
 export async function startGoogleSignIn(): Promise<
   | { mode: "popup"; idToken: string }
   | { mode: "redirect" }
@@ -59,7 +56,9 @@ export async function startGoogleSignIn(): Promise<
   const auth = getFirebaseAuth();
   const provider = googleProvider();
 
+  // Always redirect on mobile; popup often blocked
   if (shouldUseRedirect()) {
+    sessionStorage.setItem("etuza_google_pending", "1");
     await signInWithRedirect(auth, provider);
     return { mode: "redirect" };
   }
@@ -73,12 +72,12 @@ export async function startGoogleSignIn(): Promise<
       e && typeof e === "object" && "code" in e
         ? String((e as { code: string }).code)
         : "";
-    // Popup blocked → fall back to redirect
     if (
       code.includes("popup-blocked") ||
       code.includes("popup-closed") ||
       code.includes("cancelled-popup")
     ) {
+      sessionStorage.setItem("etuza_google_pending", "1");
       await signInWithRedirect(auth, provider);
       return { mode: "redirect" };
     }
@@ -86,10 +85,29 @@ export async function startGoogleSignIn(): Promise<
   }
 }
 
-/** After redirect back to the page, get the Google result. */
-export async function completeGoogleRedirect(): Promise<string | null> {
+/**
+ * After Google redirect returns to the app, resolve an ID token.
+ * Tries getRedirectResult first, then currentUser (authStateReady).
+ */
+export async function resolveGoogleIdToken(): Promise<string | null> {
   const auth = getFirebaseAuth();
-  const result = await getRedirectResult(auth);
-  if (!result?.user) return null;
-  return result.user.getIdToken();
+
+  // Wait until Firebase restores any persisted auth
+  await auth.authStateReady();
+
+  try {
+    const redirected = await getRedirectResult(auth);
+    if (redirected?.user) {
+      return redirected.user.getIdToken(true);
+    }
+  } catch (e) {
+    console.error("getRedirectResult", e);
+  }
+
+  // Fallback: user already signed in after redirect
+  if (auth.currentUser) {
+    return auth.currentUser.getIdToken(true);
+  }
+
+  return null;
 }

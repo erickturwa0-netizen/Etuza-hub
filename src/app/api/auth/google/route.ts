@@ -34,16 +34,19 @@ async function verifyFirebaseIdToken(idToken: string): Promise<{
         body: JSON.stringify({ idToken }),
       }
     );
-    if (!res.ok) return null;
     const data = (await res.json()) as {
       users?: {
         localId: string;
         email?: string;
         displayName?: string;
         photoUrl?: string;
-        emailVerified?: boolean;
       }[];
+      error?: { message?: string };
     };
+    if (!res.ok) {
+      console.error("firebase lookup", data?.error?.message || res.status);
+      return null;
+    }
     const u = data.users?.[0];
     if (!u?.email) return null;
     return {
@@ -52,7 +55,8 @@ async function verifyFirebaseIdToken(idToken: string): Promise<{
       picture: u.photoUrl,
       localId: u.localId,
     };
-  } catch {
+  } catch (e) {
+    console.error("verifyFirebaseIdToken", e);
     return null;
   }
 }
@@ -70,48 +74,19 @@ export async function POST(req: Request) {
     const profile = await verifyFirebaseIdToken(parsed.data.idToken);
     if (!profile) {
       return NextResponse.json(
-        { error: "Google sign-in imeshindikana. Jaribu tena." },
+        {
+          error:
+            "Google token imeshindikana kuthibitishwa. Jaribu tena au tumia email.",
+        },
         { status: 401 }
       );
     }
 
     const email = profile.email;
 
-    let user = await prisma.user.findUnique({
-      where: { email },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        points: true,
-        inviteCode: true,
-      },
-    });
-
-    if (!user) {
-      // Random password — Google users login via Google only
-      const randomPass = randomBytes(32).toString("hex");
-      const passwordHash = await hashPassword(randomPass);
-      let inviteCode = generateInviteCode();
-      for (let i = 0; i < 5; i++) {
-        const exists = await prisma.user.findUnique({
-          where: { inviteCode },
-          select: { id: true },
-        });
-        if (!exists) break;
-        inviteCode = generateInviteCode();
-      }
-
-      user = await prisma.user.create({
-        data: {
-          email,
-          passwordHash,
-          fullName: profile.name || email.split("@")[0],
-          role: "user",
-          points: POINTS.SIGNUP,
-          inviteCode,
-        },
+    let user = await prisma.user
+      .findUnique({
+        where: { email },
         select: {
           id: true,
           email: true,
@@ -120,7 +95,58 @@ export async function POST(req: Request) {
           points: true,
           inviteCode: true,
         },
-      });
+      })
+      .catch(() => null);
+
+    if (!user) {
+      const randomPass = randomBytes(32).toString("hex");
+      const passwordHash = await hashPassword(randomPass);
+      let inviteCode = generateInviteCode();
+
+      try {
+        user = await prisma.user.create({
+          data: {
+            email,
+            passwordHash,
+            fullName: profile.name || email.split("@")[0],
+            role: "user",
+            points: POINTS.SIGNUP,
+            inviteCode,
+          },
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            role: true,
+            points: true,
+            inviteCode: true,
+          },
+        });
+      } catch (createErr) {
+        // Race: user created between find and create
+        user = await prisma.user.findUnique({
+          where: { email },
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            role: true,
+            points: true,
+            inviteCode: true,
+          },
+        });
+        if (!user) {
+          console.error("google create user", createErr);
+          return NextResponse.json(
+            {
+              error: "Imeshindikana kuunda account",
+              detail:
+                createErr instanceof Error ? createErr.message : "create failed",
+            },
+            { status: 500 }
+          );
+        }
+      }
 
       await prisma.pointLog
         .create({
@@ -132,19 +158,6 @@ export async function POST(req: Request) {
           },
         })
         .catch(() => {});
-    } else if (!user.fullName && profile.name) {
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: { fullName: profile.name },
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          role: true,
-          points: true,
-          inviteCode: true,
-        },
-      });
     }
 
     const token = await createSessionToken({
@@ -156,6 +169,7 @@ export async function POST(req: Request) {
     await setSessionCookie(token);
 
     return NextResponse.json({
+      ok: true,
       user: {
         id: user.id,
         email: user.email,

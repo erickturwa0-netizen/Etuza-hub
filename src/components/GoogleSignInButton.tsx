@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   startGoogleSignIn,
-  completeGoogleRedirect,
+  resolveGoogleIdToken,
 } from "@/lib/firebase-client";
 
 type Props = {
@@ -15,79 +15,99 @@ type Props = {
 export default function GoogleSignInButton({ next, label }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const handled = useRef(false);
 
   async function finishWithToken(idToken: string) {
+    setStatus("Inahifadhi session…");
     const res = await fetch("/api/auth/google", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ idToken }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(data.error || "Google sign-in imeshindikana");
+      throw new Error(
+        (data && data.error) ||
+          (data && data.detail) ||
+          `Server error ${res.status}`
+      );
     }
-    if (data.user?.role === "admin") {
-      router.push(next?.startsWith("/admin") ? next! : "/admin");
-    } else {
-      router.push(next && !next.startsWith("/admin") ? next : "/");
-    }
-    router.refresh();
+
+    sessionStorage.removeItem("etuza_google_pending");
+    setStatus("Umefanikiwa! Inafungua…");
+
+    const dest =
+      data.user?.role === "admin"
+        ? next?.startsWith("/admin")
+          ? next
+          : "/admin"
+        : next && !next.startsWith("/admin")
+          ? next
+          : "/";
+
+    // Full navigation so cookie is picked up everywhere
+    window.location.href = dest || "/";
   }
 
-  // Handle return from Google redirect
+  // Complete redirect flow when landing back on login/signup
   useEffect(() => {
-    let cancelled = false;
+    if (handled.current) return;
+    handled.current = true;
+
     (async () => {
+      const pending =
+        typeof window !== "undefined" &&
+        sessionStorage.getItem("etuza_google_pending") === "1";
+
+      // Always try resolve (covers redirect without flag too)
       try {
         setLoading(true);
-        const idToken = await completeGoogleRedirect();
-        if (cancelled) return;
-        if (idToken) {
-          await finishWithToken(idToken);
-        } else {
+        setStatus(pending ? "Inakamilisha Google…" : "");
+        const idToken = await resolveGoogleIdToken();
+        if (!idToken) {
           setLoading(false);
+          setStatus("");
+          return;
         }
+        await finishWithToken(idToken);
       } catch (e) {
-        if (!cancelled) {
-          setError(
-            e instanceof Error ? e.message.slice(0, 160) : "Redirect imeshindikana"
-          );
-          setLoading(false);
-        }
+        console.error(e);
+        setError(
+          e instanceof Error ? e.message.slice(0, 200) : "Google sign-in imeshindikana"
+        );
+        setLoading(false);
+        setStatus("");
+        sessionStorage.removeItem("etuza_google_pending");
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleGoogle() {
     setError("");
+    setStatus("");
     setLoading(true);
     try {
       const result = await startGoogleSignIn();
       if (result.mode === "redirect") {
-        // Page will navigate away to Google
-        return;
+        setStatus("Inafungua Google…");
+        return; // browser leaves the page
       }
       await finishWithToken(result.idToken);
     } catch (e) {
       const msg =
         e instanceof Error
           ? e.message
-          : "Imeshindikana. Hakikisha Google imewezeshwa kwenye Firebase.";
+          : "Imeshindikana kuingia na Google";
       if (msg.includes("unauthorized-domain")) {
-        setError(
-          "Domain haijaongezwa kwenye Firebase Authorized domains."
-        );
-      } else if (msg.includes("popup")) {
-        setError("Popup imezuiwa — jaribu tena (sasa inatumia redirect).");
+        setError("Domain haijaidhinishwa kwenye Firebase Authorized domains.");
       } else {
-        setError(msg.slice(0, 160));
+        setError(msg.slice(0, 200));
       }
       setLoading(false);
+      setStatus("");
     }
   }
 
@@ -117,8 +137,11 @@ export default function GoogleSignInButton({ next, label }: Props) {
             d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
           />
         </svg>
-        {loading ? "Inaingia…" : label || "Endelea na Google"}
+        {loading ? status || "Inaingia…" : label || "Endelea na Google"}
       </button>
+      {status && !error && (
+        <p className="text-xs text-slate-400 text-center">{status}</p>
+      )}
       {error && (
         <p className="text-xs text-red-400 text-center leading-relaxed">{error}</p>
       )}
