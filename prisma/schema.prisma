@@ -19,7 +19,9 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  pointLogs PointLog[]
+  pointLogs        PointLog[]
+  paymentRequests  PaymentRequest[]
+  accesses         UserAccess[]
 
   @@map("User")
 }
@@ -53,10 +55,17 @@ model Content {
   network     String?
   configText  String?  @map("config_text")
   fileUrl     String?  @map("file_url")
+  /** free | once | week | month | year */
+  priceMode   String   @default("free") @map("price_mode")
+  /** TZS price for this item (0 = use global package price) */
+  priceTzs    Int      @default(0) @map("price_tzs")
   viewsCount  Int      @default(0) @map("views_count")
   createdBy   String?  @map("created_by")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
+
+  paymentRequests PaymentRequest[]
+  accesses        UserAccess[]
 
   @@index([type])
   @@index([status])
@@ -76,7 +85,6 @@ model ApiSource {
   @@map("ApiSource")
 }
 
-/** Live presence / active viewers */
 model ViewSession {
   id        String   @id @default(cuid())
   sessionId String   @map("session_id")
@@ -90,4 +98,59 @@ model ViewSession {
   @@index([section])
   @@index([lastSeen])
   @@map("ViewSession")
+}
+
+/** Global payment settings (single row id=default) */
+model PaymentSettings {
+  id           String   @id @default("default")
+  enabled      Boolean  @default(false)
+  payPhone     String   @default("") @map("pay_phone")
+  payNetwork   String   @default("vodacom") @map("pay_network")
+  priceWeek    Int      @default(2000) @map("price_week")
+  priceMonth   Int      @default(5000) @map("price_month")
+  priceYear    Int      @default(40000) @map("price_year")
+  priceOnce    Int      @default(1000) @map("price_once")
+  instructions String?  @default("Tuma pesa kisha pakia screenshot ya muamala.")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("PaymentSettings")
+}
+
+model PaymentRequest {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  contentId      String?  @map("content_id")
+  plan           String
+  amount         Int
+  senderPhone    String   @map("sender_phone")
+  senderNetwork  String   @map("sender_network")
+  screenshotUrl  String   @map("screenshot_url") @db.Text
+  status         String   @default("pending")
+  adminNote      String?  @map("admin_note")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content Content? @relation(fields: [contentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@map("PaymentRequest")
+}
+
+model UserAccess {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  contentId String?   @map("content_id")
+  plan      String
+  /** null contentId = site-wide access for plan duration */
+  expiresAt DateTime? @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content Content? @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([contentId])
+  @@map("UserAccess")
 }
