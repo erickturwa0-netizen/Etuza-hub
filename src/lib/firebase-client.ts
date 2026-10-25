@@ -1,5 +1,11 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+} from "firebase/auth";
 
 const firebaseConfig = {
   apiKey:
@@ -31,16 +37,59 @@ export function getFirebaseAuth() {
   return getAuth(getFirebaseApp());
 }
 
-export async function signInWithGooglePopup() {
-  const auth = getFirebaseAuth();
+function googleProvider() {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
-  const result = await signInWithPopup(auth, provider);
-  const idToken = await result.user.getIdToken();
-  return {
-    idToken,
-    email: result.user.email,
-    displayName: result.user.displayName,
-    photoURL: result.user.photoURL,
-  };
+  return provider;
+}
+
+/** Prefer redirect on mobile (popups often blocked). */
+function shouldUseRedirect() {
+  if (typeof window === "undefined") return true;
+  const ua = navigator.userAgent || "";
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  return isMobile;
+}
+
+/** Start Google sign-in (redirect on mobile, popup on desktop). */
+export async function startGoogleSignIn(): Promise<
+  | { mode: "popup"; idToken: string }
+  | { mode: "redirect" }
+> {
+  const auth = getFirebaseAuth();
+  const provider = googleProvider();
+
+  if (shouldUseRedirect()) {
+    await signInWithRedirect(auth, provider);
+    return { mode: "redirect" };
+  }
+
+  try {
+    const result = await signInWithPopup(auth, provider);
+    const idToken = await result.user.getIdToken();
+    return { mode: "popup", idToken };
+  } catch (e: unknown) {
+    const code =
+      e && typeof e === "object" && "code" in e
+        ? String((e as { code: string }).code)
+        : "";
+    // Popup blocked → fall back to redirect
+    if (
+      code.includes("popup-blocked") ||
+      code.includes("popup-closed") ||
+      code.includes("cancelled-popup")
+    ) {
+      await signInWithRedirect(auth, provider);
+      return { mode: "redirect" };
+    }
+    throw e;
+  }
+}
+
+/** After redirect back to the page, get the Google result. */
+export async function completeGoogleRedirect(): Promise<string | null> {
+  const auth = getFirebaseAuth();
+  const result = await getRedirectResult(auth);
+  if (!result?.user) return null;
+  return result.user.getIdToken();
 }

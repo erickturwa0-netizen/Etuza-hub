@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithGooglePopup } from "@/lib/firebase-client";
+import {
+  startGoogleSignIn,
+  completeGoogleRedirect,
+} from "@/lib/firebase-client";
 
 type Props = {
   next?: string | null;
@@ -14,40 +17,73 @@ export default function GoogleSignInButton({ next, label }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  async function finishWithToken(idToken: string) {
+    const res = await fetch("/api/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Google sign-in imeshindikana");
+    }
+    if (data.user?.role === "admin") {
+      router.push(next?.startsWith("/admin") ? next! : "/admin");
+    } else {
+      router.push(next && !next.startsWith("/admin") ? next : "/");
+    }
+    router.refresh();
+  }
+
+  // Handle return from Google redirect
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const idToken = await completeGoogleRedirect();
+        if (cancelled) return;
+        if (idToken) {
+          await finishWithToken(idToken);
+        } else {
+          setLoading(false);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(
+            e instanceof Error ? e.message.slice(0, 160) : "Redirect imeshindikana"
+          );
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleGoogle() {
     setError("");
     setLoading(true);
     try {
-      const { idToken } = await signInWithGooglePopup();
-      const res = await fetch("/api/auth/google", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Google sign-in imeshindikana");
-        setLoading(false);
+      const result = await startGoogleSignIn();
+      if (result.mode === "redirect") {
+        // Page will navigate away to Google
         return;
       }
-      if (data.user?.role === "admin") {
-        router.push(next?.startsWith("/admin") ? next : "/admin");
-      } else {
-        router.push(next && !next.startsWith("/admin") ? next : "/");
-      }
-      router.refresh();
+      await finishWithToken(result.idToken);
     } catch (e) {
       const msg =
         e instanceof Error
           ? e.message
           : "Imeshindikana. Hakikisha Google imewezeshwa kwenye Firebase.";
-      // Common Firebase errors
-      if (msg.includes("popup-closed")) {
-        setError("Umelifunga dirisha la Google");
-      } else if (msg.includes("unauthorized-domain")) {
+      if (msg.includes("unauthorized-domain")) {
         setError(
-          "Domain haijaongezwa kwenye Firebase (Authorized domains). Ongeza vercel.app"
+          "Domain haijaongezwa kwenye Firebase Authorized domains."
         );
+      } else if (msg.includes("popup")) {
+        setError("Popup imezuiwa — jaribu tena (sasa inatumia redirect).");
       } else {
         setError(msg.slice(0, 160));
       }
