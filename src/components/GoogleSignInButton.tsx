@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   startGoogleSignIn,
   resolveGoogleIdToken,
+  isGooglePending,
+  clearGooglePending,
 } from "@/lib/firebase-client";
 
 type Props = {
@@ -12,111 +13,105 @@ type Props = {
   label?: string;
 };
 
-export default function GoogleSignInButton({ next, label }: Props) {
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
+async function exchangeToken(idToken: string, next?: string | null) {
+  const res = await fetch("/api/auth/google", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ idToken }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      data.error || data.detail || `Server error ${res.status}`
+    );
+  }
+  clearGooglePending();
+  const dest =
+    data.user?.role === "admin"
+      ? next?.startsWith("/admin")
+        ? next
+        : "/admin"
+      : next && !next.startsWith("/admin")
+        ? next
+        : "/";
+  window.location.replace(dest || "/");
+}
+
+/** Call once at top of login/signup page to finish redirect. */
+export function useGoogleRedirectHandler(next?: string | null) {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
-  const handled = useRef(false);
+  const ran = useRef(false);
 
-  async function finishWithToken(idToken: string) {
-    setStatus("Inahifadhi session…");
-    const res = await fetch("/api/auth/google", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ idToken }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(
-        (data && data.error) ||
-          (data && data.detail) ||
-          `Server error ${res.status}`
-      );
-    }
-
-    sessionStorage.removeItem("etuza_google_pending");
-    setStatus("Umefanikiwa! Inafungua…");
-
-    const dest =
-      data.user?.role === "admin"
-        ? next?.startsWith("/admin")
-          ? next
-          : "/admin"
-        : next && !next.startsWith("/admin")
-          ? next
-          : "/";
-
-    // Full navigation so cookie is picked up everywhere
-    window.location.href = dest || "/";
-  }
-
-  // Complete redirect flow when landing back on login/signup
   useEffect(() => {
-    if (handled.current) return;
-    handled.current = true;
+    if (ran.current) return;
+    ran.current = true;
 
     (async () => {
-      const pending =
-        typeof window !== "undefined" &&
-        sessionStorage.getItem("etuza_google_pending") === "1";
-
-      // Always try resolve (covers redirect without flag too)
+      const pending = isGooglePending();
+      // Always try — covers cases where flag was lost
       try {
-        setLoading(true);
-        setStatus(pending ? "Inakamilisha Google…" : "");
+        if (pending) setStatus("Inakamilisha Google sign-in…");
         const idToken = await resolveGoogleIdToken();
         if (!idToken) {
-          setLoading(false);
+          if (pending) {
+            setError(
+              "Google haikurudisha session. Jaribu tena button ya Google."
+            );
+            clearGooglePending();
+          }
           setStatus("");
           return;
         }
-        await finishWithToken(idToken);
+        setStatus("Inaingiza account…");
+        await exchangeToken(idToken, next);
       } catch (e) {
         console.error(e);
         setError(
-          e instanceof Error ? e.message.slice(0, 200) : "Google sign-in imeshindikana"
+          e instanceof Error
+            ? e.message.slice(0, 220)
+            : "Google sign-in imeshindikana"
         );
-        setLoading(false);
         setStatus("");
-        sessionStorage.removeItem("etuza_google_pending");
+        clearGooglePending();
       }
     })();
-  }, []);
+  }, [next]);
+
+  return { status, error, setError };
+}
+
+export default function GoogleSignInButton({ next, label }: Props) {
+  const { status, error, setError } = useGoogleRedirectHandler(next);
+  const [loading, setLoading] = useState(false);
 
   async function handleGoogle() {
     setError("");
-    setStatus("");
     setLoading(true);
     try {
-      const result = await startGoogleSignIn();
-      if (result.mode === "redirect") {
-        setStatus("Inafungua Google…");
-        return; // browser leaves the page
-      }
-      await finishWithToken(result.idToken);
+      await startGoogleSignIn();
+      // navigates away
     } catch (e) {
       const msg =
-        e instanceof Error
-          ? e.message
-          : "Imeshindikana kuingia na Google";
+        e instanceof Error ? e.message : "Imeshindikana kufungua Google";
       if (msg.includes("unauthorized-domain")) {
         setError("Domain haijaidhinishwa kwenye Firebase Authorized domains.");
       } else {
-        setError(msg.slice(0, 200));
+        setError(msg.slice(0, 220));
       }
       setLoading(false);
-      setStatus("");
     }
   }
+
+  const busy = loading || !!status;
 
   return (
     <div className="space-y-2">
       <button
         type="button"
         onClick={handleGoogle}
-        disabled={loading}
+        disabled={busy}
         className="w-full inline-flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-white hover:bg-slate-100 disabled:opacity-60 text-slate-800 font-semibold text-sm border border-slate-200 shadow-sm transition"
       >
         <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden>
@@ -137,10 +132,10 @@ export default function GoogleSignInButton({ next, label }: Props) {
             d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
           />
         </svg>
-        {loading ? status || "Inaingia…" : label || "Endelea na Google"}
+        {busy ? status || "Inaingia…" : label || "Endelea na Google"}
       </button>
       {status && !error && (
-        <p className="text-xs text-slate-400 text-center">{status}</p>
+        <p className="text-xs text-emerald-400 text-center">{status}</p>
       )}
       {error && (
         <p className="text-xs text-red-400 text-center leading-relaxed">{error}</p>

@@ -2,9 +2,10 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import {
   getAuth,
   GoogleAuthProvider,
-  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
+  browserLocalPersistence,
+  setPersistence,
 } from "firebase/auth";
 
 const firebaseConfig = {
@@ -40,59 +41,27 @@ export function getFirebaseAuth() {
 function googleProvider() {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
+  provider.addScope("email");
+  provider.addScope("profile");
   return provider;
 }
 
-function shouldUseRedirect() {
-  if (typeof window === "undefined") return true;
-  const ua = navigator.userAgent || "";
-  return /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
-}
-
-export async function startGoogleSignIn(): Promise<
-  | { mode: "popup"; idToken: string }
-  | { mode: "redirect" }
-> {
+/** Start Google via full-page redirect (works on mobile + desktop). */
+export async function startGoogleSignIn() {
   const auth = getFirebaseAuth();
-  const provider = googleProvider();
-
-  // Always redirect on mobile; popup often blocked
-  if (shouldUseRedirect()) {
-    sessionStorage.setItem("etuza_google_pending", "1");
-    await signInWithRedirect(auth, provider);
-    return { mode: "redirect" };
-  }
-
+  await setPersistence(auth, browserLocalPersistence);
   try {
-    const result = await signInWithPopup(auth, provider);
-    const idToken = await result.user.getIdToken();
-    return { mode: "popup", idToken };
-  } catch (e: unknown) {
-    const code =
-      e && typeof e === "object" && "code" in e
-        ? String((e as { code: string }).code)
-        : "";
-    if (
-      code.includes("popup-blocked") ||
-      code.includes("popup-closed") ||
-      code.includes("cancelled-popup")
-    ) {
-      sessionStorage.setItem("etuza_google_pending", "1");
-      await signInWithRedirect(auth, provider);
-      return { mode: "redirect" };
-    }
-    throw e;
+    sessionStorage.setItem("etuza_google_pending", "1");
+  } catch {
+    /* ignore */
   }
+  await signInWithRedirect(auth, googleProvider());
 }
 
-/**
- * After Google redirect returns to the app, resolve an ID token.
- * Tries getRedirectResult first, then currentUser (authStateReady).
- */
+/** Resolve ID token after returning from Google. */
 export async function resolveGoogleIdToken(): Promise<string | null> {
   const auth = getFirebaseAuth();
-
-  // Wait until Firebase restores any persisted auth
+  await setPersistence(auth, browserLocalPersistence);
   await auth.authStateReady();
 
   try {
@@ -104,10 +73,25 @@ export async function resolveGoogleIdToken(): Promise<string | null> {
     console.error("getRedirectResult", e);
   }
 
-  // Fallback: user already signed in after redirect
   if (auth.currentUser) {
     return auth.currentUser.getIdToken(true);
   }
 
   return null;
+}
+
+export function isGooglePending(): boolean {
+  try {
+    return sessionStorage.getItem("etuza_google_pending") === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function clearGooglePending() {
+  try {
+    sessionStorage.removeItem("etuza_google_pending");
+  } catch {
+    /* ignore */
+  }
 }
