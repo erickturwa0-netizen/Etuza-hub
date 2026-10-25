@@ -7,15 +7,8 @@ type Props = {
   label?: string;
 };
 
-/**
- * Web Client ID from Firebase / Google Cloud.
- * Firebase Console → Authentication → Google → Web SDK configuration
- * Override with NEXT_PUBLIC_GOOGLE_CLIENT_ID if needed.
- */
-const GOOGLE_CLIENT_ID =
-  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
-  // Common Firebase auto client pattern — user should set env if this fails
-  "611497432345-placeholder.apps.googleusercontent.com";
+const FALLBACK_CLIENT_ID =
+  "611497432345-vddmu6fqjup24qa8retjp4gkv4kv7e4i.apps.googleusercontent.com";
 
 declare global {
   interface Window {
@@ -27,14 +20,6 @@ declare global {
             el: HTMLElement,
             cfg: Record<string, unknown>
           ) => void;
-          prompt: (cb?: (n: { isNotDisplayed?: boolean; isSkippedMoment?: boolean }) => void) => void;
-        };
-        oauth2: {
-          initTokenClient: (cfg: {
-            client_id: string;
-            scope: string;
-            callback: (resp: { access_token?: string; error?: string }) => void;
-          }) => { requestAccessToken: (opts?: { prompt?: string }) => void };
         };
       };
     };
@@ -50,7 +35,9 @@ function loadGisScript(): Promise<void> {
     );
     if (existing) {
       existing.addEventListener("load", () => resolve());
-      existing.addEventListener("error", () => reject(new Error("GIS load failed")));
+      existing.addEventListener("error", () =>
+        reject(new Error("GIS load failed"))
+      );
       return;
     }
     const s = document.createElement("script");
@@ -114,21 +101,13 @@ export default function GoogleSignInButton({ next, label }: Props) {
         await loadGisScript();
         if (cancelled || !window.google?.accounts?.id) return;
 
-        // Fetch real client id from our API (reads Firebase / env)
-        let clientId = GOOGLE_CLIENT_ID;
+        let clientId = FALLBACK_CLIENT_ID;
         try {
           const r = await fetch("/api/auth/google-client");
           const j = await r.json();
           if (j.clientId) clientId = j.clientId;
         } catch {
-          /* use default */
-        }
-
-        if (clientId.includes("placeholder")) {
-          setError(
-            "Weka NEXT_PUBLIC_GOOGLE_CLIENT_ID kwenye Vercel (Firebase → Google → Web client ID)"
-          );
-          return;
+          /* use fallback */
         }
 
         window.google.accounts.id.initialize({
@@ -175,7 +154,9 @@ export default function GoogleSignInButton({ next, label }: Props) {
         className={`flex justify-center min-h-[44px] ${loading ? "opacity-50 pointer-events-none" : ""}`}
       />
       {!ready && !error && (
-        <p className="text-xs text-slate-500 text-center">{label || "Inapakia Google…"}</p>
+        <p className="text-xs text-slate-500 text-center">
+          {label || "Inapakia Google…"}
+        </p>
       )}
       {error && (
         <p className="text-xs text-red-400 text-center leading-relaxed">{error}</p>
