@@ -19,6 +19,7 @@ const PUBLIC_PATHS = [
 const PUBLIC_API = [
   "/api/auth/login",
   "/api/auth/signup",
+  "/api/auth/google",
   "/api/auth/logout",
   "/api/auth/me",
   "/api/tv/channels",
