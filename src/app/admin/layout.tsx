@@ -6,6 +6,7 @@ import {
   Settings,
   Users,
   ArrowLeft,
+  Wallet,
 } from "lucide-react";
 import LogoutButton from "@/components/LogoutButton";
 
@@ -13,6 +14,7 @@ const nav = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/content", label: "Content", icon: Film },
   { href: "/admin/content/new", label: "Add Content", icon: Plus },
+  { href: "/admin/payments", label: "Malipo", icon: Wallet },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
@@ -32,7 +34,9 @@ export default function AdminLayout({
             </span>
             <div>
               <p className="font-bold text-sm text-violet-300">ETUZA HUB</p>
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Admin Panel</p>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider">
+                Admin Panel
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">

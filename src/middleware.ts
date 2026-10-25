@@ -41,6 +41,9 @@ const PUBLIC_API = [
   "/api/setup/movies",
   "/api/cron/sync",
   "/api/points/reward-ad",
+  "/api/payments/settings",
+  "/api/payments/access",
+  "/api/payments/request",
 ];
 
 const COOKIE_NAME = "etuza_session";
