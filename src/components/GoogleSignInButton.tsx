@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Props = {
   next?: string | null;
   label?: string;
 };
 
-const FALLBACK_CLIENT_ID =
+const CLIENT_ID =
+  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
   "611497432345-vddmu6fqjup24qa8retjp4gkv4kv7e4i.apps.googleusercontent.com";
 
 declare global {
@@ -21,23 +22,29 @@ declare global {
             cfg: Record<string, unknown>
           ) => void;
         };
+        oauth2: {
+          initCodeClient: (cfg: {
+            client_id: string;
+            scope: string;
+            ux_mode: string;
+            redirect_uri: string;
+            state?: string;
+          }) => { requestCode: () => void };
+        };
       };
     };
   }
 }
 
-function loadGisScript(): Promise<void> {
+function loadGis(): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (typeof window === "undefined") return reject(new Error("no window"));
-    if (window.google?.accounts?.id) return resolve();
-    const existing = document.querySelector(
+    if (window.google?.accounts?.oauth2) return resolve();
+    const prev = document.querySelector(
       'script[src="https://accounts.google.com/gsi/client"]'
     );
-    if (existing) {
-      existing.addEventListener("load", () => resolve());
-      existing.addEventListener("error", () =>
-        reject(new Error("GIS load failed"))
-      );
+    if (prev) {
+      prev.addEventListener("load", () => resolve());
+      prev.addEventListener("error", () => reject(new Error("GIS failed")));
       return;
     }
     const s = document.createElement("script");
@@ -49,115 +56,91 @@ function loadGisScript(): Promise<void> {
   });
 }
 
-async function exchangeIdToken(idToken: string, next?: string | null) {
-  const res = await fetch("/api/auth/google", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ idToken }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || data.detail || `Server ${res.status}`);
-  }
-  const dest =
-    data.user?.role === "admin"
-      ? next?.startsWith("/admin")
-        ? next
-        : "/admin"
-      : next && !next.startsWith("/admin")
-        ? next
-        : "/";
-  window.location.replace(dest || "/");
-}
-
 export default function GoogleSignInButton({ next, label }: Props) {
-  const btnRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
-  const nextRef = useRef(next);
-  nextRef.current = next;
-
-  const onCredential = useCallback(async (response: { credential?: string }) => {
-    if (!response.credential) {
-      setError("Google haikutoa credential");
-      return;
-    }
-    setLoading(true);
-    setError("");
-    try {
-      await exchangeIdToken(response.credential, nextRef.current);
-    } catch (e) {
-      setError(e instanceof Error ? e.message.slice(0, 220) : "Imeshindikana");
-      setLoading(false);
-    }
-  }, []);
+  const started = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        await loadGisScript();
-        if (cancelled || !window.google?.accounts?.id) return;
-
-        let clientId = FALLBACK_CLIENT_ID;
-        try {
-          const r = await fetch("/api/auth/google-client");
-          const j = await r.json();
-          if (j.clientId) clientId = j.clientId;
-        } catch {
-          /* use fallback */
-        }
-
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: onCredential,
-          auto_select: false,
-          cancel_on_tap_outside: true,
-          use_fedcm_for_prompt: true,
-        });
-
-        if (btnRef.current) {
-          btnRef.current.innerHTML = "";
-          window.google.accounts.id.renderButton(btnRef.current, {
-            type: "standard",
-            theme: "outline",
-            size: "large",
-            text: "continue_with",
-            shape: "rectangular",
-            width: 320,
-            logo_alignment: "left",
-          });
-        }
+        await loadGis();
         if (!cancelled) setReady(true);
       } catch (e) {
-        if (!cancelled) {
-          setError(
-            e instanceof Error ? e.message : "Google haijaweza kupakiwa"
-          );
-        }
+        if (!cancelled)
+          setError(e instanceof Error ? e.message : "Google haijapakiwa");
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [onCredential]);
+  }, []);
+
+  async function handleClick() {
+    if (started.current) return;
+    setError("");
+    setLoading(true);
+
+    try {
+      await loadGis();
+      if (!window.google?.accounts?.oauth2) {
+        throw new Error("Google SDK haipo");
+      }
+
+      const origin = window.location.origin;
+      const redirectUri = `${origin}/api/auth/google/callback`;
+      const state = next ? btoa(unescape(encodeURIComponent(next))) : "";
+
+      // Full-page OAuth code flow — avoids blank gsi/transform on mobile
+      const client = window.google.accounts.oauth2.initCodeClient({
+        client_id: CLIENT_ID,
+        scope: "openid email profile",
+        ux_mode: "redirect",
+        redirect_uri: redirectUri,
+        state,
+      });
+
+      started.current = true;
+      client.requestCode();
+    } catch (e) {
+      started.current = false;
+      setLoading(false);
+      setError(e instanceof Error ? e.message.slice(0, 200) : "Imeshindikana");
+    }
+  }
 
   return (
     <div className="space-y-2">
-      {loading && (
-        <p className="text-xs text-emerald-400 text-center">Inaingiza account…</p>
-      )}
-      <div
-        ref={btnRef}
-        className={`flex justify-center min-h-[44px] ${loading ? "opacity-50 pointer-events-none" : ""}`}
-      />
-      {!ready && !error && (
-        <p className="text-xs text-slate-500 text-center">
-          {label || "Inapakia Google…"}
-        </p>
-      )}
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={loading || !ready}
+        className="w-full inline-flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-white hover:bg-slate-100 disabled:opacity-60 text-slate-800 font-semibold text-sm border border-slate-200 shadow-sm transition"
+      >
+        <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden>
+          <path
+            fill="#4285F4"
+            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+          />
+          <path
+            fill="#34A853"
+            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+          />
+          <path
+            fill="#FBBC05"
+            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+          />
+          <path
+            fill="#EA4335"
+            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+          />
+        </svg>
+        {loading
+          ? "Inafungua Google…"
+          : label || "Endelea na Google"}
+      </button>
       {error && (
         <p className="text-xs text-red-400 text-center leading-relaxed">{error}</p>
       )}

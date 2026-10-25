@@ -23,6 +23,7 @@ const PUBLIC_API = [
   "/api/auth/signup",
   "/api/auth/google",
   "/api/auth/google-client",
+  "/api/auth/google/callback",
   "/api/auth/logout",
   "/api/auth/me",
   "/api/tv/channels",
