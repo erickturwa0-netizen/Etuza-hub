@@ -35,7 +35,7 @@ export default function WatchPaywallGate({
         if (data.enabled && data.locked) {
           setLocked(true);
           setNeedLogin(!!data.needLogin);
-          setOpen(true);
+          if (!data.needLogin) setOpen(true);
         }
       } catch {
         /* ignore */
@@ -47,14 +47,31 @@ export default function WatchPaywallGate({
     };
   }, [contentId]);
 
-  const plan = (priceMode as PayPlan) || "month";
+  const plan: PayPlan =
+    priceMode === "week" ||
+    priceMode === "month" ||
+    priceMode === "year" ||
+    priceMode === "once"
+      ? priceMode
+      : "month";
 
-  return (
-    <>
-      {locked ? (
+  if (!checked) {
+    return (
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-8 text-center text-sm text-slate-500">
+        Inapakia…
+      </div>
+    );
+  }
+
+  if (locked) {
+    return (
+      <>
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 text-center space-y-3">
           <p className="text-sm text-amber-100 font-medium">
             Content hii inahitaji malipo
+          </p>
+          <p className="text-xs text-slate-400">
+            Tuma pesa → pakia screenshot → admin atakufungulia
           </p>
           {needLogin ? (
             <a
@@ -73,22 +90,17 @@ export default function WatchPaywallGate({
             </button>
           )}
         </div>
-      ) : (
-        checked && children
-      )}
-      {!locked && !checked && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-8 text-center text-sm text-slate-500">
-          Inapakia…
-        </div>
-      )}
-      <PaywallDialog
-        contentId={contentId}
-        contentTitle={title}
-        open={open && locked && !needLogin}
-        onClose={() => setOpen(false)}
-        defaultPlan={plan === "free" ? "month" : plan}
-        contentPrice={priceTzs || undefined}
-      />
-    </>
-  );
+        <PaywallDialog
+          contentId={contentId}
+          contentTitle={title}
+          open={open && !needLogin}
+          onClose={() => setOpen(false)}
+          defaultPlan={plan}
+          contentPrice={priceTzs || undefined}
+        />
+      </>
+    );
+  }
+
+  return <>{children}</>;
 }

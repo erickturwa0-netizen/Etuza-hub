@@ -26,32 +26,39 @@ export async function GET(req: Request) {
       return NextResponse.json({ locked: false, enabled: true, admin: true });
     }
 
-    // Content-level free?
+    let priceMode = "once";
+    let priceTzs = 0;
+
     if (contentId) {
-      const c = await prisma.content.findUnique({
-        where: { id: contentId },
-        select: { priceMode: true, priceTzs: true, type: true },
-      });
-      if (c && (c.priceMode === "free" || (!c.priceMode && !c.priceTzs))) {
-        // still locked if global paywall and not free mode explicitly — treat missing as paid when global on
-        if (c.priceMode === "free") {
-          return NextResponse.json({ locked: false, enabled: true });
+      try {
+        const c = await prisma.content.findUnique({
+          where: { id: contentId },
+          select: { priceMode: true, priceTzs: true },
+        });
+        if (c) {
+          priceMode = c.priceMode || "once";
+          priceTzs = c.priceTzs || 0;
+          // Explicit free content stays free even when global paywall is on
+          if (priceMode === "free") {
+            return NextResponse.json({ locked: false, enabled: true, free: true });
+          }
         }
-      }
-      if (c?.priceMode === "free") {
-        return NextResponse.json({ locked: false, enabled: true });
+      } catch {
+        /* columns may not exist yet */
       }
 
       const ok = await userHasAccess(session.userId, contentId);
       return NextResponse.json({
         locked: !ok,
         enabled: true,
-        priceMode: c?.priceMode || "once",
-        priceTzs: c?.priceTzs || 0,
+        priceMode,
+        priceTzs,
       });
     }
 
-    return NextResponse.json({ locked: true, enabled: true });
+    // No contentId: require any active access
+    const ok = await userHasAccess(session.userId, "");
+    return NextResponse.json({ locked: !ok, enabled: true });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ locked: false, enabled: false });

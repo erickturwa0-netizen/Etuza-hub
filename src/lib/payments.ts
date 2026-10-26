@@ -83,17 +83,18 @@ export function expiresForPlan(plan: string, from = new Date()): Date | null {
     d.setFullYear(d.getFullYear() + 1);
     return d;
   }
-  // once = permanent for that content
   return null;
 }
 
-/** Does user have access to this content (or site-wide active sub)? */
+/** Access to contentId, or any site-wide plan (contentId null). */
 export async function userHasAccess(userId: string, contentId: string) {
   const now = new Date();
   const rows = await prisma.userAccess.findMany({
     where: {
       userId,
-      OR: [{ contentId }, { contentId: null }],
+      OR: contentId
+        ? [{ contentId }, { contentId: null }]
+        : [{ contentId: null }],
     },
   });
   for (const a of rows) {
