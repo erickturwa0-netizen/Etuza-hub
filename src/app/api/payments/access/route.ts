@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getPaymentSettings, userHasAccess } from "@/lib/payments";
+import {
+  getPaymentSettings,
+  userHasAccess,
+  parsePaidCategories,
+} from "@/lib/payments";
 
 export async function GET(req: Request) {
   try {
@@ -26,25 +30,61 @@ export async function GET(req: Request) {
       return NextResponse.json({ locked: false, enabled: true, admin: true });
     }
 
+    const paidCats = parsePaidCategories(
+      (settings as { paidCategories?: string }).paidCategories
+    );
+
     let priceMode = "once";
     let priceTzs = 0;
+    let accessDays = 0;
+    let contentType = "";
 
     if (contentId) {
       try {
         const c = await prisma.content.findUnique({
           where: { id: contentId },
-          select: { priceMode: true, priceTzs: true },
+          select: {
+            priceMode: true,
+            priceTzs: true,
+            accessDays: true,
+            type: true,
+          },
         });
         if (c) {
           priceMode = c.priceMode || "once";
           priceTzs = c.priceTzs || 0;
-          // Explicit free content stays free even when global paywall is on
+          accessDays = c.accessDays || 0;
+          contentType = c.type;
+
           if (priceMode === "free") {
-            return NextResponse.json({ locked: false, enabled: true, free: true });
+            return NextResponse.json({
+              locked: false,
+              enabled: true,
+              free: true,
+            });
+          }
+
+          // Category not in paid list → free unless content itself is priced
+          if (
+            contentType &&
+            !paidCats.includes(contentType) &&
+            (priceMode === "free" || !priceMode)
+          ) {
+            return NextResponse.json({ locked: false, enabled: true });
+          }
+          if (contentType && !paidCats.includes(contentType) && priceTzs <= 0 && priceMode === "free") {
+            return NextResponse.json({ locked: false, enabled: true });
+          }
+          // If category not ticked as paid and content is free-mode
+          if (contentType && !paidCats.includes(contentType)) {
+            // Only lock if this specific content is explicitly sold
+            if (priceMode === "free" || !priceMode) {
+              return NextResponse.json({ locked: false, enabled: true });
+            }
           }
         }
       } catch {
-        /* columns may not exist yet */
+        /* ignore */
       }
 
       const ok = await userHasAccess(session.userId, contentId);
@@ -53,10 +93,10 @@ export async function GET(req: Request) {
         enabled: true,
         priceMode,
         priceTzs,
+        accessDays,
       });
     }
 
-    // No contentId: require any active access
     const ok = await userHasAccess(session.userId, "");
     return NextResponse.json({ locked: !ok, enabled: true });
   } catch (e) {

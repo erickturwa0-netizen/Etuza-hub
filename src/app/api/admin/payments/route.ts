@@ -6,11 +6,13 @@ import {
   getPaymentSettings,
   expiresForPlan,
   NETWORKS,
+  CONTENT_TYPES,
 } from "@/lib/payments";
 
 async function requireAdmin() {
   const session = await getSession();
-  if (!session) return { error: NextResponse.json({ error: "Login" }, { status: 401 }) };
+  if (!session)
+    return { error: NextResponse.json({ error: "Login" }, { status: 401 }) };
   if (session.role !== "admin")
     return { error: NextResponse.json({ error: "Admin only" }, { status: 403 }) };
   return { session };
@@ -25,16 +27,16 @@ export async function GET() {
     prisma.paymentRequest.findMany({
       where: { status: "pending" },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      take: 80,
       include: {
         user: { select: { email: true, fullName: true } },
-        content: { select: { title: true, type: true } },
+        content: { select: { title: true, type: true, accessDays: true } },
       },
     }),
     prisma.paymentRequest.findMany({
       where: { status: { not: "pending" } },
       orderBy: { updatedAt: "desc" },
-      take: 30,
+      take: 40,
       include: {
         user: { select: { email: true, fullName: true } },
         content: { select: { title: true, type: true } },
@@ -54,6 +56,7 @@ const settingsSchema = z.object({
   priceYear: z.number().int().min(0),
   priceOnce: z.number().int().min(0),
   instructions: z.string().optional().nullable(),
+  paidCategories: z.array(z.string()).optional(),
 });
 
 export async function PUT(req: Request) {
@@ -66,10 +69,35 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: "Data si sahihi" }, { status: 400 });
   }
   const d = parsed.data;
+  const paidCategories = (d.paidCategories || [...CONTENT_TYPES])
+    .filter((c) => (CONTENT_TYPES as readonly string[]).includes(c))
+    .join(",");
+
   const settings = await prisma.paymentSettings.upsert({
     where: { id: "default" },
-    create: { id: "default", ...d, instructions: d.instructions || null },
-    update: { ...d, instructions: d.instructions || null },
+    create: {
+      id: "default",
+      enabled: d.enabled,
+      payPhone: d.payPhone,
+      payNetwork: d.payNetwork,
+      priceWeek: d.priceWeek,
+      priceMonth: d.priceMonth,
+      priceYear: d.priceYear,
+      priceOnce: d.priceOnce,
+      instructions: d.instructions || null,
+      paidCategories,
+    },
+    update: {
+      enabled: d.enabled,
+      payPhone: d.payPhone,
+      payNetwork: d.payNetwork,
+      priceWeek: d.priceWeek,
+      priceMonth: d.priceMonth,
+      priceYear: d.priceYear,
+      priceOnce: d.priceOnce,
+      instructions: d.instructions || null,
+      paidCategories,
+    },
   });
   return NextResponse.json({ settings });
 }
@@ -92,6 +120,7 @@ export async function POST(req: Request) {
 
   const reqRow = await prisma.paymentRequest.findUnique({
     where: { id: parsed.data.id },
+    include: { content: { select: { accessDays: true, priceMode: true } } },
   });
   if (!reqRow) return NextResponse.json({ error: "Haipo" }, { status: 404 });
   if (reqRow.status !== "pending") {
@@ -109,7 +138,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ request: updated });
   }
 
-  const expiresAt = expiresForPlan(reqRow.plan);
+  const accessDays = reqRow.content?.accessDays || 0;
+  const plan =
+    reqRow.plan === "timed" || reqRow.content?.priceMode === "timed"
+      ? "timed"
+      : reqRow.plan;
+  const expiresAt = expiresForPlan(plan, new Date(), accessDays);
+
   await prisma.$transaction([
     prisma.paymentRequest.update({
       where: { id: reqRow.id },
@@ -122,7 +157,7 @@ export async function POST(req: Request) {
       data: {
         userId: reqRow.userId,
         contentId: reqRow.contentId,
-        plan: reqRow.plan,
+        plan,
         expiresAt,
       },
     }),
