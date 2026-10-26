@@ -18,8 +18,11 @@ const schema = z.object({
   network: z.string().optional().nullable(),
   configText: z.string().optional().nullable(),
   fileUrl: z.string().optional().nullable(),
-  priceMode: z.enum(["free", "once", "week", "month", "year"]).optional(),
+  priceMode: z
+    .enum(["free", "once", "week", "month", "year", "timed"])
+    .optional(),
   priceTzs: z.number().int().min(0).optional(),
+  accessDays: z.number().int().min(0).optional(),
 });
 
 export async function GET(req: Request) {
@@ -55,7 +58,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getSession();
-    if (!session) return NextResponse.json({ error: "Login required" }, { status: 401 });
+    if (!session)
+      return NextResponse.json({ error: "Login required" }, { status: 401 });
     if (session.role !== "admin") {
       return NextResponse.json({ error: "Admin only" }, { status: 403 });
     }
@@ -87,6 +91,7 @@ export async function POST(req: Request) {
         fileUrl: d.fileUrl || null,
         priceMode: d.priceMode || "free",
         priceTzs: d.priceTzs ?? 0,
+        accessDays: d.accessDays ?? 0,
         createdBy: session.userId,
       },
     });

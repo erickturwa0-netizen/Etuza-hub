@@ -49,9 +49,10 @@ export default function NewContentPage() {
   const [protocol, setProtocol] = useState("");
   const [configText, setConfigText] = useState("");
   const [priceMode, setPriceMode] = useState<
-    "free" | "once" | "week" | "month" | "year"
+    "free" | "once" | "week" | "month" | "year" | "timed"
   >("free");
   const [priceTzs, setPriceTzs] = useState(0);
+  const [accessDays, setAccessDays] = useState(7);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [resolving, setResolving] = useState(false);
@@ -97,13 +98,11 @@ export default function NewContentPage() {
 
   async function chimbaLinks() {
     if (!linkUrl.trim()) {
-      setError("Weka link ya ukurasa kwanza");
+      setError("Weka link");
       return;
     }
     setResolving(true);
     setError("");
-    setInfo("");
-    setResolved([]);
     try {
       const res = await fetch("/api/admin/resolve-downloads", {
         method: "POST",
@@ -112,18 +111,12 @@ export default function NewContentPage() {
         body: JSON.stringify({ url: linkUrl.trim() }),
       });
       const data = await res.json();
-      if (!res.ok) setError(data.error || "Chimba imeshindikana");
-      else if (!(data.links || []).length) {
-        setError("Hakuna file host iliyopatikana");
-      } else {
+      if (!res.ok) setError(data.error || "Failed");
+      else if (!(data.links || []).length) setError("Hakuna links");
+      else {
         setResolved(data.links);
-        const first = data.links[0] as ResolvedLink;
-        setLinkUrl(first.url);
+        setLinkUrl(data.links[0].url);
         setLinkType("download");
-        if (!title.trim() && data.title) {
-          setTitle(String(data.title).replace(/\s*[|–-].*$/, "").slice(0, 120));
-        }
-        setInfo(`${data.links.length} download link(s) ✓`);
       }
     } catch {
       setError("Tatizo la mtandao");
@@ -131,71 +124,13 @@ export default function NewContentPage() {
     setResolving(false);
   }
 
-  async function saveApiToSettings() {
-    if (!apiUrl.trim()) return;
-    await fetch("/api/admin/api-sources", {
-      method: "PUT",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        category: type,
-        url: apiUrl.trim(),
-        enabled: true,
-        name: `${TYPE_LABELS[type]} public API`,
-      }),
-    });
-  }
-
-  async function importFromApi() {
-    if (!apiUrl.trim()) {
-      setError("Weka Public API URL");
-      return;
-    }
-    setImporting(true);
-    setError("");
-    setInfo("");
-    try {
-      await saveApiToSettings();
-      const imp = await fetch("/api/admin/import-api", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category: type, apiUrl: apiUrl.trim() }),
-      });
-      const impData = await imp.json();
-      if (!imp.ok) setError(impData.error || "Import failed");
-      else {
-        setInfo(`${impData.count || 0} items zimeingizwa ✓`);
-        setTimeout(() => {
-          router.push("/admin/content");
-          router.refresh();
-        }, 900);
-      }
-    } catch {
-      setError("Tatizo la mtandao");
-    }
-    setImporting(false);
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    setInfo("");
     setSaving(true);
     try {
-      if (apiUrl.trim()) await saveApiToSettings();
-      if (!linkUrl.trim()) {
-        if (apiUrl.trim()) {
-          setSaving(false);
-          await importFromApi();
-          return;
-        }
-        setError("Weka Stream/Download link au Public API");
-        setSaving(false);
-        return;
-      }
-      if (!title.trim()) {
-        setError("Weka Title");
+      if (!linkUrl.trim() || !title.trim()) {
+        setError("Weka title na link");
         setSaving(false);
         return;
       }
@@ -217,6 +152,16 @@ export default function NewContentPage() {
           fileUrl: type === "vpn" ? linkUrl : null,
           priceMode,
           priceTzs: Number(priceTzs) || 0,
+          accessDays:
+            priceMode === "timed"
+              ? Number(accessDays) || 7
+              : priceMode === "week"
+                ? 7
+                : priceMode === "month"
+                  ? 30
+                  : priceMode === "year"
+                    ? 365
+                    : 0,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -241,16 +186,13 @@ export default function NewContentPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold">Add Content</h1>
-          <p className="text-sm text-slate-500">VPN upload, bei, stream/download</p>
+          <p className="text-sm text-slate-500">Bei, muda, VPN upload</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="glass-card p-5 sm:p-6 space-y-5 max-w-xl">
         {error && (
           <div className="px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-sm">{error}</div>
-        )}
-        {info && (
-          <div className="px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-sm">{info}</div>
         )}
 
         <div>
@@ -279,15 +221,14 @@ export default function NewContentPage() {
         {type === "movie" && (
           <div className="rounded-xl border border-violet-800/40 bg-violet-950/20 p-3 space-y-2">
             <p className="text-xs text-violet-300 font-medium flex items-center gap-1">
-              <ImageIcon className="w-3.5 h-3.5" /> Cover automatic (TMDB)
+              <ImageIcon className="w-3.5 h-3.5" /> Cover (TMDB)
             </p>
             <div className="flex gap-2">
               <input
                 value={tmdbQ}
                 onChange={(e) => setTmdbQ(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), searchTmdb(tmdbQ))}
                 className="flex-1 px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm"
-                placeholder="Search movie…"
+                placeholder="Search…"
               />
               <button type="button" onClick={() => searchTmdb(tmdbQ || title)} className="px-3 py-2 rounded-lg bg-slate-800">
                 <Search className="w-4 h-4" />
@@ -301,11 +242,11 @@ export default function NewContentPage() {
                 onClick={() => pickTmdb(m)}
                 className="w-full text-left px-2 py-2 rounded-lg hover:bg-slate-800 flex gap-2 text-sm"
               >
-                {m.coverUrl ? (
+                {m.coverUrl && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={m.coverUrl} alt="" className="w-8 h-12 object-cover rounded" />
-                ) : null}
-                {m.title} {m.year ? `(${m.year})` : ""}
+                )}
+                {m.title}
               </button>
             ))}
           </div>
@@ -313,82 +254,87 @@ export default function NewContentPage() {
 
         <div>
           <label className="block text-sm font-medium text-slate-400 mb-1.5">Title</label>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-          />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm" />
         </div>
 
         <div>
           <label className="block text-sm font-medium text-slate-400 mb-1.5">Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={2}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm resize-none"
-          />
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm resize-none" />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1.5">
-            Stream / Download / Page link
-          </label>
-          <input
-            value={linkUrl}
-            onChange={(e) => setLinkUrl(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-            placeholder="https://…"
-          />
-          <div className="flex flex-wrap gap-2 mt-2">
-            <button
-              type="button"
-              onClick={chimbaLinks}
-              disabled={resolving || !linkUrl.trim()}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-700 text-sm font-medium text-white disabled:opacity-50"
-            >
-              <Wand2 className="w-4 h-4" />
-              {resolving ? "Inachimba…" : "Chimba MediaFire"}
-            </button>
-          </div>
+          <label className="block text-sm font-medium text-slate-400 mb-1.5">Stream / Download link</label>
+          <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm" />
+          <button type="button" onClick={chimbaLinks} disabled={resolving} className="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-700 text-sm text-white">
+            <Wand2 className="w-4 h-4" /> {resolving ? "…" : "Chimba MediaFire"}
+          </button>
         </div>
 
-        {resolved.length > 0 && (
-          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-3 space-y-2">
-            {resolved.map((l) => (
-              <button
-                key={l.url}
-                type="button"
-                onClick={() => {
-                  setLinkUrl(l.url);
-                  setLinkType("download");
-                }}
-                className="w-full text-left px-3 py-2 rounded-lg text-sm border border-slate-700"
-              >
-                {l.label}
-              </button>
-            ))}
+        {type === "vpn" && (
+          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-4 space-y-3">
+            <p className="text-sm font-semibold text-emerald-300">VPN — picha &amp; file</p>
+            <input type="file" accept="image/*" className="w-full text-sm text-slate-400" onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (!f || f.size > 1_500_000) return;
+              const r = new FileReader();
+              r.onload = () => setCoverUrl(String(r.result || ""));
+              r.readAsDataURL(f);
+            }} />
+            <input type="file" className="w-full text-sm text-slate-400" onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (!f || f.size > 2_000_000) { setError("File kubwa — tumia link"); return; }
+              const r = new FileReader();
+              r.onload = () => { setLinkUrl(String(r.result || "")); setLinkType("download"); };
+              r.readAsDataURL(f);
+            }} />
+            <input value={protocol} onChange={(e) => setProtocol(e.target.value)} placeholder="Protocol" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm" />
+            <textarea value={configText} onChange={(e) => setConfigText(e.target.value)} rows={2} placeholder="Config" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-mono" />
           </div>
         )}
 
-        <div className="rounded-xl border-2 border-violet-600/40 bg-violet-950/30 p-4 space-y-3">
-          <label className="flex items-center gap-2 text-sm font-semibold text-violet-300">
-            <Link2 className="w-4 h-4" /> Public API URL
-          </label>
-          <input
-            value={apiUrl}
-            onChange={(e) => setApiUrl(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-violet-800/50 text-sm font-mono"
-          />
-          <button
-            type="button"
-            onClick={importFromApi}
-            disabled={importing || !apiUrl.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-700 text-sm font-medium text-white disabled:opacity-50"
+        {/* Pricing */}
+        <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 p-4 space-y-3">
+          <p className="text-sm font-semibold text-amber-200">Bei ya content hii</p>
+          <select
+            value={priceMode}
+            onChange={(e) => setPriceMode(e.target.value as typeof priceMode)}
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
           >
-            <Download className="w-4 h-4" />
-            {importing ? "Inapakia…" : "Import kutoka API"}
-          </button>
+            <option value="free">Bure (Free)</option>
+            <option value="once">Inauzwa kabisa (daima baada ya kulipa)</option>
+            <option value="week">Wiki 1</option>
+            <option value="month">Mwezi 1</option>
+            <option value="year">Mwaka 1</option>
+            <option value="timed">Muda maalum (weka siku)</option>
+          </select>
+
+          {priceMode !== "free" && (
+            <div>
+              <label className="text-xs text-slate-400">Bei (TZS) — 0 = bei ya global</label>
+              <input
+                type="number"
+                value={priceTzs}
+                onChange={(e) => setPriceTzs(Number(e.target.value) || 0)}
+                className="mt-1 w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+              />
+            </div>
+          )}
+
+          {priceMode === "timed" && (
+            <div>
+              <label className="text-xs text-slate-400">Muda wa ufikiaji (siku) baada ya idhini</label>
+              <input
+                type="number"
+                min={1}
+                value={accessDays}
+                onChange={(e) => setAccessDays(Number(e.target.value) || 1)}
+                className="mt-1 w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                Mfano: 3 = siku 3, 14 = wiki 2, 30 = mwezi
+              </p>
+            </div>
+          )}
         </div>
 
         <div>
@@ -400,132 +346,20 @@ export default function NewContentPage() {
           />
         </div>
 
-        {type === "vpn" && (
-          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-4 space-y-3">
-            <p className="text-sm font-semibold text-emerald-300">VPN — picha &amp; file</p>
-            <div>
-              <label className="text-xs text-slate-400">Picha / Cover (upload)</label>
-              <input
-                type="file"
-                accept="image/*"
-                className="mt-1 w-full text-sm text-slate-400"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  if (f.size > 1_500_000) {
-                    setError("Picha max ~1.5MB");
-                    return;
-                  }
-                  const r = new FileReader();
-                  r.onload = () => setCoverUrl(String(r.result || ""));
-                  r.readAsDataURL(f);
-                }}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-slate-400">File ya VPN (ndogo) au tumia link juu</label>
-              <input
-                type="file"
-                className="mt-1 w-full text-sm text-slate-400"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  if (f.size > 2_000_000) {
-                    setError("File max ~2MB — tumia link ya Drive/MediaFire");
-                    return;
-                  }
-                  const r = new FileReader();
-                  r.onload = () => {
-                    setLinkUrl(String(r.result || ""));
-                    setLinkType("download");
-                  };
-                  r.readAsDataURL(f);
-                }}
-              />
-            </div>
-            <input
-              value={protocol}
-              onChange={(e) => setProtocol(e.target.value)}
-              placeholder="Protocol"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-            />
-            <textarea
-              value={configText}
-              onChange={(e) => setConfigText(e.target.value)}
-              rows={3}
-              placeholder="Config text"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-mono"
-            />
-          </div>
-        )}
-
-        <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 p-4 space-y-3">
-          <p className="text-sm font-semibold text-amber-200">Bei / Kifurushi</p>
-          <select
-            value={priceMode}
-            onChange={(e) => setPriceMode(e.target.value as typeof priceMode)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-          >
-            <option value="free">Bure</option>
-            <option value="once">Moja kwa moja</option>
-            <option value="week">Wiki</option>
-            <option value="month">Mwezi</option>
-            <option value="year">Mwaka</option>
-          </select>
-          {priceMode !== "free" && (
-            <div>
-              <label className="text-xs text-slate-400">
-                Bei maalum TZS (0 = bei ya global kwenye Malipo)
-              </label>
-              <input
-                type="number"
-                value={priceTzs}
-                onChange={(e) => setPriceTzs(Number(e.target.value) || 0)}
-                className="mt-1 w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-              />
-            </div>
-          )}
-        </div>
-
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1.5">Link Type</label>
-            <select
-              value={linkType}
-              onChange={(e) => setLinkType(e.target.value as "stream" | "download")}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-            >
-              <option value="stream">Stream</option>
-              <option value="download">Download</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1.5">Status</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as "draft" | "published")}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-            >
-              <option value="published">Published</option>
-              <option value="draft">Draft</option>
-            </select>
-          </div>
+          <select value={linkType} onChange={(e) => setLinkType(e.target.value as "stream" | "download")} className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm">
+            <option value="stream">Stream</option>
+            <option value="download">Download</option>
+          </select>
+          <select value={status} onChange={(e) => setStatus(e.target.value as "draft" | "published")} className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm">
+            <option value="published">Published</option>
+            <option value="draft">Draft</option>
+          </select>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1.5">Category</label>
-          <input
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-          />
-        </div>
+        <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm" />
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-violet-600 font-semibold text-sm text-white disabled:opacity-60"
-        >
+        <button type="submit" disabled={saving} className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-violet-600 font-semibold text-sm text-white disabled:opacity-60">
           <Save className="w-4 h-4" />
           {saving ? "…" : "Save & Publish"}
         </button>
