@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { detectSocial } from "@/lib/social-embed";
 import { Play, ExternalLink } from "lucide-react";
 
-type Props = { src: string; poster?: string | null; title?: string };
+type Props = {
+  src: string;
+  poster?: string | null;
+  title?: string;
+  /** e.g. movie:cuid — for point refund on failure */
+  contentKey?: string;
+  onPlaybackFailed?: () => void;
+};
 
 function isHls(src: string) {
   return /\.m3u8(\?|$)/i.test(src) || src.includes("m3u8");
@@ -24,12 +31,20 @@ function proxyHls(url: string) {
   return "/api/proxy/stream?url=" + encodeURIComponent(url);
 }
 
-export default function StreamPlayer({ src, poster, title }: Props) {
+export default function StreamPlayer({
+  src,
+  poster,
+  title,
+  contentKey,
+  onPlaybackFailed,
+}: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const refundedRef = useRef(false);
   const raw = (src || "").trim();
   const social = useMemo(() => detectSocial(raw), [raw]);
   const [error, setError] = useState("");
   const [needsTap, setNeedsTap] = useState(false);
+  const [refundMsg, setRefundMsg] = useState("");
 
   const external = /^https?:\/\//i.test(raw) && blocksIframe(raw);
   const embedUrl =
@@ -39,6 +54,43 @@ export default function StreamPlayer({ src, poster, title }: Props) {
       : null);
   const videoUrl = isHls(raw) ? proxyHls(raw) : isDirect(raw) ? raw : null;
 
+  const fail = useCallback(
+    async (msg: string) => {
+      setError(msg);
+      if (refundedRef.current) return;
+      refundedRef.current = true;
+      onPlaybackFailed?.();
+      if (!contentKey) return;
+      try {
+        const res = await fetch("/api/points/refund", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contentKey, reason: "playback_failed" }),
+        });
+        const d = await res.json();
+        if (res.ok && d.refunded) {
+          setRefundMsg(`Point +${d.refunded} zimerudishwa (content haikucheza)`);
+        } else if (res.ok && d.already) {
+          setRefundMsg("Point zilisharudishwa");
+        }
+      } catch {
+        /* ignore */
+      }
+    },
+    [contentKey, onPlaybackFailed]
+  );
+
+  useEffect(() => {
+    if (!raw) {
+      fail("Hakuna link ya kucheza.");
+      return;
+    }
+    if (!embedUrl && !videoUrl && !external) {
+      fail("Content haipatikani / link haitambuliwi.");
+    }
+  }, [raw, embedUrl, videoUrl, external, fail]);
+
   useEffect(() => {
     const el = videoRef.current;
     if (!el || !videoUrl) return;
@@ -46,7 +98,10 @@ export default function StreamPlayer({ src, poster, title }: Props) {
       destroy: () => void;
       loadSource: (u: string) => void;
       attachMedia: (e: HTMLVideoElement) => void;
+      on: (e: string, cb: () => void) => void;
     } | null = null;
+    let cancelled = false;
+
     (async () => {
       try {
         if (isHls(raw)) {
@@ -56,6 +111,9 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             hls = new Hls();
             hls.loadSource(videoUrl!);
             hls.attachMedia(el);
+            hls.on(Hls.Events.ERROR, () => {
+              if (!cancelled) fail("Video / stream haipatikani.");
+            });
           } else {
             el.src = videoUrl!;
           }
@@ -65,13 +123,15 @@ export default function StreamPlayer({ src, poster, title }: Props) {
         el.muted = true;
         await el.play().catch(() => setNeedsTap(true));
       } catch {
-        setError("Video haikucheza");
+        if (!cancelled) fail("Video haikucheza.");
       }
     })();
+
     return () => {
+      cancelled = true;
       hls?.destroy();
     };
-  }, [videoUrl, raw]);
+  }, [videoUrl, raw, fail]);
 
   const box =
     "relative w-full max-w-full rounded-2xl overflow-hidden border-2 border-red-600/80 bg-black touch-manipulation";
@@ -95,6 +155,9 @@ export default function StreamPlayer({ src, poster, title }: Props) {
         >
           <ExternalLink className="w-4 h-4" /> Fungua video
         </a>
+        {refundMsg && (
+          <p className="text-xs text-emerald-400">{refundMsg}</p>
+        )}
       </div>
     );
   }
@@ -110,8 +173,11 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
             referrerPolicy="no-referrer-when-downgrade"
+            onError={() => fail("Embed haikufunguka.")}
           />
         </div>
+        {error && <p className="text-sm text-amber-300">{error}</p>}
+        {refundMsg && <p className="text-xs text-emerald-400">{refundMsg}</p>}
       </div>
     );
   }
@@ -126,7 +192,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
             controls
             playsInline
             poster={poster || undefined}
-            onError={() => setError("Video haikucheza.")}
+            onError={() => fail("Video haikucheza / haipatikani.")}
           />
           {needsTap && (
             <button
@@ -137,7 +203,7 @@ export default function StreamPlayer({ src, poster, title }: Props) {
                 el.muted = false;
                 el.play()
                   .then(() => setNeedsTap(false))
-                  .catch(() => {});
+                  .catch(() => fail("Video haikucheza."));
               }}
               className="absolute inset-0 flex flex-col items-center justify-center bg-black/55 text-white"
             >
@@ -149,13 +215,17 @@ export default function StreamPlayer({ src, poster, title }: Props) {
           )}
         </div>
         {error && <p className="text-sm text-amber-300">{error}</p>}
+        {refundMsg && <p className="text-xs text-emerald-400">{refundMsg}</p>}
       </div>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-amber-800/50 bg-slate-900 p-6">
-      <p className="text-sm text-amber-200">{error || "Haiwezi kucheza."}</p>
+    <div className="rounded-2xl border border-amber-800/50 bg-slate-900 p-6 space-y-2">
+      <p className="text-sm text-amber-200">
+        {error || "Haiwezi kucheza — content haipatikani."}
+      </p>
+      {refundMsg && <p className="text-xs text-emerald-400">{refundMsg}</p>}
     </div>
   );
 }

@@ -8,7 +8,6 @@ import {
   VolumeX,
   Radio,
   Music2,
-  Waves,
 } from "lucide-react";
 
 type Props = {
@@ -31,31 +30,43 @@ export default function AudioPlayer({
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState("");
   const [vol, setVol] = useState(1);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const el = audioRef.current;
     if (!el) return;
     el.pause();
-    el.src = src;
-    el.load();
     setPlaying(false);
     setProgress(0);
     setError("");
+    setLoading(true);
+    el.src = src;
+    el.load();
+    const onCanPlay = () => setLoading(false);
+    el.addEventListener("canplay", onCanPlay);
+    return () => {
+      el.removeEventListener("canplay", onCanPlay);
+    };
   }, [src]);
 
   async function toggle() {
     const el = audioRef.current;
     if (!el) return;
+    setError("");
     try {
       if (playing) {
         el.pause();
         setPlaying(false);
       } else {
+        setLoading(true);
         await el.play();
         setPlaying(true);
+        setLoading(false);
       }
     } catch {
-      setError("Haiwezi kucheza — jaribu tena");
+      setLoading(false);
+      setPlaying(false);
+      setError("Haiwezi kucheza stream hii. Jaribu station nyingine.");
     }
   }
 
@@ -107,63 +118,66 @@ export default function AudioPlayer({
 
   return (
     <div className="w-full max-w-md mx-auto">
-      <div className="relative rounded-3xl overflow-hidden border border-white/10 shadow-2xl shadow-violet-900/30 bg-slate-950">
-        {/* Ambient glow */}
-        <div
-          className={`absolute inset-0 opacity-40 pointer-events-none ${
-            playing
-              ? "bg-gradient-to-br from-violet-600/40 via-fuchsia-600/20 to-cyan-500/20"
-              : "bg-gradient-to-br from-slate-800/60 to-slate-950"
-          }`}
-        />
-
+      <div className="rounded-3xl overflow-hidden border border-pink-500/30 bg-gradient-to-b from-slate-900 via-slate-950 to-black shadow-2xl shadow-pink-900/30">
         {/* Cover */}
-        <div className="relative pt-8 pb-4 px-6 flex flex-col items-center">
+        <div className="pt-8 pb-2 px-6 flex flex-col items-center">
           <div
-            className={`relative w-40 h-40 sm:w-48 sm:h-48 rounded-full overflow-hidden border-4 shadow-xl ${
+            className={`w-36 h-36 sm:w-44 sm:h-44 rounded-full overflow-hidden border-4 bg-white shadow-xl ${
               playing
-                ? "border-violet-400/60 shadow-violet-500/40 animate-[spin_12s_linear_infinite]"
-                : "border-slate-600/50 shadow-black/40"
+                ? "border-pink-400 shadow-pink-500/40"
+                : "border-slate-600"
             }`}
-            style={playing ? undefined : undefined}
           >
             {coverUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={coverUrl}
                 alt=""
-                className="w-full h-full object-contain bg-white p-3"
+                className="w-full h-full object-contain p-3"
                 draggable={false}
               />
             ) : (
-              <div className="w-full h-full bg-gradient-to-br from-violet-700 to-slate-900 flex items-center justify-center">
-                <Icon className="w-16 h-16 text-white/90" />
+              <div className="w-full h-full bg-gradient-to-br from-pink-600 to-rose-900 flex items-center justify-center">
+                <Icon className="w-14 h-14 text-white" />
               </div>
             )}
           </div>
 
           {isRadio && playing && (
-            <div className="mt-4 flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-widest">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-              </span>
-              On Air
-              <Waves className="w-3.5 h-3.5" />
-            </div>
+            <p className="mt-3 text-[11px] font-bold uppercase tracking-widest text-emerald-400">
+              ● On Air
+            </p>
           )}
         </div>
 
-        {/* Meta + controls */}
-        <div className="relative px-6 pb-6 space-y-4">
+        <div className="px-6 pb-6 space-y-4">
           <div className="text-center">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-violet-300/80 font-semibold">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-pink-300/80 font-semibold">
               {isRadio ? "Radio Live" : "Muziki"}
             </p>
-            <h3 className="mt-1 font-bold text-lg text-white line-clamp-2 leading-snug">
+            <h3 className="mt-1 font-bold text-lg text-white line-clamp-2">
               {title || "Now playing"}
             </h3>
           </div>
+
+          {/* Visual bars */}
+          {isRadio && (
+            <div className="flex items-end justify-center gap-1 h-10">
+              {[6, 12, 18, 10, 16, 8, 14, 9].map((h, i) => (
+                <span
+                  key={i}
+                  className="w-1.5 rounded-full bg-pink-400/90"
+                  style={{
+                    height: playing ? h * 2 : 6,
+                    transition: "height 0.25s ease",
+                    animation: playing
+                      ? `radioBar 0.6s ease-in-out ${i * 0.07}s infinite alternate`
+                      : undefined,
+                  }}
+                />
+              ))}
+            </div>
+          )}
 
           {!isRadio && duration > 0 && (
             <div className="space-y-1">
@@ -174,7 +188,7 @@ export default function AudioPlayer({
                 step={0.1}
                 value={progress}
                 onChange={(e) => seek(Number(e.target.value))}
-                className="w-full accent-violet-500 h-1.5"
+                className="w-full accent-pink-500"
               />
               <div className="flex justify-between text-[10px] text-slate-400 tabular-nums">
                 <span>{fmt(progress)}</span>
@@ -183,29 +197,11 @@ export default function AudioPlayer({
             </div>
           )}
 
-          {isRadio && (
-            <div className="flex items-end justify-center gap-1 h-8 opacity-80">
-              {[0.4, 0.7, 1, 0.55, 0.9, 0.5, 0.75, 0.45].map((h, i) => (
-                <span
-                  key={i}
-                  className="w-1.5 rounded-full bg-violet-400"
-                  style={{
-                    height: playing ? `${h * 100}%` : "20%",
-                    animation: playing
-                      ? `pulse 0.8s ease-in-out ${i * 0.08}s infinite alternate`
-                      : undefined,
-                  }}
-                />
-              ))}
-            </div>
-          )}
-
           <div className="flex items-center justify-center gap-5">
             <button
               type="button"
               onClick={toggleMute}
-              className="p-3 rounded-full bg-white/5 border border-white/10 text-slate-200 hover:bg-white/10"
-              aria-label="Mute"
+              className="p-3 rounded-full bg-white/10 border border-white/10 text-white"
             >
               {muted || vol === 0 ? (
                 <VolumeX className="w-5 h-5" />
@@ -217,8 +213,8 @@ export default function AudioPlayer({
             <button
               type="button"
               onClick={toggle}
-              className="w-[4.5rem] h-[4.5rem] rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white flex items-center justify-center shadow-lg shadow-violet-600/40 active:scale-95 transition"
-              aria-label={playing ? "Pause" : "Play"}
+              disabled={loading}
+              className="w-[4.5rem] h-[4.5rem] rounded-full bg-gradient-to-br from-pink-500 to-rose-600 text-white flex items-center justify-center shadow-lg shadow-pink-600/40 active:scale-95 disabled:opacity-60"
             >
               {playing ? (
                 <Pause className="w-8 h-8 fill-current" />
@@ -227,44 +223,51 @@ export default function AudioPlayer({
               )}
             </button>
 
-            <div className="flex flex-col items-center gap-1 w-14">
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={muted ? 0 : vol}
-                onChange={(e) => changeVol(Number(e.target.value))}
-                className="w-full accent-violet-400"
-                aria-label="Volume"
-              />
-            </div>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={muted ? 0 : vol}
+              onChange={(e) => changeVol(Number(e.target.value))}
+              className="w-14 accent-pink-400"
+            />
           </div>
 
           {error && (
             <p className="text-xs text-amber-300 text-center">{error}</p>
           )}
+
+          <p className="text-[10px] text-slate-500 text-center">
+            Bofya play kuanza kusikiliza
+          </p>
         </div>
       </div>
 
       <audio
         ref={audioRef}
-        preload="metadata"
+        preload="auto"
         playsInline
+        crossOrigin="anonymous"
         onTimeUpdate={onTime}
+        onPlaying={() => {
+          setPlaying(true);
+          setLoading(false);
+        }}
+        onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
-        onError={() => setError("Stream haipatikani")}
+        onError={() => {
+          setPlaying(false);
+          setLoading(false);
+          setError("Stream haipatikani kwa sasa");
+        }}
         className="hidden"
       />
 
-      <style jsx>{`
-        @keyframes pulse {
-          from {
-            transform: scaleY(0.35);
-          }
-          to {
-            transform: scaleY(1);
-          }
+      <style>{`
+        @keyframes radioBar {
+          from { transform: scaleY(0.35); }
+          to { transform: scaleY(1); }
         }
       `}</style>
     </div>
