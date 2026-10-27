@@ -4,6 +4,18 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { ensureElitePlexContent } from "@/lib/eliteplex";
 
+const vpnPkgSchema = z.object({
+  plan: z.enum(["once", "week", "month", "timed"]),
+  enabled: z.boolean(),
+  title: z.string().optional().default(""),
+  priceTzs: z.number().int().min(0),
+  accessDays: z.number().int().min(0).optional().default(0),
+  protocol: z.string().optional().default(""),
+  configText: z.string().optional().default(""),
+  fileUrl: z.string().optional().default(""),
+  imageUrl: z.string().optional().default(""),
+});
+
 const schema = z.object({
   type: z.enum(["movie", "game", "vpn", "tv", "radio", "music", "drama"]),
   title: z.string().min(1),
@@ -23,7 +35,19 @@ const schema = z.object({
     .optional(),
   priceTzs: z.number().int().min(0).optional(),
   accessDays: z.number().int().min(0).optional(),
+  vpnPackages: z.array(vpnPkgSchema).optional(),
 });
+
+async function ensureContentVpnColumn() {
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "Content"
+      ADD COLUMN IF NOT EXISTS "vpn_packages" TEXT
+    `);
+  } catch {
+    /* ignore */
+  }
+}
 
 export async function GET(req: Request) {
   try {
@@ -32,7 +56,6 @@ export async function GET(req: Request) {
     const publishedOnly = searchParams.get("published") === "1";
     const mineOnly = searchParams.get("mine") === "1";
 
-    // Public catalog may hydrate API movies; admin mine=1 never does
     if (!mineOnly && (type === "movie" || type === "drama")) {
       try {
         await ensureElitePlexContent(type);
@@ -47,7 +70,6 @@ export async function GET(req: Request) {
     if (publishedOnly) where.status = "published";
 
     if (mineOnly) {
-      // Only manually uploaded content — exclude ElitePlex / API imports
       where.createdBy = { not: null };
       where.NOT = {
         OR: [
@@ -63,7 +85,6 @@ export async function GET(req: Request) {
       orderBy: { createdAt: "desc" },
     });
 
-    // Extra safety filter client-side style for odd categories
     const filtered = mineOnly
       ? items.filter((it) => {
           const cat = (it.category || "").toLowerCase();
@@ -82,6 +103,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    await ensureContentVpnColumn();
     const session = await getSession();
     if (!session)
       return NextResponse.json({ error: "Login required" }, { status: 401 });
@@ -99,6 +121,17 @@ export async function POST(req: Request) {
     const linkType =
       d.type === "game" || d.type === "vpn" ? "download" : d.linkType;
 
+    const vpnPackagesJson =
+      d.type === "vpn" && d.vpnPackages?.length
+        ? JSON.stringify(d.vpnPackages)
+        : null;
+
+    // If VPN has packages, treat as paid content
+    let priceMode = d.priceMode || "free";
+    if (d.type === "vpn" && d.vpnPackages?.some((p) => p.enabled)) {
+      if (priceMode === "free") priceMode = "once";
+    }
+
     const item = await prisma.content.create({
       data: {
         type: d.type,
@@ -114,9 +147,10 @@ export async function POST(req: Request) {
         network: d.network || null,
         configText: d.configText || null,
         fileUrl: d.fileUrl || null,
-        priceMode: d.priceMode || "free",
+        priceMode,
         priceTzs: d.priceTzs ?? 0,
         accessDays: d.accessDays ?? 0,
+        vpnPackages: vpnPackagesJson,
         createdBy: session.userId,
       },
     });
