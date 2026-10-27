@@ -49,37 +49,20 @@ async function ensureContentVpnColumn() {
   }
 }
 
-function isApiImport(item: {
-  category?: string | null;
-  type?: string;
-  createdBy?: string | null;
-}) {
-  const cat = (item.category || "").toLowerCase();
-  if (cat.includes("eliteplex")) return true;
-  if (cat.startsWith("api-")) return true;
-  // Manual types never come from ElitePlex API
-  if (
-    item.type === "vpn" ||
-    item.type === "game" ||
-    item.type === "radio" ||
-    item.type === "tv" ||
-    item.type === "music"
-  ) {
-    return false;
-  }
-  // Movies/drama without createdBy and with no category are often API bulk imports
-  // Keep those with createdBy; drop pure API imports tagged eliteplex (above)
-  return false;
-}
-
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
     const publishedOnly = searchParams.get("published") === "1";
     const mineOnly = searchParams.get("mine") === "1";
+    const adminList = searchParams.get("admin") === "1";
 
-    if (!mineOnly && (type === "movie" || type === "drama")) {
+    const session = adminList || mineOnly ? await getSession() : null;
+    if (adminList && (!session || session.role !== "admin")) {
+      return NextResponse.json({ error: "Admin only", items: [] }, { status: 403 });
+    }
+
+    if (!mineOnly && !adminList && (type === "movie" || type === "drama")) {
       try {
         await ensureElitePlexContent(type);
       } catch (e) {
@@ -92,28 +75,23 @@ export async function GET(req: Request) {
     if (type) where.type = type;
     if (publishedOnly) where.status = "published";
 
-    if (mineOnly) {
-      // Exclude ElitePlex / API-tagged rows only — do NOT require createdBy
-      // (older VPN/game rows may have null createdBy but are real uploads)
-      where.NOT = {
-        OR: [
-          { category: { startsWith: "eliteplex" } },
-          { category: { contains: "eliteplex" } },
-          { category: { startsWith: "api-" } },
-        ],
-      };
-    }
-
     const items = await prisma.content.findMany({
       where,
       orderBy: { createdAt: "desc" },
     });
 
-    const filtered = mineOnly
-      ? items.filter((it) => !isApiImport(it))
-      : items;
+    // Admin / mine: hide ElitePlex API dumps only
+    if (adminList || mineOnly) {
+      const filtered = items.filter((it) => {
+        const cat = (it.category || "").toLowerCase();
+        if (cat.includes("eliteplex")) return false;
+        if (cat.startsWith("api-")) return false;
+        return true;
+      });
+      return NextResponse.json({ items: filtered });
+    }
 
-    return NextResponse.json({ items: filtered });
+    return NextResponse.json({ items });
   } catch (err) {
     console.error("GET /api/content", err);
     return NextResponse.json({ error: "Failed", items: [] }, { status: 500 });

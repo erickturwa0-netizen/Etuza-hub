@@ -55,7 +55,10 @@ function ContentList() {
     setLoading(true);
     setError("");
     try {
-      const q = typeFilter ? `?type=${typeFilter}&mine=1` : "?mine=1";
+      // admin=1 → all non-API content (including VPN without createdBy)
+      const q = typeFilter
+        ? `?type=${typeFilter}&admin=1`
+        : "?admin=1";
       const [cRes, pRes] = await Promise.all([
         fetch(`/api/content${q}`, { credentials: "include" }),
         fetch("/api/admin/payments", { credentials: "include" }),
@@ -162,14 +165,14 @@ function ContentList() {
   return (
     <div className="space-y-8">
       <div className="rounded-xl border border-violet-700/40 bg-violet-950/30 px-3 py-2 text-xs text-violet-200">
-        Content panel v3 — Edit · Idhinisha malipo · Tick ya tangazo la point
+        Content panel — Edit · Idhinisha · Ads · VPN
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Content</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Content uliyopakia wewe tu (si za API)
+            Content (si za API)
             {loading ? "" : ` · ${items.length} items`}
           </p>
         </div>
@@ -183,17 +186,12 @@ function ContentList() {
       </div>
 
       {msg && (
-        <div className="px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-sm">
-          {msg}
-        </div>
+        <div className="px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-sm">{msg}</div>
       )}
       {error && (
-        <div className="px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-sm">
-          {error}
-        </div>
+        <div className="px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-sm">{error}</div>
       )}
 
-      {/* Points ads toggle — very visible */}
       <label className="block glass-card p-4 max-w-xl border-2 border-amber-500/40">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -201,8 +199,7 @@ function ContentList() {
               ☑ Tangazo la point (Tazama tangazo)
             </p>
             <p className="text-[11px] text-slate-400 mt-1">
-              Washa/zima ads za point. Mwenye kifurushi cha malipo haoni tangazo
-              hadi muda uishe.
+              Washa/zima ads. Mwenye kifurushi haoni tangazo hadi muda uishe.
             </p>
           </div>
           <input
@@ -215,7 +212,6 @@ function ContentList() {
         </div>
       </label>
 
-      {/* Pending payments */}
       <section className="rounded-2xl border border-emerald-700/30 bg-emerald-950/10 p-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-bold text-emerald-100">
@@ -244,31 +240,18 @@ function ContentList() {
                   </p>
                   {r.content && (
                     <p>
-                      {TYPE_LABELS[r.content.type] || r.content.type}:{" "}
-                      {r.content.title}
+                      {TYPE_LABELS[r.content.type] || r.content.type}: {r.content.title}
                     </p>
                   )}
                 </div>
               </div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={r.screenshotUrl}
-                alt=""
-                className="max-h-40 rounded-lg border border-slate-700"
-              />
+              <img src={r.screenshotUrl} alt="" className="max-h-40 rounded-lg border border-slate-700" />
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => review(r.id, "approve")}
-                  className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold inline-flex items-center gap-1"
-                >
+                <button type="button" onClick={() => review(r.id, "approve")} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold inline-flex items-center gap-1">
                   <Check className="w-3.5 h-3.5" /> Idhinisha
                 </button>
-                <button
-                  type="button"
-                  onClick={() => review(r.id, "reject")}
-                  className="px-3 py-2 rounded-lg bg-red-600/80 text-white text-xs font-semibold inline-flex items-center gap-1"
-                >
+                <button type="button" onClick={() => review(r.id, "reject")} className="px-3 py-2 rounded-lg bg-red-600/80 text-white text-xs font-semibold inline-flex items-center gap-1">
                   <X className="w-3.5 h-3.5" /> Kataa
                 </button>
               </div>
@@ -306,7 +289,7 @@ function ContentList() {
           <p className="p-6 text-slate-500 text-sm">Inapakia…</p>
         ) : items.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="text-slate-400 mb-3">Hakuna content uliyopakia</p>
+            <p className="text-slate-400 mb-3">Hakuna content</p>
             <Link href="/admin/content/new" className="text-violet-400 text-sm">
               + Ongeza
             </Link>
@@ -330,9 +313,7 @@ function ContentList() {
                         <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
                           {icon(c.type)}
                         </div>
-                        <span className="font-medium truncate max-w-[140px]">
-                          {c.title}
-                        </span>
+                        <span className="font-medium truncate max-w-[140px]">{c.title}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3 capitalize text-slate-400 hidden sm:table-cell">
@@ -358,20 +339,10 @@ function ContentList() {
                           <Pencil className="w-3.5 h-3.5" />
                           Edit
                         </Link>
-                        <button
-                          type="button"
-                          onClick={() => toggleStatus(c.id, c.status)}
-                          className="p-1.5 text-slate-400 hover:text-violet-300"
-                          title="Publish/Draft"
-                        >
+                        <button type="button" onClick={() => toggleStatus(c.id, c.status)} className="p-1.5 text-slate-400 hover:text-violet-300">
                           <ToggleLeft className="w-4 h-4" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => remove(c.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-400"
-                          title="Futa"
-                        >
+                        <button type="button" onClick={() => remove(c.id)} className="p-1.5 text-slate-400 hover:text-red-400">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
