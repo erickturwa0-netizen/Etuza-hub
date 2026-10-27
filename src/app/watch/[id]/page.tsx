@@ -182,6 +182,7 @@ export default async function WatchPage({
         title={item.title}
         priceMode={item.priceMode}
         priceTzs={item.priceTzs}
+        contentType={item.type}
       >
         {body}
       </WatchPaywallGate>

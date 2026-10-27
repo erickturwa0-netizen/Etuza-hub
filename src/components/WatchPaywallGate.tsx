@@ -9,18 +9,21 @@ export default function WatchPaywallGate({
   title,
   priceMode,
   priceTzs,
+  contentType,
   children,
 }: {
   contentId: string;
   title: string;
   priceMode?: string | null;
   priceTzs?: number | null;
+  contentType?: string | null;
   children: React.ReactNode;
 }) {
   const [locked, setLocked] = useState(false);
   const [needLogin, setNeedLogin] = useState(false);
   const [open, setOpen] = useState(false);
   const [checked, setChecked] = useState(false);
+  const [isVpn, setIsVpn] = useState(contentType === "vpn");
 
   useEffect(() => {
     let cancelled = false;
@@ -32,6 +35,7 @@ export default function WatchPaywallGate({
         );
         const data = await res.json();
         if (cancelled) return;
+        if (data.isVpn) setIsVpn(true);
         if (data.enabled && data.locked) {
           setLocked(true);
           setNeedLogin(!!data.needLogin);
@@ -53,7 +57,7 @@ export default function WatchPaywallGate({
     priceMode === "year" ||
     priceMode === "once"
       ? priceMode
-      : "month";
+      : "once";
 
   if (!checked) {
     return (
@@ -69,9 +73,6 @@ export default function WatchPaywallGate({
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 text-center space-y-3">
           <p className="text-sm text-amber-100 font-medium">
             Content hii inahitaji malipo
-          </p>
-          <p className="text-xs text-slate-400">
-            Tuma pesa → pakia screenshot → admin atakufungulia
           </p>
           {needLogin ? (
             <a
@@ -97,6 +98,7 @@ export default function WatchPaywallGate({
           onClose={() => setOpen(false)}
           defaultPlan={plan}
           contentPrice={priceTzs || undefined}
+          isVpn={isVpn}
         />
       </>
     );
