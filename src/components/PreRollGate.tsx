@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useState, createContext, useContext, useCallback } from "react";
+import {
+  useEffect,
+  useState,
+  createContext,
+  useContext,
+  useCallback,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import {
   UserPlus,
@@ -20,7 +27,7 @@ import PaywallDialog from "@/components/PaywallDialog";
 type Props = {
   contentKey: string;
   title?: string;
-  children: React.ReactNode;
+  children: ReactNode;
   enabled?: boolean;
 };
 
@@ -33,7 +40,6 @@ type MeUser = {
   role?: string;
 };
 
-/** Children call this when media actually starts playing → spend 1 point once */
 export const PlaybackChargeContext = createContext<{
   contentKey: string;
   chargeOnPlay: () => Promise<void>;
@@ -185,7 +191,6 @@ export default function PreRollGate({
     window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
   }
 
-  /** Open player WITHOUT spending — charge happens when playback starts */
   function openPlayer() {
     setMsg("");
     if (hasPaidAccess || user?.role === "admin") {
@@ -197,7 +202,6 @@ export default function PreRollGate({
       setMsg("Point hazitoshi — tazama tangazo, alika au lipia");
       return;
     }
-    // Optional short pre-roll timer, then unlock (still no charge yet)
     setCounting(true);
     setLeft(Math.min(PRE_ROLL_SECONDS, 2));
   }
@@ -219,7 +223,7 @@ export default function PreRollGate({
         if (typeof d.packagePoints === "number") setPkgPoints(d.packagePoints);
       }
     } catch {
-      /* ignore — don't block playback */
+      /* ignore */
     }
   }, [charged, hasPaidAccess, user?.role, contentKey]);
 

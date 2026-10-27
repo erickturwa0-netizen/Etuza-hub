@@ -34,7 +34,6 @@ export default function StreamPlayer({
   src,
   poster,
   title,
-  contentKey,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const chargedRef = useRef(false);
@@ -55,8 +54,7 @@ export default function StreamPlayer({
   const onRealPlay = useCallback(() => {
     if (chargedRef.current) return;
     chargedRef.current = true;
-    // Charge only when playback actually starts
-    charge?.chargeOnPlay();
+    void charge?.chargeOnPlay();
   }, [charge]);
 
   useEffect(() => {
@@ -68,12 +66,8 @@ export default function StreamPlayer({
   useEffect(() => {
     const el = videoRef.current;
     if (!el || !videoUrl) return;
-    let hls: {
-      destroy: () => void;
-      loadSource: (u: string) => void;
-      attachMedia: (e: HTMLVideoElement) => void;
-      on: (e: string, cb: (ev: unknown, data: { fatal?: boolean }) => void) => void;
-    } | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let hls: any = null;
     let cancelled = false;
 
     (async () => {
@@ -83,18 +77,18 @@ export default function StreamPlayer({
           const Hls = mod.default;
           if (Hls.isSupported()) {
             hls = new Hls();
-            hls.loadSource(videoUrl!);
+            hls.loadSource(videoUrl);
             hls.attachMedia(el);
-            hls.on(Hls.Events.ERROR, (_e, data) => {
+            hls.on(Hls.Events.ERROR, (_e: unknown, data: { fatal?: boolean }) => {
               if (!cancelled && data?.fatal) {
                 setError("Video / stream haipatikani.");
               }
             });
           } else {
-            el.src = videoUrl!;
+            el.src = videoUrl;
           }
         } else {
-          el.src = videoUrl!;
+          el.src = videoUrl;
         }
         el.muted = true;
         await el.play().catch(() => setNeedsTap(true));
@@ -105,7 +99,11 @@ export default function StreamPlayer({
 
     return () => {
       cancelled = true;
-      hls?.destroy();
+      try {
+        hls?.destroy?.();
+      } catch {
+        /* ignore */
+      }
     };
   }, [videoUrl, raw]);
 
@@ -148,15 +146,11 @@ export default function StreamPlayer({
             allowFullScreen
             referrerPolicy="no-referrer-when-downgrade"
             onLoad={() => {
-              // Embed loaded — charge (best effort; iframe can't confirm video play)
               setTimeout(() => onRealPlay(), 2500);
             }}
           />
         </div>
         {error && <p className="text-sm text-amber-300">{error}</p>}
-        <p className="text-[10px] text-slate-500">
-          Point zinakatwa baada ya player kuanza
-        </p>
       </div>
     );
   }
