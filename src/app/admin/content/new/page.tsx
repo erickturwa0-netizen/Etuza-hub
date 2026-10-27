@@ -7,11 +7,13 @@ import {
   ArrowLeft,
   Search,
   Image as ImageIcon,
-  Link2,
-  Download,
   Wand2,
 } from "lucide-react";
 import Link from "next/link";
+import {
+  EMPTY_VPN_PACKAGES,
+  type ContentVpnPackage,
+} from "@/lib/vpn-packages";
 
 type ContentKind = "movie" | "game" | "vpn" | "tv" | "radio" | "music" | "drama";
 
@@ -35,13 +37,25 @@ const TYPE_LABELS: Record<ContentKind, string> = {
   vpn: "VPN",
 };
 
+function readDataUrl(file: File, max: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (file.size > max) {
+      reject(new Error("Faili kubwa mno"));
+      return;
+    }
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ""));
+    r.onerror = () => reject(new Error("Imeshindikana"));
+    r.readAsDataURL(file);
+  });
+}
+
 export default function NewContentPage() {
   const router = useRouter();
   const [type, setType] = useState<ContentKind>("movie");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
-  const [apiUrl, setApiUrl] = useState("");
   const [coverUrl, setCoverUrl] = useState("");
   const [linkType, setLinkType] = useState<"stream" | "download">("stream");
   const [category, setCategory] = useState("");
@@ -53,16 +67,22 @@ export default function NewContentPage() {
   >("free");
   const [priceTzs, setPriceTzs] = useState(0);
   const [accessDays, setAccessDays] = useState(7);
+  const [vpnPkgs, setVpnPkgs] = useState<ContentVpnPackage[]>(
+    EMPTY_VPN_PACKAGES.map((p) => ({ ...p }))
+  );
   const [saving, setSaving] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [resolving, setResolving] = useState(false);
-  const [resolved, setResolved] = useState<ResolvedLink[]>([]);
   const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
   const [tmdbQ, setTmdbQ] = useState("");
   const [tmdbResults, setTmdbResults] = useState<TmdbHit[]>([]);
   const [autoCoverMsg, setAutoCoverMsg] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function updatePkg(plan: string, patch: Partial<ContentVpnPackage>) {
+    setVpnPkgs((prev) =>
+      prev.map((p) => (p.plan === plan ? { ...p, ...patch } : p))
+    );
+  }
 
   async function searchTmdb(query: string) {
     if (query.trim().length < 2) return;
@@ -114,7 +134,6 @@ export default function NewContentPage() {
       if (!res.ok) setError(data.error || "Failed");
       else if (!(data.links || []).length) setError("Hakuna links");
       else {
-        setResolved(data.links);
         setLinkUrl(data.links[0].url);
         setLinkType("download");
       }
@@ -129,11 +148,31 @@ export default function NewContentPage() {
     setError("");
     setSaving(true);
     try {
-      if (!linkUrl.trim() || !title.trim()) {
+      // VPN: need title; link can be first package file or placeholder
+      const enabledPkgs = vpnPkgs.filter((p) => p.enabled);
+      let finalLink = linkUrl.trim();
+      if (type === "vpn") {
+        if (!title.trim()) {
+          setError("Weka title ya VPN");
+          setSaving(false);
+          return;
+        }
+        if (!enabledPkgs.length && !finalLink) {
+          setError("Washa angalau kifurushi kimoja au weka link");
+          setSaving(false);
+          return;
+        }
+        if (!finalLink) {
+          finalLink =
+            enabledPkgs.find((p) => p.fileUrl)?.fileUrl ||
+            "vpn-package";
+        }
+      } else if (!finalLink || !title.trim()) {
         setError("Weka title na link");
         setSaving(false);
         return;
       }
+
       const res = await fetch("/api/content", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -142,15 +181,15 @@ export default function NewContentPage() {
           type,
           title,
           description: description || null,
-          linkUrl,
+          linkUrl: finalLink,
           coverUrl: coverUrl || null,
           linkType,
           category: category || null,
           status,
           protocol: protocol || null,
           configText: configText || null,
-          fileUrl: type === "vpn" ? linkUrl : null,
-          priceMode,
+          fileUrl: type === "vpn" ? finalLink : null,
+          priceMode: type === "vpn" && enabledPkgs.length ? "once" : priceMode,
           priceTzs: Number(priceTzs) || 0,
           accessDays:
             priceMode === "timed"
@@ -162,6 +201,7 @@ export default function NewContentPage() {
                   : priceMode === "year"
                     ? 365
                     : 0,
+          vpnPackages: type === "vpn" ? vpnPkgs : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -186,13 +226,17 @@ export default function NewContentPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold">Add Content</h1>
-          <p className="text-sm text-slate-500">Bei, muda, VPN upload</p>
+          <p className="text-sm text-slate-500">
+            VPN: weka vifurushi kwenye content hii tu
+          </p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="glass-card p-5 sm:p-6 space-y-5 max-w-xl">
         {error && (
-          <div className="px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-sm">{error}</div>
+          <div className="px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-sm">
+            {error}
+          </div>
         )}
 
         <div>
@@ -262,80 +306,202 @@ export default function NewContentPage() {
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm resize-none" />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-400 mb-1.5">Stream / Download link</label>
-          <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm" />
-          <button type="button" onClick={chimbaLinks} disabled={resolving} className="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-700 text-sm text-white">
-            <Wand2 className="w-4 h-4" /> {resolving ? "…" : "Chimba MediaFire"}
-          </button>
-        </div>
-
-        {type === "vpn" && (
-          <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-4 space-y-3">
-            <p className="text-sm font-semibold text-emerald-300">VPN — picha &amp; file</p>
-            <input type="file" accept="image/*" className="w-full text-sm text-slate-400" onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (!f || f.size > 1_500_000) return;
-              const r = new FileReader();
-              r.onload = () => setCoverUrl(String(r.result || ""));
-              r.readAsDataURL(f);
-            }} />
-            <input type="file" className="w-full text-sm text-slate-400" onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (!f || f.size > 2_000_000) { setError("File kubwa — tumia link"); return; }
-              const r = new FileReader();
-              r.onload = () => { setLinkUrl(String(r.result || "")); setLinkType("download"); };
-              r.readAsDataURL(f);
-            }} />
-            <input value={protocol} onChange={(e) => setProtocol(e.target.value)} placeholder="Protocol" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm" />
-            <textarea value={configText} onChange={(e) => setConfigText(e.target.value)} rows={2} placeholder="Config" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-mono" />
+        {type !== "vpn" && (
+          <div>
+            <label className="block text-sm font-medium text-slate-400 mb-1.5">Stream / Download link</label>
+            <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm" />
+            <button type="button" onClick={chimbaLinks} disabled={resolving} className="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-700 text-sm text-white">
+              <Wand2 className="w-4 h-4" /> {resolving ? "…" : "Chimba MediaFire"}
+            </button>
           </div>
         )}
 
-        {/* Pricing */}
-        <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 p-4 space-y-3">
-          <p className="text-sm font-semibold text-amber-200">Bei ya content hii</p>
-          <select
-            value={priceMode}
-            onChange={(e) => setPriceMode(e.target.value as typeof priceMode)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-          >
-            <option value="free">Bure (Free)</option>
-            <option value="once">Inauzwa kabisa (daima baada ya kulipa)</option>
-            <option value="week">Wiki 1</option>
-            <option value="month">Mwezi 1</option>
-            <option value="year">Mwaka 1</option>
-            <option value="timed">Muda maalum (weka siku)</option>
-          </select>
-
-          {priceMode !== "free" && (
+        {/* VPN packages per content */}
+        {type === "vpn" && (
+          <div className="rounded-xl border border-emerald-700/40 bg-emerald-950/20 p-4 space-y-4">
             <div>
-              <label className="text-xs text-slate-400">Bei (TZS) — 0 = bei ya global</label>
-              <input
-                type="number"
-                value={priceTzs}
-                onChange={(e) => setPriceTzs(Number(e.target.value) || 0)}
-                className="mt-1 w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-              />
-            </div>
-          )}
-
-          {priceMode === "timed" && (
-            <div>
-              <label className="text-xs text-slate-400">Muda wa ufikiaji (siku) baada ya idhini</label>
-              <input
-                type="number"
-                min={1}
-                value={accessDays}
-                onChange={(e) => setAccessDays(Number(e.target.value) || 1)}
-                className="mt-1 w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-              />
-              <p className="text-[11px] text-slate-500 mt-1">
-                Mfano: 3 = siku 3, 14 = wiki 2, 30 = mwezi
+              <p className="text-sm font-bold text-emerald-200">Vifurushi vya VPN hii</p>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Tiki = kifurushi kinapatikana. User atachagua kimoja na kupata config yake tu.
               </p>
             </div>
-          )}
-        </div>
+
+            <div>
+              <label className="text-xs text-slate-400">Cover / picha ya VPN</label>
+              <input
+                type="file"
+                accept="image/*"
+                className="mt-1 w-full text-xs text-slate-400"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  try {
+                    setCoverUrl(await readDataUrl(f, 1_200_000));
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : "Picha");
+                  }
+                }}
+              />
+            </div>
+
+            {vpnPkgs.map((p) => (
+              <div
+                key={p.plan}
+                className={`rounded-xl border p-3 space-y-2 ${
+                  p.enabled
+                    ? "border-emerald-600/50 bg-slate-900/80"
+                    : "border-slate-800 bg-slate-950/40 opacity-70"
+                }`}
+              >
+                <label className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-sm">{p.title}</span>
+                  <input
+                    type="checkbox"
+                    className="w-5 h-5"
+                    checked={p.enabled}
+                    onChange={(e) => updatePkg(p.plan, { enabled: e.target.checked })}
+                  />
+                </label>
+
+                {p.enabled && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] text-slate-500">Bei (TZS)</label>
+                        <input
+                          type="number"
+                          value={p.priceTzs}
+                          onChange={(e) =>
+                            updatePkg(p.plan, {
+                              priceTzs: Number(e.target.value) || 0,
+                            })
+                          }
+                          className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm"
+                        />
+                      </div>
+                      {p.plan === "timed" && (
+                        <div>
+                          <label className="text-[11px] text-slate-500">Siku</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={p.accessDays || 3}
+                            onChange={(e) =>
+                              updatePkg(p.plan, {
+                                accessDays: Number(e.target.value) || 1,
+                              })
+                            }
+                            className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-500">Protocol</label>
+                      <input
+                        value={p.protocol}
+                        onChange={(e) => updatePkg(p.plan, { protocol: e.target.value })}
+                        placeholder="OpenVPN / V2Ray…"
+                        className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-500">File ya config</label>
+                      <input
+                        type="file"
+                        className="w-full text-xs text-slate-400"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          try {
+                            updatePkg(p.plan, {
+                              fileUrl: await readDataUrl(f, 1_800_000),
+                            });
+                          } catch (err) {
+                            setError(
+                              err instanceof Error
+                                ? err.message + " — au weka link"
+                                : "File"
+                            );
+                          }
+                        }}
+                      />
+                      <input
+                        value={
+                          p.fileUrl.startsWith("data:")
+                            ? "(file imepakiwa)"
+                            : p.fileUrl
+                        }
+                        onChange={(e) => {
+                          if (!e.target.value.startsWith("(")) {
+                            updatePkg(p.plan, { fileUrl: e.target.value });
+                          }
+                        }}
+                        placeholder="au link https://…"
+                        className="mt-1 w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-slate-500">Config text</label>
+                      <textarea
+                        value={p.configText}
+                        onChange={(e) =>
+                          updatePkg(p.plan, { configText: e.target.value })
+                        }
+                        rows={2}
+                        className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Pricing for non-VPN */}
+        {type !== "vpn" && (
+          <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 p-4 space-y-3">
+            <p className="text-sm font-semibold text-amber-200">Bei ya content hii</p>
+            <select
+              value={priceMode}
+              onChange={(e) => setPriceMode(e.target.value as typeof priceMode)}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+            >
+              <option value="free">Bure (Free)</option>
+              <option value="once">Inauzwa kabisa</option>
+              <option value="week">Wiki 1</option>
+              <option value="month">Mwezi 1</option>
+              <option value="year">Mwaka 1</option>
+              <option value="timed">Muda maalum (weka siku)</option>
+            </select>
+
+            {priceMode !== "free" && (
+              <div>
+                <label className="text-xs text-slate-400">Bei (TZS)</label>
+                <input
+                  type="number"
+                  value={priceTzs}
+                  onChange={(e) => setPriceTzs(Number(e.target.value) || 0)}
+                  className="mt-1 w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+                />
+              </div>
+            )}
+
+            {priceMode === "timed" && (
+              <div>
+                <label className="text-xs text-slate-400">Siku za ufikiaji</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={accessDays}
+                  onChange={(e) => setAccessDays(Number(e.target.value) || 1)}
+                  className="mt-1 w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-slate-400 mb-1.5">Cover URL</label>
@@ -347,19 +513,36 @@ export default function NewContentPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <select value={linkType} onChange={(e) => setLinkType(e.target.value as "stream" | "download")} className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm">
+          <select
+            value={linkType}
+            onChange={(e) => setLinkType(e.target.value as "stream" | "download")}
+            className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+          >
             <option value="stream">Stream</option>
             <option value="download">Download</option>
           </select>
-          <select value={status} onChange={(e) => setStatus(e.target.value as "draft" | "published")} className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm">
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as "draft" | "published")}
+            className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+          >
             <option value="published">Published</option>
             <option value="draft">Draft</option>
           </select>
         </div>
 
-        <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm" />
+        <input
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          placeholder="Category"
+          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+        />
 
-        <button type="submit" disabled={saving} className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-violet-600 font-semibold text-sm text-white disabled:opacity-60">
+        <button
+          type="submit"
+          disabled={saving}
+          className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-violet-600 font-semibold text-sm text-white disabled:opacity-60"
+        >
           <Save className="w-4 h-4" />
           {saving ? "…" : "Save & Publish"}
         </button>
