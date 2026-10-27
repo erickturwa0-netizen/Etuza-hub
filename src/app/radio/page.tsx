@@ -59,7 +59,7 @@ export default function RadioPage() {
     <main className="flex-1 max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-36">
       <PresenceTracker section="radio" title={playing?.name || "Radio"} />
 
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-4">
         <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-pink-500 to-rose-700 flex items-center justify-center text-white shrink-0 shadow-lg shadow-pink-900/40">
           <Radio className="w-5 h-5" />
         </div>
@@ -70,6 +70,28 @@ export default function RadioPage() {
           </p>
         </div>
       </div>
+
+      {/* Sticky player — stays visible while scrolling station list */}
+      {playing && (
+        <div className="sticky top-14 z-30 mb-4 -mx-1">
+          <div className="relative rounded-2xl border border-pink-500/40 bg-slate-950/95 backdrop-blur-md shadow-xl shadow-black/40 p-2">
+            <button
+              type="button"
+              onClick={() => setPlaying(null)}
+              className="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300"
+              aria-label="Funga"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <AudioPlayer
+              src={playing.url}
+              title={playing.name}
+              coverUrl={coverOf(playing)}
+              kind="radio"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2 mb-4">
         {(
@@ -111,40 +133,13 @@ export default function RadioPage() {
             placeholder="Tafuta station…"
             className="flex-1 px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
           />
-          <button
-            type="submit"
-            className="px-4 py-2.5 rounded-xl bg-pink-600 text-white"
-          >
+          <button type="submit" className="px-4 py-2.5 rounded-xl bg-pink-600 text-white">
             <Search className="w-4 h-4" />
           </button>
         </form>
       )}
 
-      {error && (
-        <p className="text-sm text-amber-300 mb-3">{error}</p>
-      )}
-
-      {/* Full player */}
-      {playing && (
-        <div className="mb-6 sticky top-2 z-20">
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setPlaying(null)}
-              className="absolute -top-2 -right-2 z-10 w-8 h-8 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300"
-              aria-label="Funga"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <AudioPlayer
-              src={playing.url}
-              title={playing.name}
-              coverUrl={coverOf(playing)}
-              kind="radio"
-            />
-          </div>
-        </div>
-      )}
+      {error && <p className="text-sm text-amber-300 mb-3">{error}</p>}
 
       {loading ? (
         <p className="text-slate-500 text-sm">Inapakia stations…</p>
@@ -182,9 +177,7 @@ export default function RadioPage() {
                   />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-[15px] text-white truncate">
-                    {s.name}
-                  </p>
+                  <p className="font-semibold text-[15px] text-white truncate">{s.name}</p>
                   <p className="text-xs text-slate-400 mt-0.5 truncate">
                     {s.country}
                     {s.bitrate ? ` · ${s.bitrate}kbps` : ""}

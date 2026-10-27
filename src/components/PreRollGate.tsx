@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, createContext, useContext, useCallback } from "react";
 import Link from "next/link";
 import {
-  Coins,
   UserPlus,
   ExternalLink,
   Play,
@@ -34,6 +33,17 @@ type MeUser = {
   role?: string;
 };
 
+/** Children call this when media actually starts playing → spend 1 point once */
+export const PlaybackChargeContext = createContext<{
+  contentKey: string;
+  chargeOnPlay: () => Promise<void>;
+  hasPaidAccess: boolean;
+} | null>(null);
+
+export function usePlaybackCharge() {
+  return useContext(PlaybackChargeContext);
+}
+
 export default function PreRollGate({
   contentKey,
   title,
@@ -54,6 +64,7 @@ export default function PreRollGate({
   const [payEnabled, setPayEnabled] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [hasPaidAccess, setHasPaidAccess] = useState(false);
+  const [charged, setCharged] = useState(false);
 
   const contentId = contentKey.includes(":")
     ? contentKey.split(":").slice(1).join(":")
@@ -82,9 +93,7 @@ export default function PreRollGate({
           const s = await setRes.json();
           if (!cancelled) {
             setPayEnabled(!!s.enabled);
-            if (s.pointsAdsEnabled === false) {
-              setAdsOn(false);
-            }
+            if (s.pointsAdsEnabled === false) setAdsOn(false);
           }
         }
 
@@ -122,16 +131,9 @@ export default function PreRollGate({
             setPkgPoints(active ? d.user.packagePoints : 0);
           }
         }
-
-        // If ads off and payments off → unlock
-        if (setRes.ok) {
-          const s = await setRes.json().catch(() => null);
-          // re-read from state path — already set above
-        }
       } catch {
         /* ignore */
       }
-
       if (!cancelled) setReady(true);
     })();
     return () => {
@@ -155,11 +157,8 @@ export default function PreRollGate({
     return () => clearTimeout(t);
   }, [counting, left, contentKey]);
 
-  // Ads off → no gate (unless we still want pay — paywall is separate)
   useEffect(() => {
-    if (ready && !adsOn && !payEnabled) {
-      setUnlocked(true);
-    }
+    if (ready && !adsOn && !payEnabled) setUnlocked(true);
   }, [ready, adsOn, payEnabled]);
 
   async function claimAdReward() {
@@ -173,7 +172,7 @@ export default function PreRollGate({
       const d = await res.json();
       if (res.ok && typeof d.points === "number") {
         setPoints(d.points);
-        setMsg(`+${d.awarded ?? POINTS.AD_REWARD} point (za kawaida) ✓`);
+        setMsg(`+${d.awarded ?? POINTS.AD_REWARD} point ✓`);
       } else setMsg(d.error || "Imeshindikana");
     } catch {
       setMsg("Tatizo la mtandao");
@@ -186,9 +185,26 @@ export default function PreRollGate({
     window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
   }
 
-  async function spendAndWatch() {
-    setBusy(true);
+  /** Open player WITHOUT spending — charge happens when playback starts */
+  function openPlayer() {
     setMsg("");
+    if (hasPaidAccess || user?.role === "admin") {
+      setUnlocked(true);
+      return;
+    }
+    const total = points + pkgPoints;
+    if (total < POINTS.WATCH_COST) {
+      setMsg("Point hazitoshi — tazama tangazo, alika au lipia");
+      return;
+    }
+    // Optional short pre-roll timer, then unlock (still no charge yet)
+    setCounting(true);
+    setLeft(Math.min(PRE_ROLL_SECONDS, 2));
+  }
+
+  const chargeOnPlay = useCallback(async () => {
+    if (charged || hasPaidAccess) return;
+    if (user?.role === "admin") return;
     try {
       const res = await fetch("/api/points/spend", {
         method: "POST",
@@ -198,18 +214,14 @@ export default function PreRollGate({
       });
       const d = await res.json();
       if (res.ok) {
+        setCharged(true);
         if (typeof d.points === "number") setPoints(d.points);
         if (typeof d.packagePoints === "number") setPkgPoints(d.packagePoints);
-        setCounting(true);
-        setLeft(PRE_ROLL_SECONDS);
-      } else {
-        setMsg(d.error || "Point hazitoshi — chagua ads, invite au lipia");
       }
     } catch {
-      setMsg("Tatizo la mtandao");
+      /* ignore — don't block playback */
     }
-    setBusy(false);
-  }
+  }, [charged, hasPaidAccess, user?.role, contentKey]);
 
   function copyInvite() {
     const code = user?.inviteCode || "";
@@ -219,11 +231,9 @@ export default function PreRollGate({
         : code;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(url).then(() => {
-        setMsg(`Link ya invite imenakiliwa — rafiki akisajili unapata +${POINTS.INVITE_REWARD}`);
+        setMsg(`Invite link imenakiliwa (+${POINTS.INVITE_REWARD} rafiki akisajili)`);
       });
-    } else {
-      setMsg(`Code: ${code}`);
-    }
+    } else setMsg(`Code: ${code}`);
   }
 
   if (!ready) {
@@ -234,9 +244,25 @@ export default function PreRollGate({
     );
   }
 
-  if (unlocked || hasPaidAccess) return <>{children}</>;
+  if (unlocked || hasPaidAccess) {
+    return (
+      <PlaybackChargeContext.Provider
+        value={{ contentKey, chargeOnPlay, hasPaidAccess }}
+      >
+        {children}
+      </PlaybackChargeContext.Provider>
+    );
+  }
 
-  if (!adsOn && !payEnabled) return <>{children}</>;
+  if (!adsOn && !payEnabled) {
+    return (
+      <PlaybackChargeContext.Provider
+        value={{ contentKey, chargeOnPlay, hasPaidAccess }}
+      >
+        {children}
+      </PlaybackChargeContext.Provider>
+    );
+  }
 
   const totalSpendable = points + pkgPoints;
 
@@ -245,43 +271,39 @@ export default function PreRollGate({
       <div className="rounded-2xl border border-violet-500/30 bg-gradient-to-b from-slate-900 to-slate-950 p-5 space-y-4 shadow-xl shadow-violet-900/20">
         <div className="text-center space-y-1">
           <h3 className="font-bold text-base text-white">Chagua njia ya kutazama</h3>
-          {title && (
-            <p className="text-xs text-slate-400 line-clamp-1">{title}</p>
-          )}
+          {title && <p className="text-xs text-slate-400 line-clamp-1">{title}</p>}
           {user && (
             <p className="text-xs text-slate-300 pt-1">
-              Point za kawaida: <b className="text-white">{points}</b>
+              Point: <b className="text-white">{points}</b>
               {pkgPoints > 0 && (
                 <>
-                  {" · "}
-                  Kifurushi: <b className="text-amber-300">{pkgPoints}</b>
+                  {" · "}Kifurushi: <b className="text-amber-300">{pkgPoints}</b>
                 </>
               )}
             </p>
           )}
+          <p className="text-[11px] text-slate-500">
+            Point zitakatwa tu baada ya video/audio kuanza kucheza
+          </p>
         </div>
 
-        {msg && (
-          <p className="text-xs text-center text-emerald-400">{msg}</p>
-        )}
+        {msg && <p className="text-xs text-center text-emerald-400">{msg}</p>}
 
         <div className="grid gap-2">
-          {/* Tazama with points */}
           {user && adsOn && (
             <button
               type="button"
               disabled={busy || counting || totalSpendable < POINTS.WATCH_COST}
-              onClick={spendAndWatch}
+              onClick={openPlayer}
               className="w-full py-3 rounded-xl bg-violet-600 text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
             >
               <Play className="w-4 h-4" />
               {counting
                 ? `Subiri ${left}s…`
-                : `Tazama (−${POINTS.WATCH_COST} point)`}
+                : `Tazama (point −${POINTS.WATCH_COST} ikicheza)`}
             </button>
           )}
 
-          {/* Watch ad */}
           {adsOn && (
             <button
               type="button"
@@ -305,7 +327,6 @@ export default function PreRollGate({
             </button>
           )}
 
-          {/* Invite */}
           {user && (
             <button
               type="button"
@@ -313,11 +334,10 @@ export default function PreRollGate({
               className="w-full py-3 rounded-xl border border-sky-500/40 bg-sky-500/10 text-sky-100 text-sm font-medium inline-flex items-center justify-center gap-2"
             >
               <Gift className="w-4 h-4" />
-              Alika rafiki (+{POINTS.INVITE_REWARD} point)
+              Alika rafiki (+{POINTS.INVITE_REWARD})
             </button>
           )}
 
-          {/* Pay package */}
           {payEnabled && (
             <button
               type="button"
@@ -325,7 +345,7 @@ export default function PreRollGate({
               className="w-full py-3 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-100 text-sm font-medium inline-flex items-center justify-center gap-2"
             >
               <CreditCard className="w-4 h-4" />
-              Lipia kifurushi (+{POINTS.PACKAGE_BONUS} point za muda)
+              Lipia kifurushi
             </button>
           )}
 
@@ -339,11 +359,6 @@ export default function PreRollGate({
             </Link>
           )}
         </div>
-
-        <p className="text-[10px] text-slate-500 text-center leading-relaxed">
-          Kifurushi: unapata {POINTS.PACKAGE_BONUS} point za muda — zinaisha na muda wa
-          kifurushi. Point za kawaida (ads / invite) zinabaki.
-        </p>
       </div>
 
       <PaywallDialog

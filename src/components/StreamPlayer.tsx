@@ -3,14 +3,13 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { detectSocial } from "@/lib/social-embed";
 import { Play, ExternalLink } from "lucide-react";
+import { usePlaybackCharge } from "@/components/PreRollGate";
 
 type Props = {
   src: string;
   poster?: string | null;
   title?: string;
-  /** e.g. movie:cuid — for point refund on failure */
   contentKey?: string;
-  onPlaybackFailed?: () => void;
 };
 
 function isHls(src: string) {
@@ -36,15 +35,14 @@ export default function StreamPlayer({
   poster,
   title,
   contentKey,
-  onPlaybackFailed,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const refundedRef = useRef(false);
+  const chargedRef = useRef(false);
+  const charge = usePlaybackCharge();
   const raw = (src || "").trim();
   const social = useMemo(() => detectSocial(raw), [raw]);
   const [error, setError] = useState("");
   const [needsTap, setNeedsTap] = useState(false);
-  const [refundMsg, setRefundMsg] = useState("");
 
   const external = /^https?:\/\//i.test(raw) && blocksIframe(raw);
   const embedUrl =
@@ -54,42 +52,18 @@ export default function StreamPlayer({
       : null);
   const videoUrl = isHls(raw) ? proxyHls(raw) : isDirect(raw) ? raw : null;
 
-  const fail = useCallback(
-    async (msg: string) => {
-      setError(msg);
-      if (refundedRef.current) return;
-      refundedRef.current = true;
-      onPlaybackFailed?.();
-      if (!contentKey) return;
-      try {
-        const res = await fetch("/api/points/refund", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contentKey, reason: "playback_failed" }),
-        });
-        const d = await res.json();
-        if (res.ok && d.refunded) {
-          setRefundMsg(`Point +${d.refunded} zimerudishwa (content haikucheza)`);
-        } else if (res.ok && d.already) {
-          setRefundMsg("Point zilisharudishwa");
-        }
-      } catch {
-        /* ignore */
-      }
-    },
-    [contentKey, onPlaybackFailed]
-  );
+  const onRealPlay = useCallback(() => {
+    if (chargedRef.current) return;
+    chargedRef.current = true;
+    // Charge only when playback actually starts
+    charge?.chargeOnPlay();
+  }, [charge]);
 
   useEffect(() => {
-    if (!raw) {
-      fail("Hakuna link ya kucheza.");
-      return;
-    }
-    if (!embedUrl && !videoUrl && !external) {
-      fail("Content haipatikani / link haitambuliwi.");
-    }
-  }, [raw, embedUrl, videoUrl, external, fail]);
+    if (!raw) setError("Hakuna link ya kucheza.");
+    else if (!embedUrl && !videoUrl && !external)
+      setError("Content haipatikani / link haitambuliwi.");
+  }, [raw, embedUrl, videoUrl, external]);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -98,7 +72,7 @@ export default function StreamPlayer({
       destroy: () => void;
       loadSource: (u: string) => void;
       attachMedia: (e: HTMLVideoElement) => void;
-      on: (e: string, cb: () => void) => void;
+      on: (e: string, cb: (ev: unknown, data: { fatal?: boolean }) => void) => void;
     } | null = null;
     let cancelled = false;
 
@@ -111,8 +85,10 @@ export default function StreamPlayer({
             hls = new Hls();
             hls.loadSource(videoUrl!);
             hls.attachMedia(el);
-            hls.on(Hls.Events.ERROR, () => {
-              if (!cancelled) fail("Video / stream haipatikani.");
+            hls.on(Hls.Events.ERROR, (_e, data) => {
+              if (!cancelled && data?.fatal) {
+                setError("Video / stream haipatikani.");
+              }
             });
           } else {
             el.src = videoUrl!;
@@ -123,7 +99,7 @@ export default function StreamPlayer({
         el.muted = true;
         await el.play().catch(() => setNeedsTap(true));
       } catch {
-        if (!cancelled) fail("Video haikucheza.");
+        if (!cancelled) setError("Video haikucheza.");
       }
     })();
 
@@ -131,7 +107,7 @@ export default function StreamPlayer({
       cancelled = true;
       hls?.destroy();
     };
-  }, [videoUrl, raw, fail]);
+  }, [videoUrl, raw]);
 
   const box =
     "relative w-full max-w-full rounded-2xl overflow-hidden border-2 border-red-600/80 bg-black touch-manipulation";
@@ -152,12 +128,10 @@ export default function StreamPlayer({
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold"
+          onClick={() => onRealPlay()}
         >
           <ExternalLink className="w-4 h-4" /> Fungua video
         </a>
-        {refundMsg && (
-          <p className="text-xs text-emerald-400">{refundMsg}</p>
-        )}
       </div>
     );
   }
@@ -173,11 +147,16 @@ export default function StreamPlayer({
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
             referrerPolicy="no-referrer-when-downgrade"
-            onError={() => fail("Embed haikufunguka.")}
+            onLoad={() => {
+              // Embed loaded — charge (best effort; iframe can't confirm video play)
+              setTimeout(() => onRealPlay(), 2500);
+            }}
           />
         </div>
         {error && <p className="text-sm text-amber-300">{error}</p>}
-        {refundMsg && <p className="text-xs text-emerald-400">{refundMsg}</p>}
+        <p className="text-[10px] text-slate-500">
+          Point zinakatwa baada ya player kuanza
+        </p>
       </div>
     );
   }
@@ -192,7 +171,8 @@ export default function StreamPlayer({
             controls
             playsInline
             poster={poster || undefined}
-            onError={() => fail("Video haikucheza / haipatikani.")}
+            onPlaying={onRealPlay}
+            onError={() => setError("Video haikucheza / haipatikani.")}
           />
           {needsTap && (
             <button
@@ -202,8 +182,11 @@ export default function StreamPlayer({
                 if (!el) return;
                 el.muted = false;
                 el.play()
-                  .then(() => setNeedsTap(false))
-                  .catch(() => fail("Video haikucheza."));
+                  .then(() => {
+                    setNeedsTap(false);
+                    onRealPlay();
+                  })
+                  .catch(() => setError("Video haikucheza."));
               }}
               className="absolute inset-0 flex flex-col items-center justify-center bg-black/55 text-white"
             >
@@ -215,17 +198,16 @@ export default function StreamPlayer({
           )}
         </div>
         {error && <p className="text-sm text-amber-300">{error}</p>}
-        {refundMsg && <p className="text-xs text-emerald-400">{refundMsg}</p>}
       </div>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-amber-800/50 bg-slate-900 p-6 space-y-2">
+    <div className="rounded-2xl border border-amber-800/50 bg-slate-900 p-6">
       <p className="text-sm text-amber-200">
         {error || "Haiwezi kucheza — content haipatikani."}
       </p>
-      {refundMsg && <p className="text-xs text-emerald-400">{refundMsg}</p>}
+      <p className="text-xs text-slate-500 mt-1">Hakuna point zilizokatwa.</p>
     </div>
   );
 }

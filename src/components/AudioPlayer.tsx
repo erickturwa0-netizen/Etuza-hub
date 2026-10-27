@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Play,
   Pause,
@@ -9,6 +9,7 @@ import {
   Radio,
   Music2,
 } from "lucide-react";
+import { usePlaybackCharge } from "@/components/PreRollGate";
 
 type Props = {
   src: string;
@@ -24,6 +25,8 @@ export default function AudioPlayer({
   kind = "music",
 }: Props) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const chargedRef = useRef(false);
+  const charge = usePlaybackCharge();
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -31,6 +34,12 @@ export default function AudioPlayer({
   const [error, setError] = useState("");
   const [vol, setVol] = useState(1);
   const [loading, setLoading] = useState(false);
+
+  const onRealPlay = useCallback(() => {
+    if (chargedRef.current) return;
+    chargedRef.current = true;
+    charge?.chargeOnPlay();
+  }, [charge]);
 
   useEffect(() => {
     const el = audioRef.current;
@@ -40,13 +49,12 @@ export default function AudioPlayer({
     setProgress(0);
     setError("");
     setLoading(true);
+    chargedRef.current = false;
     el.src = src;
     el.load();
     const onCanPlay = () => setLoading(false);
     el.addEventListener("canplay", onCanPlay);
-    return () => {
-      el.removeEventListener("canplay", onCanPlay);
-    };
+    return () => el.removeEventListener("canplay", onCanPlay);
   }, [src]);
 
   async function toggle() {
@@ -62,11 +70,12 @@ export default function AudioPlayer({
         await el.play();
         setPlaying(true);
         setLoading(false);
+        onRealPlay();
       }
     } catch {
       setLoading(false);
       setPlaying(false);
-      setError("Haiwezi kucheza stream hii. Jaribu station nyingine.");
+      setError("Haiwezi kucheza. Hakuna point zilizokatwa.");
     }
   }
 
@@ -119,13 +128,10 @@ export default function AudioPlayer({
   return (
     <div className="w-full max-w-md mx-auto">
       <div className="rounded-3xl overflow-hidden border border-pink-500/30 bg-gradient-to-b from-slate-900 via-slate-950 to-black shadow-2xl shadow-pink-900/30">
-        {/* Cover */}
-        <div className="pt-8 pb-2 px-6 flex flex-col items-center">
+        <div className="pt-6 pb-2 px-6 flex flex-col items-center">
           <div
-            className={`w-36 h-36 sm:w-44 sm:h-44 rounded-full overflow-hidden border-4 bg-white shadow-xl ${
-              playing
-                ? "border-pink-400 shadow-pink-500/40"
-                : "border-slate-600"
+            className={`w-32 h-32 sm:w-40 sm:h-40 rounded-full overflow-hidden border-4 bg-white shadow-xl ${
+              playing ? "border-pink-400 shadow-pink-500/40" : "border-slate-600"
             }`}
           >
             {coverUrl ? (
@@ -138,41 +144,36 @@ export default function AudioPlayer({
               />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-pink-600 to-rose-900 flex items-center justify-center">
-                <Icon className="w-14 h-14 text-white" />
+                <Icon className="w-12 h-12 text-white" />
               </div>
             )}
           </div>
-
           {isRadio && playing && (
-            <p className="mt-3 text-[11px] font-bold uppercase tracking-widest text-emerald-400">
+            <p className="mt-2 text-[11px] font-bold uppercase tracking-widest text-emerald-400">
               ● On Air
             </p>
           )}
         </div>
 
-        <div className="px-6 pb-6 space-y-4">
+        <div className="px-6 pb-5 space-y-3">
           <div className="text-center">
             <p className="text-[10px] uppercase tracking-[0.2em] text-pink-300/80 font-semibold">
               {isRadio ? "Radio Live" : "Muziki"}
             </p>
-            <h3 className="mt-1 font-bold text-lg text-white line-clamp-2">
+            <h3 className="mt-1 font-bold text-base text-white line-clamp-2">
               {title || "Now playing"}
             </h3>
           </div>
 
-          {/* Visual bars */}
           {isRadio && (
-            <div className="flex items-end justify-center gap-1 h-10">
+            <div className="flex items-end justify-center gap-1 h-8">
               {[6, 12, 18, 10, 16, 8, 14, 9].map((h, i) => (
                 <span
                   key={i}
                   className="w-1.5 rounded-full bg-pink-400/90"
                   style={{
-                    height: playing ? h * 2 : 6,
-                    transition: "height 0.25s ease",
-                    animation: playing
-                      ? `radioBar 0.6s ease-in-out ${i * 0.07}s infinite alternate`
-                      : undefined,
+                    height: playing ? h * 1.6 : 5,
+                    transition: "height 0.2s ease",
                   }}
                 />
               ))}
@@ -214,12 +215,12 @@ export default function AudioPlayer({
               type="button"
               onClick={toggle}
               disabled={loading}
-              className="w-[4.5rem] h-[4.5rem] rounded-full bg-gradient-to-br from-pink-500 to-rose-600 text-white flex items-center justify-center shadow-lg shadow-pink-600/40 active:scale-95 disabled:opacity-60"
+              className="w-16 h-16 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 text-white flex items-center justify-center shadow-lg shadow-pink-600/40 active:scale-95 disabled:opacity-60"
             >
               {playing ? (
-                <Pause className="w-8 h-8 fill-current" />
+                <Pause className="w-7 h-7 fill-current" />
               ) : (
-                <Play className="w-8 h-8 fill-current ml-1" />
+                <Play className="w-7 h-7 fill-current ml-0.5" />
               )}
             </button>
 
@@ -237,10 +238,6 @@ export default function AudioPlayer({
           {error && (
             <p className="text-xs text-amber-300 text-center">{error}</p>
           )}
-
-          <p className="text-[10px] text-slate-500 text-center">
-            Bofya play kuanza kusikiliza
-          </p>
         </div>
       </div>
 
@@ -248,28 +245,21 @@ export default function AudioPlayer({
         ref={audioRef}
         preload="auto"
         playsInline
-        crossOrigin="anonymous"
         onTimeUpdate={onTime}
         onPlaying={() => {
           setPlaying(true);
           setLoading(false);
+          onRealPlay();
         }}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
         onError={() => {
           setPlaying(false);
           setLoading(false);
-          setError("Stream haipatikani kwa sasa");
+          setError("Stream haipatikani. Hakuna point zilizokatwa.");
         }}
         className="hidden"
       />
-
-      <style>{`
-        @keyframes radioBar {
-          from { transform: scaleY(0.35); }
-          to { transform: scaleY(1); }
-        }
-      `}</style>
     </div>
   );
 }
