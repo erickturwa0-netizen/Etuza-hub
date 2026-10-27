@@ -21,6 +21,7 @@ type Settings = {
   priceOnce: number;
   instructions: string | null;
   paidCategories?: string;
+  showPackages?: boolean;
 };
 
 type Req = {
@@ -52,7 +53,10 @@ export default function AdminPaymentsPage() {
       setError(data.error || "Failed");
       return;
     }
-    setSettings(data.settings);
+    setSettings({
+      ...data.settings,
+      showPackages: data.settings?.showPackages === true,
+    });
     setPaidSet(new Set(parsePaidCategories(data.settings?.paidCategories)));
     setPending(data.pending || []);
     setRecent(data.recent || []);
@@ -86,6 +90,7 @@ export default function AdminPaymentsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...settings,
+        showPackages: !!settings.showPackages,
         paidCategories: Array.from(paidSet),
       }),
     });
@@ -120,7 +125,7 @@ export default function AdminPaymentsPage() {
       <div>
         <h1 className="text-2xl font-bold">Malipo</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Washa malipo, chagua sehemu zinazolipiwa, idhinisha waliojibu
+          Washa malipo, chagua sehemu, idhinisha waliojibu
         </p>
       </div>
 
@@ -135,7 +140,6 @@ export default function AdminPaymentsPage() {
         </div>
       )}
 
-      {/* PENDING LIST — juu ili ionekane haraka */}
       <section>
         <h2 className="text-lg font-bold mb-3">
           Wanaosubiri idhini ({pending.length})
@@ -143,7 +147,7 @@ export default function AdminPaymentsPage() {
         <div className="space-y-3">
           {pending.length === 0 && (
             <p className="text-sm text-slate-500 glass-card p-4">
-              Hakuna mtu anayesubiri. Watumiaji wakituma screenshot, wataonekana hapa.
+              Hakuna mtu anayesubiri.
             </p>
           )}
           {pending.map((r) => (
@@ -169,9 +173,6 @@ export default function AdminPaymentsPage() {
                       {r.content.title}
                     </p>
                   )}
-                  <p className="text-[10px] mt-1">
-                    {new Date(r.createdAt).toLocaleString()}
-                  </p>
                 </div>
               </div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -186,7 +187,7 @@ export default function AdminPaymentsPage() {
                   onClick={() => review(r.id, "approve")}
                   className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold"
                 >
-                  <Check className="w-3.5 h-3.5" /> Idhinisha / Fungulia
+                  <Check className="w-3.5 h-3.5" /> Idhinisha
                 </button>
                 <button
                   type="button"
@@ -214,32 +215,37 @@ export default function AdminPaymentsPage() {
           />
         </label>
 
-        {/* Category checkboxes */}
+        <label className="flex items-center justify-between gap-3">
+          <div>
+            <span className="font-semibold text-sm block">Onyesha vifurushi</span>
+            <span className="text-[11px] text-slate-500">
+              Wiki / mwezi / mwaka kwenye dialog. Zima ikiwa unatumia bei ya content pekee.
+            </span>
+          </div>
+          <input
+            type="checkbox"
+            checked={!!settings.showPackages}
+            onChange={(e) =>
+              setSettings({ ...settings, showPackages: e.target.checked })
+            }
+            className="w-5 h-5"
+          />
+        </label>
+
         <div className="rounded-xl border border-slate-700 p-3 space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-slate-200">
               Sehemu zinazolipiwa
             </p>
             <div className="flex gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => toggleAll(true)}
-                className="text-violet-400"
-              >
+              <button type="button" onClick={() => toggleAll(true)} className="text-violet-400">
                 Tiki zote
               </button>
-              <button
-                type="button"
-                onClick={() => toggleAll(false)}
-                className="text-slate-500"
-              >
+              <button type="button" onClick={() => toggleAll(false)} className="text-slate-500">
                 Ondoa zote
               </button>
             </div>
           </div>
-          <p className="text-[11px] text-slate-500">
-            Tiki = content ya sehemu hiyo inahitaji malipo (isipokuwa uliiweka Free kwenye Add Content)
-          </p>
           <div className="grid grid-cols-2 gap-2">
             {CONTENT_TYPES.map((cat) => (
               <label
@@ -286,31 +292,33 @@ export default function AdminPaymentsPage() {
           </select>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          {(
-            [
-              ["priceOnce", "Bei moja kwa moja"],
-              ["priceWeek", "Bei wiki"],
-              ["priceMonth", "Bei mwezi"],
-              ["priceYear", "Bei mwaka"],
-            ] as const
-          ).map(([key, label]) => (
-            <div key={key}>
-              <label className="text-xs text-slate-400">{label} (TZS)</label>
-              <input
-                type="number"
-                value={settings[key]}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    [key]: Number(e.target.value) || 0,
-                  })
-                }
-                className="mt-1 w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-              />
-            </div>
-          ))}
-        </div>
+        {settings.showPackages && (
+          <div className="grid grid-cols-2 gap-3">
+            {(
+              [
+                ["priceOnce", "Bei moja kwa moja"],
+                ["priceWeek", "Bei wiki"],
+                ["priceMonth", "Bei mwezi"],
+                ["priceYear", "Bei mwaka"],
+              ] as const
+            ).map(([key, label]) => (
+              <div key={key}>
+                <label className="text-xs text-slate-400">{label} (TZS)</label>
+                <input
+                  type="number"
+                  value={settings[key]}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      [key]: Number(e.target.value) || 0,
+                    })
+                  }
+                  className="mt-1 w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+                />
+              </div>
+            ))}
+          </div>
+        )}
 
         <div>
           <label className="text-xs text-slate-400">Maelekezo</label>
@@ -348,8 +356,7 @@ export default function AdminPaymentsPage() {
                 >
                   {r.status}
                 </span>{" "}
-                · {r.user.email} · {planLabel(r.plan)} ·{" "}
-                {r.amount.toLocaleString()} TZS
+                · {r.user.email} · {r.amount.toLocaleString()} TZS
               </li>
             ))}
           </ul>

@@ -57,6 +57,7 @@ const settingsSchema = z.object({
   priceOnce: z.number().int().min(0),
   instructions: z.string().optional().nullable(),
   paidCategories: z.array(z.string()).optional(),
+  showPackages: z.boolean().optional(),
 });
 
 export async function PUT(req: Request) {
@@ -72,6 +73,7 @@ export async function PUT(req: Request) {
   const paidCategories = (d.paidCategories || [...CONTENT_TYPES])
     .filter((c) => (CONTENT_TYPES as readonly string[]).includes(c))
     .join(",");
+  const showPackages = d.showPackages === true;
 
   const settings = await prisma.paymentSettings.upsert({
     where: { id: "default" },
@@ -86,6 +88,7 @@ export async function PUT(req: Request) {
       priceOnce: d.priceOnce,
       instructions: d.instructions || null,
       paidCategories,
+      showPackages,
     },
     update: {
       enabled: d.enabled,
@@ -97,6 +100,7 @@ export async function PUT(req: Request) {
       priceOnce: d.priceOnce,
       instructions: d.instructions || null,
       paidCategories,
+      showPackages,
     },
   });
   return NextResponse.json({ settings });
