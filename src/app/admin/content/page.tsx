@@ -3,7 +3,20 @@
 import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Film, Gamepad2, Shield, Tv, Radio, Plus, Eye, Trash2, ToggleLeft } from "lucide-react";
+import {
+  Film,
+  Gamepad2,
+  Shield,
+  Tv,
+  Radio,
+  Plus,
+  Trash2,
+  ToggleLeft,
+  Pencil,
+  Check,
+  X,
+} from "lucide-react";
+import { networkLabel, planLabel, TYPE_LABELS } from "@/lib/payments";
 
 type Item = {
   id: string;
@@ -12,24 +25,52 @@ type Item = {
   category: string | null;
   status: string;
   viewsCount: number;
+  priceMode?: string;
+  priceTzs?: number;
+};
+
+type PayReq = {
+  id: string;
+  plan: string;
+  amount: number;
+  senderPhone: string;
+  senderNetwork: string;
+  screenshotUrl: string;
+  user: { email: string; fullName: string | null };
+  content: { title: string; type: string } | null;
 };
 
 function ContentList() {
   const searchParams = useSearchParams();
   const typeFilter = searchParams.get("type");
   const [items, setItems] = useState<Item[]>([]);
+  const [pending, setPending] = useState<PayReq[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [msg, setMsg] = useState("");
+  const [pointsAds, setPointsAds] = useState(true);
+  const [savingAds, setSavingAds] = useState(false);
 
   async function load() {
     setLoading(true);
     setError("");
     try {
-      const q = typeFilter ? `?type=${typeFilter}` : "";
-      const res = await fetch(`/api/content${q}`, { credentials: "include" });
-      const data = await res.json();
-      if (!res.ok) setError(data.error || "Failed to load");
-      setItems(data.items || []);
+      const q = typeFilter
+        ? `?type=${typeFilter}&mine=1`
+        : "?mine=1";
+      const [cRes, pRes] = await Promise.all([
+        fetch(`/api/content${q}`, { credentials: "include" }),
+        fetch("/api/admin/payments", { credentials: "include" }),
+      ]);
+      const cData = await cRes.json();
+      if (!cRes.ok) setError(cData.error || "Failed to load");
+      setItems(cData.items || []);
+
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        setPending(pData.pending || []);
+        setPointsAds(pData.settings?.pointsAdsEnabled !== false);
+      }
     } catch {
       setError("Tatizo la mtandao");
     }
@@ -58,6 +99,55 @@ function ContentList() {
     load();
   }
 
+  async function review(id: string, action: "approve" | "reject") {
+    const res = await fetch("/api/admin/payments", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action }),
+    });
+    if (res.ok) {
+      setMsg(action === "approve" ? "Umeidhinisha ✓" : "Umekataa");
+      load();
+    }
+  }
+
+  async function savePointsAds(next: boolean) {
+    setSavingAds(true);
+    setPointsAds(next);
+    try {
+      // Load full settings then PUT with pointsAdsEnabled
+      const res = await fetch("/api/admin/payments", { credentials: "include" });
+      const data = await res.json();
+      const s = data.settings || {};
+      await fetch("/api/admin/payments", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: !!s.enabled,
+          payPhone: s.payPhone || "0000000000",
+          payNetwork: s.payNetwork || "vodacom",
+          priceWeek: s.priceWeek ?? 2000,
+          priceMonth: s.priceMonth ?? 5000,
+          priceYear: s.priceYear ?? 40000,
+          priceOnce: s.priceOnce ?? 1000,
+          instructions: s.instructions,
+          showPackages: !!s.showPackages,
+          pointsAdsEnabled: next,
+          paidCategories: (s.paidCategories || "")
+            .split(",")
+            .filter(Boolean),
+          vpnPackages: s.vpnPackages,
+        }),
+      });
+      setMsg(next ? "Tangazo la point limewashwa" : "Tangazo la point limezimwa");
+    } catch {
+      setError("Imeshindikana kuhifadhi");
+    }
+    setSavingAds(false);
+  }
+
   const icon = (type: string) => {
     if (type === "movie") return <Film className="w-3.5 h-3.5" />;
     if (type === "game") return <Gamepad2 className="w-3.5 h-3.5" />;
@@ -67,12 +157,13 @@ function ContentList() {
   };
 
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+    <div className="space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Content</h1>
           <p className="text-sm text-slate-500 mt-1">
-            {loading ? "…" : `${items.length} items`}
+            Content uliyopakia wewe tu (si za API)
+            {loading ? "" : ` · ${items.length} items`}
           </p>
         </div>
         <Link
@@ -84,7 +175,78 @@ function ContentList() {
         </Link>
       </div>
 
-      <div className="flex gap-2 mb-6 flex-wrap">
+      {msg && (
+        <div className="px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-sm">{msg}</div>
+      )}
+      {error && (
+        <div className="px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-sm">{error}</div>
+      )}
+
+      {/* Points ads toggle */}
+      <label className="glass-card p-4 flex items-center justify-between gap-3 max-w-xl">
+        <div>
+          <p className="font-semibold text-sm">Tangazo la point (Tazama tangazo)</p>
+          <p className="text-[11px] text-slate-500">
+            Zima = hakuna "tazama tangazo". Mwenye kifurushi cha malipo haoni tangazo hadi muda uishe.
+          </p>
+        </div>
+        <input
+          type="checkbox"
+          className="w-5 h-5"
+          checked={pointsAds}
+          disabled={savingAds}
+          onChange={(e) => savePointsAds(e.target.checked)}
+        />
+      </label>
+
+      {/* Pending payments on content page */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-bold">Idhinisha malipo ({pending.length})</h2>
+          <Link href="/admin/payments" className="text-xs text-violet-400">
+            Malipo page →
+          </Link>
+        </div>
+        <div className="space-y-3">
+          {pending.length === 0 && (
+            <p className="text-sm text-slate-500 glass-card p-4">Hakuna anayesubiri.</p>
+          )}
+          {pending.slice(0, 10).map((r) => (
+            <div key={r.id} className="glass-card p-4 space-y-2">
+              <div className="flex flex-wrap justify-between gap-2 text-sm">
+                <div>
+                  <p className="font-semibold">{r.user.fullName || r.user.email}</p>
+                  <p className="text-xs text-slate-500">
+                    {r.senderPhone} · {networkLabel(r.senderNetwork)}
+                  </p>
+                </div>
+                <div className="text-right text-xs text-slate-400">
+                  <p className="text-violet-300 font-semibold">
+                    {r.amount.toLocaleString()} TZS · {planLabel(r.plan)}
+                  </p>
+                  {r.content && (
+                    <p>
+                      {TYPE_LABELS[r.content.type] || r.content.type}: {r.content.title}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={r.screenshotUrl} alt="" className="max-h-40 rounded-lg border border-slate-700" />
+              <div className="flex gap-2">
+                <button type="button" onClick={() => review(r.id, "approve")} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold inline-flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" /> Idhinisha
+                </button>
+                <button type="button" onClick={() => review(r.id, "reject")} className="px-3 py-2 rounded-lg bg-red-600/80 text-white text-xs font-semibold inline-flex items-center gap-1">
+                  <X className="w-3.5 h-3.5" /> Kataa
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="flex gap-2 mb-2 flex-wrap">
         {[
           { label: "All", href: "/admin/content" },
           { label: "Movies", href: "/admin/content?type=movie" },
@@ -108,18 +270,12 @@ function ContentList() {
         ))}
       </div>
 
-      {error && (
-        <div className="mb-4 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-          {error}
-        </div>
-      )}
-
       <div className="glass-card overflow-hidden">
         {loading ? (
           <p className="p-6 text-slate-500 text-sm">Inapakia…</p>
         ) : items.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="text-slate-400 mb-3">Hakuna content bado</p>
+            <p className="text-slate-400 mb-3">Hakuna content uliyopakia</p>
             <Link href="/admin/content/new" className="text-violet-400 text-sm">
               + Ongeza
             </Link>
@@ -146,7 +302,9 @@ function ContentList() {
                         <span className="font-medium truncate max-w-[160px]">{c.title}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 capitalize text-slate-400 hidden sm:table-cell">{c.type}</td>
+                    <td className="px-4 py-3 capitalize text-slate-400 hidden sm:table-cell">
+                      {c.type}
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
@@ -160,6 +318,13 @@ function ContentList() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
+                        <Link
+                          href={`/admin/content/${c.id}/edit`}
+                          className="p-1.5 text-slate-400 hover:text-violet-300"
+                          title="Edit"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Link>
                         <button type="button" onClick={() => toggleStatus(c.id, c.status)} className="p-1.5 text-slate-400 hover:text-violet-300">
                           <ToggleLeft className="w-4 h-4" />
                         </button>
