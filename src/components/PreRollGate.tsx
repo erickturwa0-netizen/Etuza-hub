@@ -81,7 +81,6 @@ export default function PreRollGate({
 
         if (accessRes.ok) {
           const a = await accessRes.json();
-          // Active paid package → skip ad until expires
           if (a.hasPaidAccess) {
             if (!cancelled) {
               setUnlocked(true);
@@ -118,50 +117,44 @@ export default function PreRollGate({
   }, [contentKey, enabled]);
 
   useEffect(() => {
-    if (!counting || left <= 0) return;
-    const t = setTimeout(() => setLeft((n) => n - 1), 1000);
-    return () => clearTimeout(t);
-  }, [counting, left]);
-
-  useEffect(() => {
-    if (!(counting && left <= 0)) return;
-    let cancelled = false;
-    (async () => {
-      let got = 0;
-      try {
-        const res = await fetch("/api/points/reward-ad", { method: "POST" });
-        if (res.ok) {
-          const d = await res.json();
-          if (typeof d.points === "number" && !cancelled) {
-            setPoints(d.points);
-            got = d.awarded ?? POINTS.WATCH_AD ?? 1;
-            setAwarded(got);
-          }
-        }
-      } catch {
-        /* ignore */
-      }
+    if (!counting) return;
+    if (left <= 0) {
+      setCounting(false);
+      setUnlocked(true);
       try {
         sessionStorage.setItem(preRollStorageKey(contentKey), "1");
       } catch {
         /* ignore */
       }
-      if (!cancelled) {
-        setCounting(false);
-        setUnlocked(true);
-        if (got) setMsg(`+${got} point`);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+      return;
+    }
+    const t = setTimeout(() => setLeft((n) => n - 1), 1000);
+    return () => clearTimeout(t);
   }, [counting, left, contentKey]);
 
-  function startAd() {
-    setAdOpened(true);
-    setLeft(PRE_ROLL_SECONDS);
-    setCounting(true);
-    window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
+  async function claimAdReward() {
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/points/reward-ad", {
+        method: "POST",
+        credentials: "include",
+      });
+      const d = await res.json();
+      if (res.ok) {
+        if (typeof d.points === "number") {
+          setPoints(d.points);
+          const got = d.awarded ?? POINTS.AD_REWARD ?? 1;
+          setAwarded(got);
+          setMsg(`+${got} point ✓`);
+        }
+      } else {
+        setMsg(d.error || "Imeshindikana");
+      }
+    } catch {
+      setMsg("Tatizo la mtandao");
+    }
+    setBusy(false);
   }
 
   async function spendAndWatch() {
@@ -170,23 +163,20 @@ export default function PreRollGate({
     try {
       const res = await fetch("/api/points/spend", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contentKey }),
       });
       const d = await res.json();
-      if (!res.ok) {
-        if (d.code === "NO_POINTS") setShowOutModal(true);
-        else setMsg(d.error || "Imeshindikana");
-        setBusy(false);
-        return;
+      if (res.ok) {
+        if (typeof d.points === "number") setPoints(d.points);
+        setCounting(true);
+        setLeft(PRE_ROLL_SECONDS);
+      } else if (d.code === "NO_POINTS") {
+        setShowOutModal(true);
+      } else {
+        setMsg(d.error || "Imeshindikana");
       }
-      if (typeof d.points === "number") setPoints(d.points);
-      try {
-        sessionStorage.setItem(preRollStorageKey(contentKey), "1");
-      } catch {
-        /* ignore */
-      }
-      setUnlocked(true);
     } catch {
       setMsg("Tatizo la mtandao");
     }
@@ -201,73 +191,92 @@ export default function PreRollGate({
     );
   }
 
-  if (!enabled || !adsOn || unlocked) {
-    return <>{children}</>;
-  }
+  if (unlocked) return <>{children}</>;
+
+  if (!adsOn) return <>{children}</>;
 
   return (
     <>
-      <div className="rounded-2xl border border-slate-700 bg-slate-900 p-5 space-y-4">
-        <div className="flex items-center gap-2 text-violet-300">
+      <div className="rounded-2xl border border-slate-700 bg-slate-900/80 p-5 space-y-4">
+        <div className="flex items-center gap-2 text-amber-200">
           <Coins className="w-5 h-5" />
-          <h3 className="font-semibold text-sm">Tazama au lipia kwa point</h3>
+          <h3 className="font-semibold text-sm">Point zinahitajika</h3>
         </div>
-        {title && <p className="text-xs text-slate-400">{title}</p>}
-        {points !== null && (
-          <p className="text-xs text-slate-400">
-            Point zako: <b className="text-white">{points}</b>
+        {title && <p className="text-xs text-slate-400 line-clamp-1">{title}</p>}
+
+        {user ? (
+          <p className="text-sm text-slate-300">
+            Point zako:{" "}
+            <b className="text-white">{points ?? user.points}</b>
           </p>
-        )}
-
-        {counting ? (
-          <p className="text-sm text-amber-200">Subiri tangazo… {left}s</p>
         ) : (
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button
-              type="button"
-              onClick={startAd}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold"
-            >
-              <Play className="w-4 h-4" /> Tazama tangazo (+point)
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={spendAndWatch}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold disabled:opacity-50"
-            >
-              <Coins className="w-4 h-4" /> Tumia point kutazama
-            </button>
-            <Link
-              href="/invite"
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-600 text-slate-300 text-sm"
-            >
-              <UserPlus className="w-4 h-4" /> Alika rafiki
-            </Link>
-          </div>
-        )}
-
-        {adOpened && !counting && (
-          <a
-            href={PRE_ROLL_AD_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-slate-500"
-          >
-            <ExternalLink className="w-3 h-3" /> Fungua tangazo tena
-          </a>
+          <p className="text-sm text-slate-400">Ingia ili utumie point au ulipe.</p>
         )}
 
         {msg && <p className="text-xs text-emerald-400">{msg}</p>}
 
-        <p className="text-[11px] text-slate-500">
-          Ukilipia kifurushi hutakutana na tangazo hadi muda wa kifurushi uishe.
-        </p>
+        <div className="flex flex-col gap-2">
+          {user && (
+            <button
+              type="button"
+              disabled={busy || counting}
+              onClick={spendAndWatch}
+              className="w-full py-3 rounded-xl bg-violet-600 text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
+            >
+              <Play className="w-4 h-4" />
+              {counting
+                ? `Subiri ${left}s…`
+                : `Tumia ${POINTS.WATCH_COST} point — Tazama`}
+            </button>
+          )}
+
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setAdOpened(true);
+              window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
+            }}
+            className="w-full py-3 rounded-xl border border-slate-600 text-slate-200 text-sm font-medium inline-flex items-center justify-center gap-2"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Tazama tangazo (+{POINTS.AD_REWARD})
+          </button>
+
+          {adOpened && user && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={claimAdReward}
+              className="w-full py-2.5 rounded-xl bg-emerald-600/90 text-white text-sm font-semibold"
+            >
+              Nimetazama — Pata point
+            </button>
+          )}
+
+          {!user && (
+            <Link
+              href={`/login?next=${encodeURIComponent(
+                typeof window !== "undefined" ? window.location.pathname : "/"
+              )}`}
+              className="w-full py-3 rounded-xl bg-slate-100 text-slate-900 text-sm font-semibold text-center"
+            >
+              Ingia
+            </Link>
+          )}
+
+          {user && (
+            <Link
+              href="/account"
+              className="text-center text-xs text-violet-400 inline-flex items-center justify-center gap-1"
+            >
+              <UserPlus className="w-3.5 h-3.5" /> Alika rafiki / Account
+            </Link>
+          )}
+        </div>
       </div>
 
-      {showOutModal && (
-        <PointsOutModal onClose={() => setShowOutModal(false)} />
-      )}
+      <PointsOutModal open={showOutModal} onClose={() => setShowOutModal(false)} />
     </>
   );
 }
