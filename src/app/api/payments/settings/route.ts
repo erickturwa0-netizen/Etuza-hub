@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { getPaymentSettings } from "@/lib/payments";
 
-/** Public: whether payments are on + pay number (for dialog). */
+/** Public: paywall dialog settings */
 export async function GET() {
   try {
     const s = await getPaymentSettings();
+    const showPackages =
+      (s as { showPackages?: boolean }).showPackages === true;
     return NextResponse.json({
       enabled: s.enabled,
       payPhone: s.enabled ? s.payPhone : "",
@@ -14,9 +16,10 @@ export async function GET() {
       priceYear: s.priceYear,
       priceOnce: s.priceOnce,
       instructions: s.instructions,
+      showPackages,
     });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ enabled: false });
+    return NextResponse.json({ enabled: false, showPackages: false });
   }
 }

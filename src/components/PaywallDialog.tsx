@@ -20,6 +20,7 @@ type Settings = {
   priceYear: number;
   priceOnce: number;
   instructions: string | null;
+  showPackages?: boolean;
 };
 
 export default function PaywallDialog({
@@ -35,10 +36,11 @@ export default function PaywallDialog({
   open: boolean;
   onClose: () => void;
   defaultPlan?: PayPlan;
+  /** Fixed price set on this content — hides package grid */
   contentPrice?: number;
 }) {
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [plan, setPlan] = useState<PayPlan>(defaultPlan || "month");
+  const [plan, setPlan] = useState<PayPlan>(defaultPlan || "once");
   const [senderPhone, setSenderPhone] = useState("");
   const [senderNetwork, setSenderNetwork] = useState<PayNetwork>("vodacom");
   const [screenshot, setScreenshot] = useState("");
@@ -50,14 +52,25 @@ export default function PaywallDialog({
     if (!open) return;
     fetch("/api/payments/settings")
       .then((r) => r.json())
-      .then(setSettings)
+      .then((s) => {
+        setSettings(s);
+        // Content has its own price → force once plan
+        if (contentPrice && contentPrice > 0) {
+          setPlan("once");
+        } else if (defaultPlan) {
+          setPlan(defaultPlan);
+        }
+      })
       .catch(() => {});
-  }, [open]);
+  }, [open, contentPrice, defaultPlan]);
 
   if (!open) return null;
 
+  const fixedPrice = !!(contentPrice && contentPrice > 0);
+  const showPackages = !fixedPrice && !!settings?.showPackages;
+
   function amount() {
-    if (contentPrice && contentPrice > 0) return contentPrice;
+    if (fixedPrice) return contentPrice as number;
     if (!settings) return 0;
     if (plan === "week") return settings.priceWeek;
     if (plan === "month") return settings.priceMonth;
@@ -87,18 +100,15 @@ export default function PaywallDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contentId: contentId || null,
-          plan,
+          plan: fixedPrice ? "once" : plan,
           senderPhone,
           senderNetwork,
           screenshotUrl: screenshot,
         }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Imeshindikana");
-      } else {
-        setMsg(data.message || "Ombi limetumwa ✓");
-      }
+      if (!res.ok) setError(data.error || "Imeshindikana");
+      else setMsg(data.message || "Ombi limetumwa ✓");
     } catch {
       setError("Tatizo la mtandao");
     }
@@ -123,7 +133,10 @@ export default function PaywallDialog({
         <div className="p-4 space-y-4">
           {settings && (
             <div className="rounded-xl bg-violet-950/40 border border-violet-800/40 p-3 text-sm">
-              <p className="text-slate-300">Tuma TZS <b className="text-white">{amount().toLocaleString()}</b></p>
+              <p className="text-slate-300">
+                Tuma TZS{" "}
+                <b className="text-white">{amount().toLocaleString()}</b>
+              </p>
               <p className="mt-1 text-violet-200 font-mono text-lg tracking-wide">
                 {settings.payPhone}
               </p>
@@ -136,37 +149,40 @@ export default function PaywallDialog({
             </div>
           )}
 
-          <div>
-            <label className="text-xs text-slate-400">Kifurushi</label>
-            <div className="grid grid-cols-2 gap-2 mt-1">
-              {PLANS.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPlan(p)}
-                  className={`px-2 py-2 rounded-lg text-xs border ${
-                    plan === p
-                      ? "border-violet-500 bg-violet-950 text-violet-200"
-                      : "border-slate-700 text-slate-400"
-                  }`}
-                >
-                  {planLabel(p)}
-                  {settings && (
-                    <span className="block text-[10px] opacity-80">
-                      {(p === "week"
-                        ? settings.priceWeek
-                        : p === "month"
-                          ? settings.priceMonth
-                          : p === "year"
-                            ? settings.priceYear
-                            : settings.priceOnce
-                      ).toLocaleString()} TZS
-                    </span>
-                  )}
-                </button>
-              ))}
+          {showPackages && (
+            <div>
+              <label className="text-xs text-slate-400">Kifurushi</label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                {PLANS.filter((p) => p !== "timed").map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPlan(p)}
+                    className={`px-2 py-2 rounded-lg text-xs border ${
+                      plan === p
+                        ? "border-violet-500 bg-violet-950 text-violet-200"
+                        : "border-slate-700 text-slate-400"
+                    }`}
+                  >
+                    {planLabel(p)}
+                    {settings && (
+                      <span className="block text-[10px] opacity-80">
+                        {(p === "week"
+                          ? settings.priceWeek
+                          : p === "month"
+                            ? settings.priceMonth
+                            : p === "year"
+                              ? settings.priceYear
+                              : settings.priceOnce
+                        ).toLocaleString()}{" "}
+                        TZS
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <div>
             <label className="text-xs text-slate-400">Namba uliyotumia kutuma</label>
@@ -203,7 +219,11 @@ export default function PaywallDialog({
             />
             {screenshot && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={screenshot} alt="proof" className="mt-2 max-h-32 rounded-lg border border-slate-700" />
+              <img
+                src={screenshot}
+                alt="proof"
+                className="mt-2 max-h-32 rounded-lg border border-slate-700"
+              />
             )}
           </div>
 
