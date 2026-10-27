@@ -17,6 +17,11 @@ const schema = z.object({
   network: z.string().optional().nullable(),
   configText: z.string().optional().nullable(),
   fileUrl: z.string().optional().nullable(),
+  priceMode: z
+    .enum(["free", "once", "week", "month", "year", "timed"])
+    .optional(),
+  priceTzs: z.number().int().min(0).optional(),
+  accessDays: z.number().int().min(0).optional(),
 });
 
 export async function GET(

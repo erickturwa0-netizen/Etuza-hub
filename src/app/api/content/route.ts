@@ -30,8 +30,10 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
     const publishedOnly = searchParams.get("published") === "1";
+    const mineOnly = searchParams.get("mine") === "1";
 
-    if (type === "movie" || type === "drama") {
+    // Public catalog may still hydrate API movies; admin mine=1 skips that
+    if (!mineOnly && (type === "movie" || type === "drama")) {
       try {
         await ensureElitePlexContent(type);
       } catch (e) {
@@ -39,9 +41,22 @@ export async function GET(req: Request) {
       }
     }
 
-    const where: Record<string, string> = {};
+    const where: Record<string, unknown> = {};
     if (type) where.type = type;
     if (publishedOnly) where.status = "published";
+
+    if (mineOnly) {
+      // Only admin-uploaded: has createdBy, not eliteplex API imports
+      where.AND = [
+        { createdBy: { not: null } },
+        {
+          OR: [
+            { category: null },
+            { NOT: { category: { startsWith: "eliteplex" } } },
+          ],
+        },
+      ];
+    }
 
     const items = await prisma.content.findMany({
       where,
