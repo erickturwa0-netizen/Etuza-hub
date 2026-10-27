@@ -35,6 +35,7 @@ export type VpnPackage = {
   fileUrl: string;
 };
 
+/** Default VPN packages — no year */
 export const DEFAULT_VPN_PACKAGES: VpnPackage[] = [
   {
     plan: "once",
@@ -59,15 +60,6 @@ export const DEFAULT_VPN_PACKAGES: VpnPackage[] = [
     enabled: true,
     priceTzs: 5000,
     title: "Mwezi 1",
-    protocol: "",
-    configText: "",
-    fileUrl: "",
-  },
-  {
-    plan: "year",
-    enabled: true,
-    priceTzs: 40000,
-    title: "Mwaka 1",
     protocol: "",
     configText: "",
     fileUrl: "",
@@ -115,22 +107,21 @@ export function parsePaidCategories(raw: string | null | undefined): string[] {
 }
 
 export function parseVpnPackages(raw: string | null | undefined): VpnPackage[] {
-  if (!raw) return DEFAULT_VPN_PACKAGES.map((p) => ({ ...p }));
+  const base = DEFAULT_VPN_PACKAGES.map((p) => ({ ...p }));
+  if (!raw) return base;
   try {
     const arr = JSON.parse(raw) as VpnPackage[];
-    if (!Array.isArray(arr) || !arr.length) {
-      return DEFAULT_VPN_PACKAGES.map((p) => ({ ...p }));
-    }
-    return DEFAULT_VPN_PACKAGES.map((def) => {
+    if (!Array.isArray(arr) || !arr.length) return base;
+    // Only keep once / week / month — drop year
+    return base.map((def) => {
       const found = arr.find((a) => a.plan === def.plan);
       return found ? { ...def, ...found, plan: def.plan } : { ...def };
     });
   } catch {
-    return DEFAULT_VPN_PACKAGES.map((p) => ({ ...p }));
+    return base;
   }
 }
 
-/** Ensure optional payment columns exist (Neon / older DBs) */
 export async function ensurePaymentColumns() {
   try {
     await prisma.$executeRawUnsafe(`
@@ -186,7 +177,6 @@ export function priceForPlan(
   preferPackages?: boolean
 ) {
   if (vpnPkg && vpnPkg.priceTzs > 0) return vpnPkg.priceTzs;
-  // When packages are shown, use plan prices not content fixed price
   if (!preferPackages && contentPrice && contentPrice > 0) return contentPrice;
   switch (plan) {
     case "week":
