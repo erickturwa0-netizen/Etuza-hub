@@ -7,6 +7,7 @@ import {
   priceForPlan,
   NETWORKS,
   PLANS,
+  parseVpnPackages,
 } from "@/lib/payments";
 
 const schema = z.object({
@@ -32,21 +33,40 @@ export async function POST(req: Request) {
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Jaza namba, mtandao na screenshot" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Jaza namba, mtandao na screenshot" },
+        { status: 400 }
+      );
     }
 
     let contentPrice: number | null = null;
+    let contentType = "";
     if (parsed.data.contentId) {
       const c = await prisma.content.findUnique({
         where: { id: parsed.data.contentId },
-        select: { priceTzs: true, priceMode: true },
+        select: { priceTzs: true, priceMode: true, type: true },
       });
-      if (c && c.priceTzs > 0) contentPrice = c.priceTzs;
+      if (c) {
+        contentType = c.type;
+        if (c.priceTzs > 0) contentPrice = c.priceTzs;
+      }
     }
 
-    const amount = priceForPlan(settings, parsed.data.plan, contentPrice);
+    const vpnPackages = parseVpnPackages(
+      (settings as { vpnPackages?: string | null }).vpnPackages
+    );
+    const vpnPkg =
+      contentType === "vpn"
+        ? vpnPackages.find((p) => p.plan === parsed.data.plan && p.enabled)
+        : null;
 
-    // Limit screenshot size (~1.5MB base64)
+    const amount = priceForPlan(
+      settings,
+      parsed.data.plan,
+      contentPrice,
+      vpnPkg
+    );
+
     if (parsed.data.screenshotUrl.length > 2_000_000) {
       return NextResponse.json(
         { error: "Screenshot ni kubwa mno (max ~1.5MB)" },

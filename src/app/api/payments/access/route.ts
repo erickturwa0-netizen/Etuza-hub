@@ -5,6 +5,8 @@ import {
   getPaymentSettings,
   userHasAccess,
   parsePaidCategories,
+  parseVpnPackages,
+  getUserAccessRow,
 } from "@/lib/payments";
 
 export async function GET(req: Request) {
@@ -13,8 +15,6 @@ export async function GET(req: Request) {
     const contentId = searchParams.get("contentId") || "";
 
     const settings = await getPaymentSettings();
-
-    // Global paywall switch must be ON
     if (!settings.enabled) {
       return NextResponse.json({
         locked: false,
@@ -34,6 +34,9 @@ export async function GET(req: Request) {
 
     const paidCats = parsePaidCategories(
       (settings as { paidCategories?: string }).paidCategories
+    );
+    const vpnPackages = parseVpnPackages(
+      (settings as { vpnPackages?: string | null }).vpnPackages
     );
 
     let priceMode = "free";
@@ -59,33 +62,53 @@ export async function GET(req: Request) {
           contentType = c.type || "";
         }
       } catch {
-        /* columns missing */
+        /* ignore */
       }
 
-      // Explicit free → always open
-      if (priceMode === "free") {
-        return NextResponse.json({
-          locked: false,
-          enabled: true,
-          free: true,
-        });
+      // Explicit free content → open
+      if (priceMode === "free" && contentType !== "vpn") {
+        // Still lock if category is bulk-paid (movies etc.)
+        if (!contentType || !paidCats.includes(contentType)) {
+          return NextResponse.json({
+            locked: false,
+            enabled: true,
+            free: true,
+          });
+        }
       }
 
-      // Paid content (once / week / month / year / timed)
-      // OR type is in paid categories list
+      if (priceMode === "free" && contentType === "vpn") {
+        // VPN without price: lock only if any vpn package enabled
+        const anyPkg = vpnPackages.some((p) => p.enabled && p.priceTzs > 0);
+        if (!anyPkg) {
+          return NextResponse.json({
+            locked: false,
+            enabled: true,
+            free: true,
+          });
+        }
+      }
+
+      // Content has its own price → always lock (no category tick needed)
       const explicitlyPaid =
         priceMode === "once" ||
         priceMode === "week" ||
         priceMode === "month" ||
         priceMode === "year" ||
         priceMode === "timed" ||
-        (priceTzs > 0 && priceMode !== "free");
+        priceTzs > 0;
 
       const categoryPaid =
-        !!contentType && paidCats.includes(contentType);
+        contentType !== "vpn" &&
+        !!contentType &&
+        paidCats.includes(contentType);
 
-      // If neither content nor category requires payment → open
-      if (!explicitlyPaid && !categoryPaid) {
+      const vpnNeedsPay =
+        contentType === "vpn" &&
+        (explicitlyPaid ||
+          vpnPackages.some((p) => p.enabled && p.priceTzs > 0));
+
+      if (!explicitlyPaid && !categoryPaid && !vpnNeedsPay) {
         return NextResponse.json({
           locked: false,
           enabled: true,
@@ -93,23 +116,44 @@ export async function GET(req: Request) {
         });
       }
 
-      // Has access already?
       const ok = await userHasAccess(session.userId, contentId);
+      let vpnDeliver: {
+        plan: string;
+        fileUrl?: string;
+        configText?: string;
+        protocol?: string;
+      } | null = null;
+
+      if (ok && contentType === "vpn") {
+        const row = await getUserAccessRow(session.userId, contentId);
+        const pkg = vpnPackages.find((p) => p.plan === row?.plan);
+        if (pkg) {
+          vpnDeliver = {
+            plan: pkg.plan,
+            fileUrl: pkg.fileUrl || undefined,
+            configText: pkg.configText || undefined,
+            protocol: pkg.protocol || undefined,
+          };
+        }
+      }
+
       return NextResponse.json({
         locked: !ok,
         enabled: true,
         priceMode,
         priceTzs,
         accessDays,
-        admin: session.role === "admin",
+        contentType,
+        isVpn: contentType === "vpn",
+        vpnPackages: contentType === "vpn"
+          ? vpnPackages.filter((p) => p.enabled)
+          : [],
+        vpnDeliver,
       });
     }
 
     const ok = await userHasAccess(session.userId, "");
-    return NextResponse.json({
-      locked: !ok,
-      enabled: true,
-    });
+    return NextResponse.json({ locked: !ok, enabled: true });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ locked: false, enabled: false });

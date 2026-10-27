@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
-import { getPaymentSettings } from "@/lib/payments";
+import {
+  getPaymentSettings,
+  parseVpnPackages,
+} from "@/lib/payments";
 
-/** Public: paywall dialog settings */
 export async function GET() {
   try {
     const s = await getPaymentSettings();
     const showPackages =
       (s as { showPackages?: boolean }).showPackages === true;
+    const vpnPackages = parseVpnPackages(
+      (s as { vpnPackages?: string | null }).vpnPackages
+    ).filter((p) => p.enabled);
+
     return NextResponse.json({
       enabled: s.enabled,
       payPhone: s.enabled ? s.payPhone : "",
@@ -17,9 +23,10 @@ export async function GET() {
       priceOnce: s.priceOnce,
       instructions: s.instructions,
       showPackages,
+      vpnPackages,
     });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ enabled: false, showPackages: false });
+    return NextResponse.json({ enabled: false, showPackages: false, vpnPackages: [] });
   }
 }
