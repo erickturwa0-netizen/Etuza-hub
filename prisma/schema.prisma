@@ -58,6 +58,8 @@ model Content {
   priceMode   String   @default("free") @map("price_mode")
   priceTzs    Int      @default(0) @map("price_tzs")
   accessDays  Int      @default(0) @map("access_days")
+  /** JSON: VPN packages for this content only */
+  vpnPackages String?  @map("vpn_packages") @db.Text
   viewsCount  Int      @default(0) @map("views_count")
   createdBy   String?  @map("created_by")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -100,21 +102,20 @@ model ViewSession {
 }
 
 model PaymentSettings {
-  id             String   @id @default("default")
-  enabled        Boolean  @default(false)
-  payPhone       String   @default("") @map("pay_phone")
-  payNetwork     String   @default("vodacom") @map("pay_network")
-  priceWeek      Int      @default(2000) @map("price_week")
-  priceMonth     Int      @default(5000) @map("price_month")
-  priceYear      Int      @default(40000) @map("price_year")
-  priceOnce      Int      @default(1000) @map("price_once")
-  instructions   String?  @default("Tuma pesa kisha pakia screenshot ya muamala.")
-  paidCategories String   @default("movie,drama,tv,music,radio,game") @map("paid_categories")
-  showPackages   Boolean  @default(false) @map("show_packages")
-  vpnPackages    String?  @map("vpn_packages") @db.Text
-  /** Pre-roll / tazama tangazo for points */
-  pointsAdsEnabled Boolean @default(true) @map("points_ads_enabled")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id               String   @id @default("default")
+  enabled          Boolean  @default(false)
+  payPhone         String   @default("") @map("pay_phone")
+  payNetwork       String   @default("vodacom") @map("pay_network")
+  priceWeek        Int      @default(2000) @map("price_week")
+  priceMonth       Int      @default(5000) @map("price_month")
+  priceYear        Int      @default(40000) @map("price_year")
+  priceOnce        Int      @default(1000) @map("price_once")
+  instructions     String?  @default("Tuma pesa kisha pakia screenshot ya muamala.")
+  paidCategories   String   @default("movie,drama,tv,music,radio,game") @map("paid_categories")
+  showPackages     Boolean  @default(false) @map("show_packages")
+  vpnPackages      String?  @map("vpn_packages") @db.Text
+  pointsAdsEnabled Boolean  @default(true) @map("points_ads_enabled")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   @@map("PaymentSettings")
 }
