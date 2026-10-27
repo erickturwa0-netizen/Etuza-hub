@@ -10,6 +10,7 @@ import {
   parseVpnPackages,
   DEFAULT_VPN_PACKAGES,
 } from "@/lib/payments";
+import { POINTS } from "@/lib/points";
 
 async function requireAdmin() {
   const session = await getSession();
@@ -18,6 +19,23 @@ async function requireAdmin() {
   if (session.role !== "admin")
     return { error: NextResponse.json({ error: "Admin only" }, { status: 403 }) };
   return { session };
+}
+
+async function ensureUserPackageCols() {
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "package_points" INTEGER NOT NULL DEFAULT 0
+    `);
+  } catch {
+    /* ignore */
+  }
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "package_points_expires_at" TIMESTAMP
+    `);
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function GET() {
@@ -158,6 +176,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Data si sahihi" }, { status: 400 });
   }
 
+  await ensureUserPackageCols();
+
   const reqRow = await prisma.paymentRequest.findUnique({
     where: { id: parsed.data.id },
     include: { content: { select: { accessDays: true, priceMode: true } } },
@@ -202,6 +222,27 @@ export async function POST(req: Request) {
       },
     }),
   ]);
+
+  // Grant package bonus points (expire with package; normal points untouched)
+  try {
+    await prisma.user.update({
+      where: { id: reqRow.userId },
+      data: {
+        packagePoints: POINTS.PACKAGE_BONUS,
+        packagePointsExpiresAt: expiresAt,
+      },
+    });
+    await prisma.pointLog.create({
+      data: {
+        userId: reqRow.userId,
+        amount: POINTS.PACKAGE_BONUS,
+        reason: "package_bonus",
+        meta: plan,
+      },
+    });
+  } catch (e) {
+    console.error("package points grant", e);
+  }
 
   return NextResponse.json({ ok: true });
 }

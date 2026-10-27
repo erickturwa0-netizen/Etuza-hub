@@ -5,6 +5,8 @@ export const POINTS = {
   INVITE_REWARD: 5,
   AD_REWARD: 3,
   WATCH_COST: 1,
+  /** Granted when user pays a package — expires with package */
+  PACKAGE_BONUS: 5000,
 } as const;
 
 export function generateInviteCode() {
