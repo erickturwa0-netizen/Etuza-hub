@@ -6,16 +6,16 @@ import {
   getPaymentSettings,
   priceForPlan,
   NETWORKS,
-  PLANS,
-  parseVpnPackages,
 } from "@/lib/payments";
+import { enabledVpnPackages } from "@/lib/vpn-packages";
 
 const schema = z.object({
   contentId: z.string().optional().nullable(),
-  plan: z.enum(PLANS as unknown as [string, ...string[]]),
+  plan: z.enum(["once", "week", "month", "year", "timed"]),
   senderPhone: z.string().min(9).max(20),
   senderNetwork: z.enum(NETWORKS as unknown as [string, ...string[]]),
   screenshotUrl: z.string().min(20),
+  amount: z.number().int().min(0).optional(),
 });
 
 export async function POST(req: Request) {
@@ -41,34 +41,46 @@ export async function POST(req: Request) {
 
     let contentPrice: number | null = null;
     let contentType = "";
+    let vpnAmount: number | null = null;
+
     if (parsed.data.contentId) {
       const c = await prisma.content.findUnique({
         where: { id: parsed.data.contentId },
-        select: { priceTzs: true, priceMode: true, type: true },
+        select: {
+          priceTzs: true,
+          priceMode: true,
+          type: true,
+          vpnPackages: true,
+        },
       });
       if (c) {
         contentType = c.type;
         if (c.priceTzs > 0) contentPrice = c.priceTzs;
+        if (c.type === "vpn") {
+          const pkgs = enabledVpnPackages(
+            (c as { vpnPackages?: string | null }).vpnPackages
+          );
+          const pkg = pkgs.find((p) => p.plan === parsed.data.plan);
+          if (pkg) vpnAmount = pkg.priceTzs;
+        }
       }
     }
 
     const showPackages =
       (settings as { showPackages?: boolean }).showPackages === true;
-    const vpnPackages = parseVpnPackages(
-      (settings as { vpnPackages?: string | null }).vpnPackages
-    );
-    const vpnPkg =
-      contentType === "vpn"
-        ? vpnPackages.find((p) => p.plan === parsed.data.plan && p.enabled)
-        : null;
 
-    const amount = priceForPlan(
-      settings,
-      parsed.data.plan,
-      contentPrice,
-      vpnPkg,
-      showPackages && contentType !== "vpn"
-    );
+    const amount =
+      vpnAmount != null
+        ? vpnAmount
+        : parsed.data.amount && parsed.data.amount > 0
+          ? parsed.data.amount
+          : priceForPlan(
+              settings,
+              parsed.data.plan,
+              contentPrice,
+              null,
+              showPackages && contentType !== "vpn"
+            );
 
     if (parsed.data.screenshotUrl.length > 2_000_000) {
       return NextResponse.json(
@@ -83,23 +95,16 @@ export async function POST(req: Request) {
         contentId: parsed.data.contentId || null,
         plan: parsed.data.plan,
         amount,
-        senderPhone: parsed.data.senderPhone.trim(),
+        senderPhone: parsed.data.senderPhone,
         senderNetwork: parsed.data.senderNetwork,
         screenshotUrl: parsed.data.screenshotUrl,
         status: "pending",
       },
     });
 
-    return NextResponse.json({
-      ok: true,
-      id: row.id,
-      message: "Ombi limetumwa. Subiri admin aidhinishe.",
-    });
+    return NextResponse.json({ request: row }, { status: 201 });
   } catch (e) {
-    console.error("payment request", e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Failed" },
-      { status: 500 }
-    );
+    console.error(e);
+    return NextResponse.json({ error: "Imeshindikana" }, { status: 500 });
   }
 }

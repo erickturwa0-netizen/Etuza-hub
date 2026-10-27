@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Save, Check, X, Image as ImageIcon, FileUp } from "lucide-react";
+import { Save, Check, X } from "lucide-react";
 import {
   NETWORKS,
   CONTENT_TYPES,
@@ -9,8 +9,6 @@ import {
   planLabel,
   networkLabel,
   parsePaidCategories,
-  DEFAULT_VPN_PACKAGES,
-  type VpnPackage,
 } from "@/lib/payments";
 
 type Settings = {
@@ -24,7 +22,6 @@ type Settings = {
   instructions: string | null;
   paidCategories?: string;
   showPackages?: boolean;
-  vpnPackages?: VpnPackage[];
 };
 
 type Req = {
@@ -40,23 +37,9 @@ type Req = {
   content: { title: string; type: string } | null;
 };
 
-function readFileAsDataUrl(file: File, maxBytes: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (file.size > maxBytes) {
-      reject(new Error(`Faili kubwa mno (max ${Math.round(maxBytes / 1000)}KB)`));
-      return;
-    }
-    const r = new FileReader();
-    r.onload = () => resolve(String(r.result || ""));
-    r.onerror = () => reject(new Error("Imeshindikana kusoma faili"));
-    r.readAsDataURL(file);
-  });
-}
-
 export default function AdminPaymentsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [paidSet, setPaidSet] = useState<Set<string>>(new Set());
-  const [vpnPkgs, setVpnPkgs] = useState<VpnPackage[]>(DEFAULT_VPN_PACKAGES);
   const [pending, setPending] = useState<Req[]>([]);
   const [recent, setRecent] = useState<Req[]>([]);
   const [msg, setMsg] = useState("");
@@ -75,11 +58,6 @@ export default function AdminPaymentsPage() {
       showPackages: data.settings?.showPackages === true,
     });
     setPaidSet(new Set(parsePaidCategories(data.settings?.paidCategories)));
-    setVpnPkgs(
-      data.settings?.vpnPackages?.length
-        ? data.settings.vpnPackages
-        : DEFAULT_VPN_PACKAGES.map((p) => ({ ...p }))
-    );
     setPending(data.pending || []);
     setRecent(data.recent || []);
   }
@@ -87,39 +65,6 @@ export default function AdminPaymentsPage() {
   useEffect(() => {
     load();
   }, []);
-
-  function updateVpn(plan: string, patch: Partial<VpnPackage>) {
-    setVpnPkgs((prev) =>
-      prev.map((p) => (p.plan === plan ? { ...p, ...patch } : p))
-    );
-  }
-
-  async function onVpnImage(plan: string, file: File | null) {
-    if (!file) return;
-    try {
-      const data = await readFileAsDataUrl(file, 1_200_000);
-      updateVpn(plan, { imageUrl: data });
-      setError("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Picha imeshindikana");
-    }
-  }
-
-  async function onVpnFile(plan: string, file: File | null) {
-    if (!file) return;
-    try {
-      // Config files often small; allow up to ~1.8MB as data URL
-      const data = await readFileAsDataUrl(file, 1_800_000);
-      updateVpn(plan, { fileUrl: data });
-      setError("");
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message + " — au weka link ya faili badala yake"
-          : "Faili imeshindikana"
-      );
-    }
-  }
 
   async function saveSettings() {
     if (!settings) return;
@@ -134,7 +79,6 @@ export default function AdminPaymentsPage() {
         ...settings,
         showPackages: !!settings.showPackages,
         paidCategories: Array.from(paidSet),
-        vpnPackages: vpnPkgs,
       }),
     });
     const data = await res.json();
@@ -168,7 +112,7 @@ export default function AdminPaymentsPage() {
       <div>
         <h1 className="text-2xl font-bold">Malipo</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Bei ya content → auto. Tiki = sehemu (si VPN). VPN = vifurushi + picha + file.
+          VPN vifurushi sasa huwekwa kwenye <b>Add Content → VPN</b> (kila content). Hapa ni namba, sehemu, na idhini.
         </p>
       </div>
 
@@ -275,106 +219,27 @@ export default function AdminPaymentsPage() {
           <textarea value={settings.instructions || ""} onChange={(e) => setSettings({ ...settings, instructions: e.target.value })} rows={2} className="mt-1 w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm" />
         </div>
 
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[11px] text-slate-500">Bei wiki</label>
+            <input type="number" value={settings.priceWeek} onChange={(e) => setSettings({ ...settings, priceWeek: Number(e.target.value) || 0 })} className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-500">Bei mwezi</label>
+            <input type="number" value={settings.priceMonth} onChange={(e) => setSettings({ ...settings, priceMonth: Number(e.target.value) || 0 })} className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-500">Bei mwaka</label>
+            <input type="number" value={settings.priceYear} onChange={(e) => setSettings({ ...settings, priceYear: Number(e.target.value) || 0 })} className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-500">Bei once</label>
+            <input type="number" value={settings.priceOnce} onChange={(e) => setSettings({ ...settings, priceOnce: Number(e.target.value) || 0 })} className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
+          </div>
+        </div>
+
         <button type="button" onClick={saveSettings} disabled={saving} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold">
           <Save className="w-4 h-4" /> {saving ? "…" : "Hifadhi mipangilio"}
-        </button>
-      </section>
-
-      <section className="space-y-3 max-w-xl">
-        <h2 className="text-lg font-bold">VPN — vifurushi + picha + file</h2>
-        <p className="text-xs text-slate-500">
-          Kila kifurushi: picha, file ya config, bei. Faili kubwa → tumia link badala ya kupakia.
-        </p>
-        {vpnPkgs.map((p) => (
-          <div key={p.plan} className="glass-card p-4 space-y-3">
-            <label className="flex items-center justify-between">
-              <span className="font-semibold text-sm">{p.title || planLabel(p.plan)}</span>
-              <input type="checkbox" checked={p.enabled} onChange={(e) => updateVpn(p.plan, { enabled: e.target.checked })} />
-            </label>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[11px] text-slate-500">Jina</label>
-                <input value={p.title} onChange={(e) => updateVpn(p.plan, { title: e.target.value })} className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
-              </div>
-              <div>
-                <label className="text-[11px] text-slate-500">Bei (TZS)</label>
-                <input type="number" value={p.priceTzs} onChange={(e) => updateVpn(p.plan, { priceTzs: Number(e.target.value) || 0 })} className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
-              </div>
-            </div>
-
-            {/* Image upload */}
-            <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-3 space-y-2">
-              <p className="text-xs font-medium text-emerald-300 flex items-center gap-1">
-                <ImageIcon className="w-3.5 h-3.5" /> Picha ya kifurushi
-              </p>
-              <input
-                type="file"
-                accept="image/*"
-                className="w-full text-xs text-slate-400"
-                onChange={(e) => onVpnImage(p.plan, e.target.files?.[0] || null)}
-              />
-              {p.imageUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={p.imageUrl}
-                  alt=""
-                  className="max-h-28 rounded-lg border border-slate-700 object-cover"
-                />
-              )}
-              <input
-                value={p.imageUrl.startsWith("data:") ? "(picha imepakiwa)" : p.imageUrl}
-                onChange={(e) => {
-                  if (!e.target.value.startsWith("(")) {
-                    updateVpn(p.plan, { imageUrl: e.target.value });
-                  }
-                }}
-                placeholder="au link ya picha https://…"
-                className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm"
-              />
-            </div>
-
-            {/* File upload */}
-            <div className="rounded-xl border border-sky-800/40 bg-sky-950/20 p-3 space-y-2">
-              <p className="text-xs font-medium text-sky-300 flex items-center gap-1">
-                <FileUp className="w-3.5 h-3.5" /> File ya VPN (config)
-              </p>
-              <input
-                type="file"
-                className="w-full text-xs text-slate-400"
-                onChange={(e) => onVpnFile(p.plan, e.target.files?.[0] || null)}
-              />
-              {p.fileUrl && (
-                <p className="text-[11px] text-slate-400 truncate">
-                  {p.fileUrl.startsWith("data:")
-                    ? "✓ File imepakiwa"
-                    : p.fileUrl}
-                </p>
-              )}
-              <input
-                value={p.fileUrl.startsWith("data:") ? "(file imepakiwa)" : p.fileUrl}
-                onChange={(e) => {
-                  if (!e.target.value.startsWith("(")) {
-                    updateVpn(p.plan, { fileUrl: e.target.value });
-                  }
-                }}
-                placeholder="au link ya file https://…"
-                className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] text-slate-500">Protocol</label>
-              <input value={p.protocol} onChange={(e) => updateVpn(p.plan, { protocol: e.target.value })} placeholder="OpenVPN / V2Ray / HTTP Injector…" className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-500">Config text (hiari)</label>
-              <textarea value={p.configText} onChange={(e) => updateVpn(p.plan, { configText: e.target.value })} rows={2} className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm font-mono" />
-            </div>
-          </div>
-        ))}
-        <button type="button" onClick={saveSettings} disabled={saving} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold">
-          <Save className="w-4 h-4" /> Hifadhi VPN packages
         </button>
       </section>
 
