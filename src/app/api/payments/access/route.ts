@@ -12,8 +12,19 @@ import {
   parseContentVpnPackages,
 } from "@/lib/vpn-packages";
 
+async function ensureCols() {
+  try {
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "Content" ADD COLUMN IF NOT EXISTS "vpn_packages" TEXT`
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function GET(req: Request) {
   try {
+    await ensureCols();
     const { searchParams } = new URL(req.url);
     const contentId = searchParams.get("contentId") || "";
 
@@ -84,6 +95,17 @@ export async function GET(req: Request) {
 
       const contentVpnPkgs = enabledVpnPackages(vpnRaw);
 
+      // VPN with packages or paid priceMode → always require pay
+      const vpnNeedsPay =
+        contentType === "vpn" &&
+        (contentVpnPkgs.length > 0 ||
+          priceMode === "once" ||
+          priceMode === "week" ||
+          priceMode === "month" ||
+          priceMode === "year" ||
+          priceMode === "timed" ||
+          priceTzs > 0);
+
       if (priceMode === "free" && contentType !== "vpn") {
         if (!contentType || !paidCats.includes(contentType)) {
           return NextResponse.json({
@@ -95,15 +117,14 @@ export async function GET(req: Request) {
         }
       }
 
-      if (priceMode === "free" && contentType === "vpn") {
-        if (!contentVpnPkgs.length) {
-          return NextResponse.json({
-            locked: false,
-            enabled: true,
-            free: true,
-            hasPaidAccess,
-          });
-        }
+      if (contentType === "vpn" && !vpnNeedsPay) {
+        return NextResponse.json({
+          locked: false,
+          enabled: true,
+          free: true,
+          hasPaidAccess,
+          isVpn: true,
+        });
       }
 
       const explicitlyPaid =
@@ -118,9 +139,6 @@ export async function GET(req: Request) {
         contentType !== "vpn" &&
         !!contentType &&
         paidCats.includes(contentType);
-
-      const vpnNeedsPay =
-        contentType === "vpn" && contentVpnPkgs.length > 0;
 
       if (!explicitlyPaid && !categoryPaid && !vpnNeedsPay) {
         return NextResponse.json({
@@ -168,7 +186,6 @@ export async function GET(req: Request) {
         contentType,
         isVpn: contentType === "vpn",
         hasPaidAccess: ok,
-        // packages for THIS content only (for paywall picker)
         vpnPackages: contentType === "vpn" ? contentVpnPkgs : [],
         vpnDeliver,
       });

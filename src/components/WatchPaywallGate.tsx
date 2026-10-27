@@ -5,9 +5,10 @@ import PaywallDialog from "@/components/PaywallDialog";
 import type { PayPlan } from "@/lib/payments";
 
 /**
- * Payment gate. When points-ads are ALSO enabled, do NOT hard-block —
- * PreRollGate shows Invite / Ads / Pay / Play together.
- * Only pure payment mode (ads off) shows pay-only screen.
+ * Payment gate.
+ * - VPN: always hard paywall when locked (never free download)
+ * - Other: if points-ads on → PreRollGate shows all choices
+ * - Payments only → pay-only UI
  */
 export default function WatchPaywallGate({
   contentId,
@@ -45,15 +46,13 @@ export default function WatchPaywallGate({
 
         if (setRes.ok) {
           const s = await setRes.json();
-          if (!cancelled) {
-            setPointsAdsOn(s.pointsAdsEnabled !== false);
-          }
+          if (!cancelled) setPointsAdsOn(s.pointsAdsEnabled !== false);
         }
 
         if (accessRes.ok) {
           const data = await accessRes.json();
           if (cancelled) return;
-          if (data.isVpn) setIsVpn(true);
+          if (data.isVpn || contentType === "vpn") setIsVpn(true);
           if (data.enabled && data.locked) {
             setLocked(true);
             setNeedLogin(!!data.needLogin);
@@ -67,7 +66,7 @@ export default function WatchPaywallGate({
     return () => {
       cancelled = true;
     };
-  }, [contentId]);
+  }, [contentId, contentType]);
 
   const plan: PayPlan =
     priceMode === "week" ||
@@ -85,12 +84,9 @@ export default function WatchPaywallGate({
     );
   }
 
-  // Ads + payments both on → let PreRollGate show all choices
-  if (locked && pointsAdsOn && !needLogin) {
-    return <>{children}</>;
-  }
+  // VPN paid → always hard lock (never show download free)
+  const forcePayOnly = isVpn || contentType === "vpn";
 
-  // Need login for paid content
   if (locked && needLogin) {
     return (
       <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 text-center space-y-3">
@@ -107,13 +103,14 @@ export default function WatchPaywallGate({
     );
   }
 
-  // Payments only (ads off) → pay-only UI
-  if (locked && !pointsAdsOn) {
+  if (locked && (forcePayOnly || !pointsAdsOn)) {
     return (
       <>
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 text-center space-y-3">
           <p className="text-sm text-amber-100 font-medium">
-            Content hii inahitaji malipo
+            {forcePayOnly
+              ? "VPN hii inahitaji kulipia kifurushi"
+              : "Content hii inahitaji malipo"}
           </p>
           <button
             type="button"
@@ -130,11 +127,12 @@ export default function WatchPaywallGate({
           onClose={() => setOpen(false)}
           defaultPlan={plan}
           contentPrice={priceTzs || undefined}
-          isVpn={isVpn}
+          isVpn={forcePayOnly}
         />
       </>
     );
   }
 
+  // Ads + payments (non-VPN) → PreRollGate shows all choices
   return <>{children}</>;
 }
