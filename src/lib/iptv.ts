@@ -28,9 +28,7 @@ function ch(
 }
 
 /**
- * Verified live free m3u8 only (probed 2026-10-25).
- * Dead streams removed: MERU TV (404), Al Jazeera (DNS fail),
- * bulk Free-TV / full iptv-org dumps (too many dead links).
+ * Verified live free m3u8 only.
  */
 export const PINNED_CHANNELS: IptvChannel[] = [
   // Tanzania
@@ -120,6 +118,14 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     "https://cdn.freevisiontv.co.za/sttv/smil:ctv.stream.smil/playlist.m3u8",
     "CTV.za",
     "https://i.imgur.com/Y8FK1Kk.png"
+  ),
+  // Uzbekistan / AllaTV sample
+  ch(
+    "pin-cinerama",
+    "Cinerama",
+    "Movies",
+    "https://stream8.cinerama.uz/1024/tracks-v1a1/mono.m3u8",
+    "Cinerama.uz"
   ),
   // News / Science / Sports (verified)
   ch(
