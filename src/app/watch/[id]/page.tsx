@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import StreamPlayer from "@/components/StreamPlayer";
+import AudioPlayer from "@/components/AudioPlayer";
 import PreRollGate from "@/components/PreRollGate";
 import GameDownloadPanel from "@/components/GameDownloadPanel";
 import PresenceTracker from "@/components/PresenceTracker";
@@ -149,19 +150,37 @@ export default async function WatchPage({
         </div>
       );
     }
+    if (item.type === "radio" || item.type === "music") {
+      return (
+        <PreRollGate
+          contentKey={`${item.type}:${item.id}`}
+          title={item.title}
+          enabled={usePointsGate}
+        >
+          <AudioPlayer
+            src={link}
+            title={item.title}
+            coverUrl={item.coverUrl}
+            kind={item.type === "radio" ? "radio" : "music"}
+          />
+        </PreRollGate>
+      );
+    }
     return (
       <PreRollGate
         contentKey={`${item.type}:${item.id}`}
         title={item.title}
         enabled={usePointsGate}
       >
-        <StreamPlayer src={link} poster={item.coverUrl} title={item.title} />
+        <div className="w-full max-w-full overflow-hidden">
+          <StreamPlayer src={link} poster={item.coverUrl} title={item.title} />
+        </div>
       </PreRollGate>
     );
   })();
 
   return (
-    <main className="max-w-4xl mx-auto px-4 py-6 pb-28">
+    <main className="max-w-4xl mx-auto px-4 py-6 pb-28 overflow-x-hidden">
       <PresenceTracker section={section} title={item.title} />
       <Link
         href={backHref}
