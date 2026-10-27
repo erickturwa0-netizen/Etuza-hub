@@ -40,7 +40,6 @@ export default function PreRollGate({
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [adOpened, setAdOpened] = useState(false);
-  const [awarded, setAwarded] = useState(0);
   const [showOutModal, setShowOutModal] = useState(false);
   const [adsOn, setAdsOn] = useState(true);
 
@@ -144,8 +143,7 @@ export default function PreRollGate({
       if (res.ok) {
         if (typeof d.points === "number") {
           setPoints(d.points);
-          const got = d.awarded ?? POINTS.AD_REWARD ?? 1;
-          setAwarded(got);
+          const got = d.awarded ?? POINTS.AD_REWARD;
           setMsg(`+${got} point ✓`);
         }
       } else {
@@ -155,6 +153,11 @@ export default function PreRollGate({
       setMsg("Tatizo la mtandao");
     }
     setBusy(false);
+  }
+
+  function openAd() {
+    setAdOpened(true);
+    window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
   }
 
   async function spendAndWatch() {
@@ -191,9 +194,7 @@ export default function PreRollGate({
     );
   }
 
-  if (unlocked) return <>{children}</>;
-
-  if (!adsOn) return <>{children}</>;
+  if (unlocked || !adsOn) return <>{children}</>;
 
   return (
     <>
@@ -206,8 +207,7 @@ export default function PreRollGate({
 
         {user ? (
           <p className="text-sm text-slate-300">
-            Point zako:{" "}
-            <b className="text-white">{points ?? user.points}</b>
+            Point zako: <b className="text-white">{points ?? user.points}</b>
           </p>
         ) : (
           <p className="text-sm text-slate-400">Ingia ili utumie point au ulipe.</p>
@@ -233,10 +233,7 @@ export default function PreRollGate({
           <button
             type="button"
             disabled={busy}
-            onClick={() => {
-              setAdOpened(true);
-              window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
-            }}
+            onClick={openAd}
             className="w-full py-3 rounded-xl border border-slate-600 text-slate-200 text-sm font-medium inline-flex items-center justify-center gap-2"
           >
             <ExternalLink className="w-4 h-4" />
@@ -256,9 +253,7 @@ export default function PreRollGate({
 
           {!user && (
             <Link
-              href={`/login?next=${encodeURIComponent(
-                typeof window !== "undefined" ? window.location.pathname : "/"
-              )}`}
+              href="/login"
               className="w-full py-3 rounded-xl bg-slate-100 text-slate-900 text-sm font-semibold text-center"
             >
               Ingia
@@ -276,7 +271,16 @@ export default function PreRollGate({
         </div>
       </div>
 
-      <PointsOutModal open={showOutModal} onClose={() => setShowOutModal(false)} />
+      <PointsOutModal
+        open={showOutModal}
+        points={points ?? user?.points ?? 0}
+        inviteCode={user?.inviteCode}
+        onClose={() => setShowOutModal(false)}
+        onWatchAd={() => {
+          setShowOutModal(false);
+          openAd();
+        }}
+      />
     </>
   );
 }
