@@ -18,6 +18,8 @@ export async function GET() {
         fullName: true,
         role: true,
         points: true,
+        packagePoints: true,
+        packagePointsExpiresAt: true,
         inviteCode: true,
       },
     });
@@ -26,12 +28,27 @@ export async function GET() {
       return NextResponse.json({ user: null }, { status: 401 });
     }
 
-    // Backfill invite code when column exists
+    // Clear expired package points
+    if (
+      user.packagePoints > 0 &&
+      user.packagePointsExpiresAt &&
+      user.packagePointsExpiresAt <= new Date()
+    ) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { packagePoints: 0, packagePointsExpiresAt: null },
+      });
+      user.packagePoints = 0;
+      user.packagePointsExpiresAt = null;
+    }
+
     if (!user.inviteCode) {
       try {
         let code = generateInviteCode();
         for (let i = 0; i < 5; i++) {
-          const clash = await prisma.user.findFirst({ where: { inviteCode: code } });
+          const clash = await prisma.user.findFirst({
+            where: { inviteCode: code },
+          });
           if (!clash) break;
           code = generateInviteCode();
         }
@@ -44,6 +61,8 @@ export async function GET() {
             fullName: true,
             role: true,
             points: true,
+            packagePoints: true,
+            packagePointsExpiresAt: true,
             inviteCode: true,
           },
         });
@@ -56,15 +75,12 @@ export async function GET() {
     return NextResponse.json({ user });
   } catch (e) {
     console.error("me", e);
-    // Session still valid even if points columns missing
     return NextResponse.json({
       user: {
         id: session.userId,
         email: session.email,
-        fullName: session.fullName,
         role: session.role,
-        points: 10,
-        inviteCode: null,
+        points: 0,
       },
     });
   }
