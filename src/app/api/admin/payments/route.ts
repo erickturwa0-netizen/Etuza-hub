@@ -65,6 +65,7 @@ const vpnPkgSchema = z.object({
   protocol: z.string().optional().default(""),
   configText: z.string().optional().default(""),
   fileUrl: z.string().optional().default(""),
+  imageUrl: z.string().optional().default(""),
 });
 
 const settingsSchema = z.object({
