@@ -57,8 +57,9 @@ export default function PaywallDialog({
       .then((s: Settings) => {
         setSettings(s);
         if (isVpn && s.vpnPackages?.length) {
-          const first = s.vpnPackages[0];
-          setPlan(first.plan as PayPlan);
+          setPlan(s.vpnPackages[0].plan as PayPlan);
+        } else if (s.showPackages) {
+          setPlan(defaultPlan || "once");
         } else if (contentPrice && contentPrice > 0) {
           setPlan("once");
         } else if (defaultPlan) {
@@ -70,16 +71,23 @@ export default function PaywallDialog({
 
   if (!open) return null;
 
-  const fixedPrice = !!(contentPrice && contentPrice > 0) && !isVpn;
   const vpnPkgs = (settings?.vpnPackages || []).filter((p) => p.enabled);
   const showVpnPackages = !!isVpn && vpnPkgs.length > 0;
-  const showGlobalPackages =
-    !fixedPrice && !isVpn && !!settings?.showPackages;
+  // When admin ticks "Onyesha vifurushi" → always show grid (even if content has a price)
+  const showGlobalPackages = !isVpn && !!settings?.showPackages;
+  const fixedPrice =
+    !showGlobalPackages && !showVpnPackages && !!(contentPrice && contentPrice > 0);
 
   function amount() {
     if (showVpnPackages) {
       const pkg = vpnPkgs.find((p) => p.plan === plan);
       if (pkg) return pkg.priceTzs;
+    }
+    if (showGlobalPackages && settings) {
+      if (plan === "week") return settings.priceWeek;
+      if (plan === "month") return settings.priceMonth;
+      if (plan === "year") return settings.priceYear;
+      return settings.priceOnce;
     }
     if (fixedPrice) return contentPrice as number;
     if (!settings) return 0;
@@ -178,31 +186,38 @@ export default function PaywallDialog({
                     <span className="block text-[10px] opacity-80">
                       {p.priceTzs.toLocaleString()} TZS
                     </span>
-                    {p.protocol && (
-                      <span className="block text-[10px] text-slate-500">{p.protocol}</span>
-                    )}
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {showGlobalPackages && (
+          {showGlobalPackages && settings && (
             <div>
-              <label className="text-xs text-slate-400">Kifurushi</label>
+              <label className="text-xs text-slate-400">Chagua kifurushi</label>
               <div className="grid grid-cols-2 gap-2 mt-1">
-                {(["once", "week", "month", "year"] as const).map((p) => (
+                {(
+                  [
+                    ["once", settings.priceOnce],
+                    ["week", settings.priceWeek],
+                    ["month", settings.priceMonth],
+                    ["year", settings.priceYear],
+                  ] as const
+                ).map(([p, price]) => (
                   <button
                     key={p}
                     type="button"
                     onClick={() => setPlan(p)}
-                    className={`px-2 py-2 rounded-lg text-xs border ${
+                    className={`px-2 py-2 rounded-lg text-xs border text-left ${
                       plan === p
                         ? "border-violet-500 bg-violet-950 text-violet-200"
                         : "border-slate-700 text-slate-400"
                     }`}
                   >
-                    {planLabel(p)}
+                    <span className="font-medium">{planLabel(p)}</span>
+                    <span className="block text-[10px] opacity-80">
+                      {price.toLocaleString()} TZS
+                    </span>
                   </button>
                 ))}
               </div>

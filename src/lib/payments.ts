@@ -6,7 +6,6 @@ export type PayNetwork = (typeof NETWORKS)[number];
 export const PLANS = ["once", "week", "month", "year", "timed"] as const;
 export type PayPlan = (typeof PLANS)[number];
 
-/** Category ticks (bulk paywall) — VPN excluded; VPN uses its own packages */
 export const CONTENT_TYPES = [
   "movie",
   "drama",
@@ -131,7 +130,36 @@ export function parseVpnPackages(raw: string | null | undefined): VpnPackage[] {
   }
 }
 
+/** Ensure optional payment columns exist (Neon / older DBs) */
+export async function ensurePaymentColumns() {
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "PaymentSettings"
+      ADD COLUMN IF NOT EXISTS "show_packages" BOOLEAN NOT NULL DEFAULT false
+    `);
+  } catch {
+    /* ignore */
+  }
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "PaymentSettings"
+      ADD COLUMN IF NOT EXISTS "vpn_packages" TEXT
+    `);
+  } catch {
+    /* ignore */
+  }
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "PaymentSettings"
+      ADD COLUMN IF NOT EXISTS "paid_categories" TEXT NOT NULL DEFAULT 'movie,drama,tv,music,radio,game'
+    `);
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function getPaymentSettings() {
+  await ensurePaymentColumns();
   let s = await prisma.paymentSettings.findUnique({ where: { id: "default" } });
   if (!s) {
     s = await prisma.paymentSettings.create({
@@ -154,10 +182,12 @@ export function priceForPlan(
   },
   plan: string,
   contentPrice?: number | null,
-  vpnPkg?: VpnPackage | null
+  vpnPkg?: VpnPackage | null,
+  preferPackages?: boolean
 ) {
   if (vpnPkg && vpnPkg.priceTzs > 0) return vpnPkg.priceTzs;
-  if (contentPrice && contentPrice > 0) return contentPrice;
+  // When packages are shown, use plan prices not content fixed price
+  if (!preferPackages && contentPrice && contentPrice > 0) return contentPrice;
   switch (plan) {
     case "week":
       return settings.priceWeek;
@@ -213,7 +243,6 @@ export async function userHasAccess(userId: string, contentId: string) {
   return false;
 }
 
-/** Active access row for content (to resolve VPN package config) */
 export async function getUserAccessRow(userId: string, contentId: string) {
   const now = new Date();
   const rows = await prisma.userAccess.findMany({

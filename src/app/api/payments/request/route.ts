@@ -52,6 +52,8 @@ export async function POST(req: Request) {
       }
     }
 
+    const showPackages =
+      (settings as { showPackages?: boolean }).showPackages === true;
     const vpnPackages = parseVpnPackages(
       (settings as { vpnPackages?: string | null }).vpnPackages
     );
@@ -64,7 +66,8 @@ export async function POST(req: Request) {
       settings,
       parsed.data.plan,
       contentPrice,
-      vpnPkg
+      vpnPkg,
+      showPackages && contentType !== "vpn"
     );
 
     if (parsed.data.screenshotUrl.length > 2_000_000) {
