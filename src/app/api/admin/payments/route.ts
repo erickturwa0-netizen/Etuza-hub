@@ -7,6 +7,8 @@ import {
   expiresForPlan,
   NETWORKS,
   CONTENT_TYPES,
+  parseVpnPackages,
+  DEFAULT_VPN_PACKAGES,
 } from "@/lib/payments";
 
 async function requireAdmin() {
@@ -44,8 +46,26 @@ export async function GET() {
     }),
   ]);
 
-  return NextResponse.json({ settings, pending, recent });
+  const vpnPackages = parseVpnPackages(
+    (settings as { vpnPackages?: string | null }).vpnPackages
+  );
+
+  return NextResponse.json({
+    settings: { ...settings, vpnPackages },
+    pending,
+    recent,
+  });
 }
+
+const vpnPkgSchema = z.object({
+  plan: z.enum(["once", "week", "month", "year"]),
+  enabled: z.boolean(),
+  priceTzs: z.number().int().min(0),
+  title: z.string(),
+  protocol: z.string().optional().default(""),
+  configText: z.string().optional().default(""),
+  fileUrl: z.string().optional().default(""),
+});
 
 const settingsSchema = z.object({
   enabled: z.boolean(),
@@ -58,6 +78,7 @@ const settingsSchema = z.object({
   instructions: z.string().optional().nullable(),
   paidCategories: z.array(z.string()).optional(),
   showPackages: z.boolean().optional(),
+  vpnPackages: z.array(vpnPkgSchema).optional(),
 });
 
 export async function PUT(req: Request) {
@@ -74,6 +95,9 @@ export async function PUT(req: Request) {
     .filter((c) => (CONTENT_TYPES as readonly string[]).includes(c))
     .join(",");
   const showPackages = d.showPackages === true;
+  const vpnPackages = JSON.stringify(
+    d.vpnPackages?.length ? d.vpnPackages : DEFAULT_VPN_PACKAGES
+  );
 
   const settings = await prisma.paymentSettings.upsert({
     where: { id: "default" },
@@ -89,6 +113,7 @@ export async function PUT(req: Request) {
       instructions: d.instructions || null,
       paidCategories,
       showPackages,
+      vpnPackages,
     },
     update: {
       enabled: d.enabled,
@@ -101,9 +126,15 @@ export async function PUT(req: Request) {
       instructions: d.instructions || null,
       paidCategories,
       showPackages,
+      vpnPackages,
     },
   });
-  return NextResponse.json({ settings });
+  return NextResponse.json({
+    settings: {
+      ...settings,
+      vpnPackages: parseVpnPackages(vpnPackages),
+    },
+  });
 }
 
 const reviewSchema = z.object({
