@@ -15,6 +15,7 @@ import {
   Pencil,
   Check,
   X,
+  Save,
 } from "lucide-react";
 import { networkLabel, planLabel, TYPE_LABELS } from "@/lib/payments";
 
@@ -55,10 +56,7 @@ function ContentList() {
     setLoading(true);
     setError("");
     try {
-      // admin=1 → all non-API content (including VPN without createdBy)
-      const q = typeFilter
-        ? `?type=${typeFilter}&admin=1`
-        : "?admin=1";
+      const q = typeFilter ? `?type=${typeFilter}&admin=1` : "?admin=1";
       const [cRes, pRes] = await Promise.all([
         fetch(`/api/content${q}`, { credentials: "include" }),
         fetch("/api/admin/payments", { credentials: "include" }),
@@ -116,9 +114,10 @@ function ContentList() {
     }
   }
 
-  async function savePointsAds(next: boolean) {
+  async function savePointsAds() {
     setSavingAds(true);
-    setPointsAds(next);
+    setMsg("");
+    setError("");
     try {
       const res = await fetch("/api/admin/payments", { credentials: "include" });
       const data = await res.json();
@@ -137,7 +136,7 @@ function ContentList() {
           priceOnce: s.priceOnce ?? 1000,
           instructions: s.instructions,
           showPackages: !!s.showPackages,
-          pointsAdsEnabled: next,
+          pointsAdsEnabled: pointsAds,
           paidCategories: (s.paidCategories || "").split(",").filter(Boolean),
           vpnPackages: s.vpnPackages,
         }),
@@ -146,7 +145,11 @@ function ContentList() {
         const e = await put.json().catch(() => ({}));
         setError(e.error || "Imeshindikana kuhifadhi ads");
       } else {
-        setMsg(next ? "Tangazo la point limewashwa ✓" : "Tangazo la point limezimwa ✓");
+        setMsg(
+          pointsAds
+            ? "Tangazo la point limewashwa ✓"
+            : "Tangazo la point limezimwa ✓"
+        );
       }
     } catch {
       setError("Imeshindikana kuhifadhi");
@@ -164,10 +167,6 @@ function ContentList() {
 
   return (
     <div className="space-y-8">
-      <div className="rounded-xl border border-violet-700/40 bg-violet-950/30 px-3 py-2 text-xs text-violet-200">
-        Content panel — Edit · Idhinisha · Ads · VPN
-      </div>
-
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Content</h1>
@@ -192,25 +191,34 @@ function ContentList() {
         <div className="px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-sm">{error}</div>
       )}
 
-      <label className="block glass-card p-4 max-w-xl border-2 border-amber-500/40">
-        <div className="flex items-center justify-between gap-3">
+      {/* Ads toggle + explicit Save */}
+      <div className="glass-card p-4 max-w-xl border-2 border-amber-500/40 space-y-3">
+        <label className="flex items-center justify-between gap-3 cursor-pointer">
           <div>
             <p className="font-bold text-sm text-amber-100">
-              ☑ Tangazo la point (Tazama tangazo)
+              Tangazo la point (Tazama tangazo)
             </p>
             <p className="text-[11px] text-slate-400 mt-1">
-              Washa/zima ads. Mwenye kifurushi haoni tangazo hadi muda uishe.
+              Washa/zima kisha bonyeza <b>Hifadhi</b>. Malipo + ads = user anaona chaguo zote.
             </p>
           </div>
           <input
             type="checkbox"
             className="w-6 h-6 accent-violet-500"
             checked={pointsAds}
-            disabled={savingAds}
-            onChange={(e) => savePointsAds(e.target.checked)}
+            onChange={(e) => setPointsAds(e.target.checked)}
           />
-        </div>
-      </label>
+        </label>
+        <button
+          type="button"
+          disabled={savingAds}
+          onClick={savePointsAds}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold disabled:opacity-50"
+        >
+          <Save className="w-4 h-4" />
+          {savingAds ? "Inahifadhi…" : "Hifadhi ads setting"}
+        </button>
+      </div>
 
       <section className="rounded-2xl border border-emerald-700/30 bg-emerald-950/10 p-4">
         <div className="flex items-center justify-between mb-3">
@@ -316,9 +324,7 @@ function ContentList() {
                         <span className="font-medium truncate max-w-[140px]">{c.title}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 capitalize text-slate-400 hidden sm:table-cell">
-                      {c.type}
-                    </td>
+                    <td className="px-4 py-3 capitalize text-slate-400 hidden sm:table-cell">{c.type}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
