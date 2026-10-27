@@ -4,6 +4,7 @@
 import { tmdbPosterByTitle } from "@/lib/tmdb";
 
 const CHANNEL_DOMAINS: { match: RegExp; domain: string }[] = [
+  // Global TV / news
   { match: /france\s*24/i, domain: "france24.com" },
   { match: /al\s*jazeera/i, domain: "aljazeera.com" },
   { match: /\bbbc\b/i, domain: "bbc.com" },
@@ -15,12 +16,49 @@ const CHANNEL_DOMAINS: { match: RegExp; domain: string }[] = [
   { match: /abc\s*news/i, domain: "abcnews.go.com" },
   { match: /\bcnn\b/i, domain: "cnn.com" },
   { match: /\bespn\b/i, domain: "espn.com" },
-  { match: /\bwasafi\b/i, domain: "wasafi.com" },
-  { match: /\bazam\b/i, domain: "azamtv.com" },
-  { match: /\btbc\b/i, domain: "tbc.go.tz" },
   { match: /\bmbc\b/i, domain: "mbc.net" },
   { match: /disney/i, domain: "disney.com" },
   { match: /\bhbo\b/i, domain: "hbo.com" },
+  { match: /\bvoa\b|voice of america/i, domain: "voanews.com" },
+  // TZ media / radio
+  { match: /\bwasafi\b/i, domain: "wasafi.com" },
+  { match: /\bazam\b/i, domain: "azamtv.co.tz" },
+  { match: /\btbc\b/i, domain: "tbc.go.tz" },
+  { match: /clouds\s*fm|\bclouds\b/i, domain: "cloudsfm.co.tz" },
+  { match: /radio\s*one|radioone/i, domain: "radioone.co.tz" },
+  { match: /east\s*africa\s*radio|eastafrica|\bea\s*radio\b/i, domain: "eatv.tv" },
+  { match: /capital\s*radio/i, domain: "capitalradiotanzania.com" },
+  { match: /radio\s*maria/i, domain: "radiomaria.org" },
+  { match: /passion\s*fm/i, domain: "passionfm.co.tz" },
+  { match: /abood/i, domain: "abood.com" },
+  { match: /times\s*fm/i, domain: "timesfm.co.tz" },
+  { match: /\bitv\b/i, domain: "itv.co.tz" },
+  { match: /channel\s*10/i, domain: "channel10.co.tz" },
+  { match: /startimes|star\s*times/i, domain: "startimes.com" },
+  { match: /\bdstv\b/i, domain: "dstv.com" },
+  { match: /bongo\s*radio|bongoradio/i, domain: "bongoradio.com" },
+  { match: /afro\s*fm|afrofm/i, domain: "afrofm.com" },
+  { match: /kiss\s*fm/i, domain: "kissfm.co.tz" },
+  { match: /classic\s*fm/i, domain: "classicfm.co.tz" },
+  { match: /breeze\s*fm/i, domain: "breezefm.co.tz" },
+  { match: /ebony\s*fm/i, domain: "ebonyfm.co.tz" },
+  { match: /utume/i, domain: "radiomaria.org" },
+  { match: /safina/i, domain: "safina.co.tz" },
+  { match: /magic\s*fm/i, domain: "magicfm.co.tz" },
+  { match: /radio\s*free\s*africa|rfa\b/i, domain: "radiofreeafrica.com" },
+  { match: /uhuru\s*fm/i, domain: "uhurufm.co.tz" },
+  { match: /\bfm\s*radio\b|tanzania\s*fm/i, domain: "tbc.go.tz" },
+  // Networks / VPN style titles
+  { match: /vodacom|m-?pesa/i, domain: "vodacom.co.tz" },
+  { match: /airtel/i, domain: "airtel.co.tz" },
+  { match: /halotel|\bhalo\b/i, domain: "halotel.co.tz" },
+  { match: /\btigo\b|mix\s*by\s*yas|\byas\b/i, domain: "tigo.co.tz" },
+  { match: /\bttcl\b/i, domain: "ttcl.co.tz" },
+  { match: /openvpn/i, domain: "openvpn.net" },
+  { match: /wireguard/i, domain: "wireguard.com" },
+  { match: /nordvpn|\bnord\b/i, domain: "nordvpn.com" },
+  { match: /expressvpn/i, domain: "expressvpn.com" },
+  { match: /surfshark/i, domain: "surfshark.com" },
 ];
 
 function hasValidUrl(u?: string | null): u is string {
@@ -64,10 +102,26 @@ export function tvCover(title: string, existing?: string | null): string {
   return avatarCover(title, { bg: "1e293b", color: "f87171", size: 256 });
 }
 
+/** Prefer real favicon → hunter logo → soft gradient avatar (not letters-only look) */
 export function radioCover(name: string, existing?: string | null): string {
-  if (hasValidUrl(existing) && !existing.includes("ui-avatars.com")) return existing;
+  if (
+    hasValidUrl(existing) &&
+    !existing.includes("ui-avatars.com") &&
+    !existing.includes("placeholder")
+  ) {
+    return existing;
+  }
   const domain = domainFromTitle(name);
   if (domain) return hunterLogo(domain);
+  // Try first word as .com brand
+  const word = (name || "")
+    .toLowerCase()
+    .replace(/radio|fm|tanzania|tz|live|stream/gi, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .find((w) => w.length >= 3);
+  if (word) return hunterLogo(`${word}.com`);
   return avatarCover(name, { bg: "831843", color: "ffffff", size: 256 });
 }
 
@@ -83,6 +137,8 @@ export function dramaCover(title: string, existing?: string | null): string {
 
 export function musicCover(title: string, existing?: string | null): string {
   if (hasValidUrl(existing) && !existing.includes("ui-avatars.com")) return existing;
+  const domain = domainFromTitle(title);
+  if (domain) return hunterLogo(domain);
   return avatarCover(title, { bg: "5b21b6", color: "e9d5ff", size: 400 });
 }
 
@@ -106,7 +162,6 @@ export function contentCover(
   }
 }
 
-/** Real poster from TMDB (preferred) */
 export async function fetchMovieCover(
   title: string,
   opts?: { country?: string; media?: "movie" | "tvShow" | "music" }
