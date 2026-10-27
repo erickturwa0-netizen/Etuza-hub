@@ -109,11 +109,11 @@ model PaymentSettings {
   priceYear      Int      @default(40000) @map("price_year")
   priceOnce      Int      @default(1000) @map("price_once")
   instructions   String?  @default("Tuma pesa kisha pakia screenshot ya muamala.")
-  /** Bulk categories (no vpn): movie,drama,tv,music,radio,game */
   paidCategories String   @default("movie,drama,tv,music,radio,game") @map("paid_categories")
   showPackages   Boolean  @default(false) @map("show_packages")
-  /** JSON array of VpnPackage */
   vpnPackages    String?  @map("vpn_packages") @db.Text
+  /** Pre-roll / tazama tangazo for points */
+  pointsAdsEnabled Boolean @default(true) @map("points_ads_enabled")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   @@map("PaymentSettings")

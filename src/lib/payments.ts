@@ -33,7 +33,6 @@ export type VpnPackage = {
   protocol: string;
   configText: string;
   fileUrl: string;
-  /** Cover / preview image (url or data:) */
   imageUrl: string;
 };
 
@@ -134,29 +133,18 @@ export function parseVpnPackages(raw: string | null | undefined): VpnPackage[] {
 }
 
 export async function ensurePaymentColumns() {
-  try {
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "PaymentSettings"
-      ADD COLUMN IF NOT EXISTS "show_packages" BOOLEAN NOT NULL DEFAULT false
-    `);
-  } catch {
-    /* ignore */
-  }
-  try {
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "PaymentSettings"
-      ADD COLUMN IF NOT EXISTS "vpn_packages" TEXT
-    `);
-  } catch {
-    /* ignore */
-  }
-  try {
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "PaymentSettings"
-      ADD COLUMN IF NOT EXISTS "paid_categories" TEXT NOT NULL DEFAULT 'movie,drama,tv,music,radio,game'
-    `);
-  } catch {
-    /* ignore */
+  const alters = [
+    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "show_packages" BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "vpn_packages" TEXT`,
+    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "paid_categories" TEXT NOT NULL DEFAULT 'movie,drama,tv,music,radio,game'`,
+    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "points_ads_enabled" BOOLEAN NOT NULL DEFAULT true`,
+  ];
+  for (const sql of alters) {
+    try {
+      await prisma.$executeRawUnsafe(sql);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -169,6 +157,7 @@ export async function getPaymentSettings() {
         id: "default",
         paidCategories: CONTENT_TYPES.join(","),
         showPackages: false,
+        pointsAdsEnabled: true,
       },
     });
   }

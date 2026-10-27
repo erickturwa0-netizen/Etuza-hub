@@ -9,6 +9,8 @@ export async function GET() {
     const s = await getPaymentSettings();
     const showPackages =
       (s as { showPackages?: boolean }).showPackages === true;
+    const pointsAdsEnabled =
+      (s as { pointsAdsEnabled?: boolean }).pointsAdsEnabled !== false;
     const vpnPackages = parseVpnPackages(
       (s as { vpnPackages?: string | null }).vpnPackages
     ).filter((p) => p.enabled);
@@ -23,10 +25,16 @@ export async function GET() {
       priceOnce: s.priceOnce,
       instructions: s.instructions,
       showPackages,
+      pointsAdsEnabled,
       vpnPackages,
     });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ enabled: false, showPackages: false, vpnPackages: [] });
+    return NextResponse.json({
+      enabled: false,
+      showPackages: false,
+      pointsAdsEnabled: true,
+      vpnPackages: [],
+    });
   }
 }
