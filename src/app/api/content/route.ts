@@ -32,7 +32,7 @@ export async function GET(req: Request) {
     const publishedOnly = searchParams.get("published") === "1";
     const mineOnly = searchParams.get("mine") === "1";
 
-    // Public catalog may still hydrate API movies; admin mine=1 skips that
+    // Public catalog may hydrate API movies; admin mine=1 never does
     if (!mineOnly && (type === "movie" || type === "drama")) {
       try {
         await ensureElitePlexContent(type);
@@ -41,21 +41,21 @@ export async function GET(req: Request) {
       }
     }
 
-    const where: Record<string, unknown> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {};
     if (type) where.type = type;
     if (publishedOnly) where.status = "published";
 
     if (mineOnly) {
-      // Only admin-uploaded: has createdBy, not eliteplex API imports
-      where.AND = [
-        { createdBy: { not: null } },
-        {
-          OR: [
-            { category: null },
-            { NOT: { category: { startsWith: "eliteplex" } } },
-          ],
-        },
-      ];
+      // Only manually uploaded content — exclude ElitePlex / API imports
+      where.createdBy = { not: null };
+      where.NOT = {
+        OR: [
+          { category: { startsWith: "eliteplex" } },
+          { category: { contains: "eliteplex" } },
+          { category: { startsWith: "api-" } },
+        ],
+      };
     }
 
     const items = await prisma.content.findMany({
@@ -63,7 +63,17 @@ export async function GET(req: Request) {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ items });
+    // Extra safety filter client-side style for odd categories
+    const filtered = mineOnly
+      ? items.filter((it) => {
+          const cat = (it.category || "").toLowerCase();
+          if (cat.includes("eliteplex")) return false;
+          if (!it.createdBy) return false;
+          return true;
+        })
+      : items;
+
+    return NextResponse.json({ items: filtered });
   } catch (err) {
     console.error("GET /api/content", err);
     return NextResponse.json({ error: "Failed", items: [] }, { status: 500 });
