@@ -53,7 +53,6 @@ export default function PreRollGate({
 
     let cancelled = false;
     (async () => {
-      // Global ads toggle + paid package skip
       try {
         const contentId = contentKey.includes(":")
           ? contentKey.split(":").slice(1).join(":")
@@ -82,17 +81,8 @@ export default function PreRollGate({
 
         if (accessRes.ok) {
           const a = await accessRes.json();
-          // Paid package / access active → no ad for points
-          if (a.enabled && a.locked === false && !a.free && !a.admin) {
-            // has paid access
-            if (!cancelled) {
-              setUnlocked(true);
-              setReady(true);
-            }
-            return;
-          }
-          // Also if userHasAccess via unlocked when payments on
-          if (a.enabled && a.locked === false && a.priceMode && a.priceMode !== "free") {
+          // Active paid package → skip ad until expires
+          if (a.hasPaidAccess) {
             if (!cancelled) {
               setUnlocked(true);
               setReady(true);
@@ -101,7 +91,6 @@ export default function PreRollGate({
           }
         }
 
-        // Session already watched this content
         try {
           if (sessionStorage.getItem(preRollStorageKey(contentKey)) === "1") {
             if (!cancelled) setUnlocked(true);
@@ -231,9 +220,7 @@ export default function PreRollGate({
         )}
 
         {counting ? (
-          <p className="text-sm text-amber-200">
-            Subiri tangazo… {left}s
-          </p>
+          <p className="text-sm text-amber-200">Subiri tangazo… {left}s</p>
         ) : (
           <div className="flex flex-col sm:flex-row gap-2">
             <button
@@ -257,10 +244,6 @@ export default function PreRollGate({
             >
               <UserPlus className="w-4 h-4" /> Alika rafiki
             </Link>
-            <Link
-              href="/admin/payments"
-              className="hidden"
-            />
           </div>
         )}
 
@@ -276,12 +259,9 @@ export default function PreRollGate({
         )}
 
         {msg && <p className="text-xs text-emerald-400">{msg}</p>}
-        {awarded > 0 && unlocked && (
-          <p className="text-xs text-slate-500">Umepewa point — content iko wazi.</p>
-        )}
 
         <p className="text-[11px] text-slate-500">
-          Ukilipia kifurushi (wiki/mwezi…) hutakutana na tangazo hadi muda uishe.
+          Ukilipia kifurushi hutakutana na tangazo hadi muda wa kifurushi uishe.
         </p>
       </div>
 

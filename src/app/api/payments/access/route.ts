@@ -15,20 +15,31 @@ export async function GET(req: Request) {
     const contentId = searchParams.get("contentId") || "";
 
     const settings = await getPaymentSettings();
+    const session = await getSession();
+
+    // Paid package active? (even if global paywall off — for skipping ads)
+    let hasPaidAccess = false;
+    if (session && contentId) {
+      hasPaidAccess = await userHasAccess(session.userId, contentId);
+    } else if (session) {
+      hasPaidAccess = await userHasAccess(session.userId, "");
+    }
+
     if (!settings.enabled) {
       return NextResponse.json({
         locked: false,
         enabled: false,
+        hasPaidAccess,
         reason: "payments_off",
       });
     }
 
-    const session = await getSession();
     if (!session) {
       return NextResponse.json({
         locked: true,
         enabled: true,
         needLogin: true,
+        hasPaidAccess: false,
       });
     }
 
@@ -65,31 +76,29 @@ export async function GET(req: Request) {
         /* ignore */
       }
 
-      // Explicit free content → open
       if (priceMode === "free" && contentType !== "vpn") {
-        // Still lock if category is bulk-paid (movies etc.)
         if (!contentType || !paidCats.includes(contentType)) {
           return NextResponse.json({
             locked: false,
             enabled: true,
             free: true,
+            hasPaidAccess,
           });
         }
       }
 
       if (priceMode === "free" && contentType === "vpn") {
-        // VPN without price: lock only if any vpn package enabled
         const anyPkg = vpnPackages.some((p) => p.enabled && p.priceTzs > 0);
         if (!anyPkg) {
           return NextResponse.json({
             locked: false,
             enabled: true,
             free: true,
+            hasPaidAccess,
           });
         }
       }
 
-      // Content has its own price → always lock (no category tick needed)
       const explicitlyPaid =
         priceMode === "once" ||
         priceMode === "week" ||
@@ -113,16 +122,17 @@ export async function GET(req: Request) {
           locked: false,
           enabled: true,
           free: true,
+          hasPaidAccess,
         });
       }
 
-      const ok = await userHasAccess(session.userId, contentId);
-      let vpnDeliver: {
+      const ok = hasPaidAccess || (await userHasAccess(session.userId, contentId));
+      let vpnDeliver = null as null | {
         plan: string;
         fileUrl?: string;
         configText?: string;
         protocol?: string;
-      } | null = null;
+      };
 
       if (ok && contentType === "vpn") {
         const row = await getUserAccessRow(session.userId, contentId);
@@ -145,6 +155,7 @@ export async function GET(req: Request) {
         accessDays,
         contentType,
         isVpn: contentType === "vpn",
+        hasPaidAccess: ok,
         vpnPackages: contentType === "vpn"
           ? vpnPackages.filter((p) => p.enabled)
           : [],
@@ -153,9 +164,13 @@ export async function GET(req: Request) {
     }
 
     const ok = await userHasAccess(session.userId, "");
-    return NextResponse.json({ locked: !ok, enabled: true });
+    return NextResponse.json({
+      locked: !ok,
+      enabled: true,
+      hasPaidAccess: ok,
+    });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ locked: false, enabled: false });
+    return NextResponse.json({ locked: false, enabled: false, hasPaidAccess: false });
   }
 }
