@@ -42,6 +42,7 @@ export default function PreRollGate({
   const [adOpened, setAdOpened] = useState(false);
   const [awarded, setAwarded] = useState(0);
   const [showOutModal, setShowOutModal] = useState(false);
+  const [adsOn, setAdsOn] = useState(true);
 
   useEffect(() => {
     if (!enabled) {
@@ -52,18 +53,65 @@ export default function PreRollGate({
 
     let cancelled = false;
     (async () => {
+      // Global ads toggle + paid package skip
       try {
-        if (sessionStorage.getItem(preRollStorageKey(contentKey)) === "1") {
-          if (!cancelled) setUnlocked(true);
-        }
-      } catch {
-        /* ignore */
-      }
+        const contentId = contentKey.includes(":")
+          ? contentKey.split(":").slice(1).join(":")
+          : contentKey;
 
-      try {
-        const res = await fetch("/api/auth/me");
-        if (res.ok) {
-          const d = await res.json();
+        const [setRes, accessRes, meRes] = await Promise.all([
+          fetch("/api/payments/settings"),
+          fetch(
+            `/api/payments/access?contentId=${encodeURIComponent(contentId)}`,
+            { credentials: "include" }
+          ),
+          fetch("/api/auth/me", { credentials: "include" }),
+        ]);
+
+        if (setRes.ok) {
+          const s = await setRes.json();
+          if (s.pointsAdsEnabled === false) {
+            if (!cancelled) {
+              setAdsOn(false);
+              setUnlocked(true);
+              setReady(true);
+            }
+            return;
+          }
+        }
+
+        if (accessRes.ok) {
+          const a = await accessRes.json();
+          // Paid package / access active → no ad for points
+          if (a.enabled && a.locked === false && !a.free && !a.admin) {
+            // has paid access
+            if (!cancelled) {
+              setUnlocked(true);
+              setReady(true);
+            }
+            return;
+          }
+          // Also if userHasAccess via unlocked when payments on
+          if (a.enabled && a.locked === false && a.priceMode && a.priceMode !== "free") {
+            if (!cancelled) {
+              setUnlocked(true);
+              setReady(true);
+            }
+            return;
+          }
+        }
+
+        // Session already watched this content
+        try {
+          if (sessionStorage.getItem(preRollStorageKey(contentKey)) === "1") {
+            if (!cancelled) setUnlocked(true);
+          }
+        } catch {
+          /* ignore */
+        }
+
+        if (meRes.ok) {
+          const d = await meRes.json();
           if (d.user && !cancelled) {
             setUser(d.user);
             setPoints(d.user.points ?? 0);
@@ -86,7 +134,6 @@ export default function PreRollGate({
     return () => clearTimeout(t);
   }, [counting, left]);
 
-  // Countdown finished → award points THEN unlock
   useEffect(() => {
     if (!(counting && left <= 0)) return;
     let cancelled = false;
@@ -98,37 +145,37 @@ export default function PreRollGate({
           const d = await res.json();
           if (typeof d.points === "number" && !cancelled) {
             setPoints(d.points);
+            got = d.awarded ?? POINTS.WATCH_AD ?? 1;
+            setAwarded(got);
           }
-          if (typeof d.awarded === "number") got = d.awarded;
         }
       } catch {
         /* ignore */
       }
+      try {
+        sessionStorage.setItem(preRollStorageKey(contentKey), "1");
+      } catch {
+        /* ignore */
+      }
       if (!cancelled) {
-        setAwarded(got);
-        if (got > 0) {
-          setMsg(`+${got} point zimeongezwa!`);
-          setShowOutModal(false);
-        } else if (!user) {
-          setMsg("Ingia account ili upate point baada ya tangazo");
-        }
-        try {
-          sessionStorage.setItem(preRollStorageKey(contentKey), "1");
-        } catch {
-          /* ignore */
-        }
         setCounting(false);
-        setTimeout(() => {
-          if (!cancelled) setUnlocked(true);
-        }, 700);
+        setUnlocked(true);
+        if (got) setMsg(`+${got} point`);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [counting, left, contentKey, user]);
+  }, [counting, left, contentKey]);
 
-  async function spendAndUnlock() {
+  function startAd() {
+    setAdOpened(true);
+    setLeft(PRE_ROLL_SECONDS);
+    setCounting(true);
+    window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
+  }
+
+  async function spendAndWatch() {
     setBusy(true);
     setMsg("");
     try {
@@ -138,20 +185,9 @@ export default function PreRollGate({
         body: JSON.stringify({ contentKey }),
       });
       const d = await res.json();
-      if (res.status === 401) {
-        setMsg("Ingia account ili utumie point.");
-        setBusy(false);
-        return;
-      }
-      if (res.status === 402 || d.code === "NO_POINTS") {
-        setPoints(d.points ?? 0);
-        setShowOutModal(true);
-        setMsg("Point zimeisha — tazama tangazo.");
-        setBusy(false);
-        return;
-      }
       if (!res.ok) {
-        setMsg(d.error || "Imeshindikana");
+        if (d.code === "NO_POINTS") setShowOutModal(true);
+        else setMsg(d.error || "Imeshindikana");
         setBusy(false);
         return;
       }
@@ -168,194 +204,89 @@ export default function PreRollGate({
     setBusy(false);
   }
 
-  function startAd() {
-    setMsg("");
-    setAwarded(0);
-    setAdOpened(true);
-    setShowOutModal(false);
-    setLeft(PRE_ROLL_SECONDS);
-    setCounting(true);
-
-    const win = window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
-    if (!win) {
-      try {
-        sessionStorage.setItem("etuza_ad_return", window.location.href);
-        sessionStorage.setItem(preRollStorageKey(contentKey) + "_pending", "1");
-      } catch {
-        /* ignore */
-      }
-      window.location.assign(PRE_ROLL_AD_URL);
-      return;
-    }
-
-    setMsg("Tangazo limefunguka. Subiri countdown iishe ili upate point.");
-  }
-
-  function reopenAd() {
-    window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
-  }
-
-  function copyInvite() {
-    if (!user?.inviteCode) return;
-    const url = `${window.location.origin}/signup?ref=${user.inviteCode}`;
-    navigator.clipboard?.writeText(url);
-    setMsg("Invite link imenakiliwa — marafiki wakijisajili unapata +5");
-  }
-
-  if (!enabled) return <>{children}</>;
-
   if (!ready) {
     return (
-      <div
-        className="rounded-2xl border border-red-900/40 bg-black flex items-center justify-center text-slate-400 text-sm"
-        style={{ minHeight: 220, aspectRatio: "16/9" }}
-      >
-        …
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-8 text-center text-sm text-slate-500">
+        Inapakia…
       </div>
     );
   }
 
-  if (unlocked) return <>{children}</>;
-
-  const hasPoints = user && (points ?? 0) >= POINTS.WATCH_COST;
+  if (!enabled || !adsOn || unlocked) {
+    return <>{children}</>;
+  }
 
   return (
     <>
-      <PointsOutModal
-        open={showOutModal}
-        points={points ?? 0}
-        inviteCode={user?.inviteCode}
-        onClose={() => setShowOutModal(false)}
-        onWatchAd={startAd}
-        onInvite={user?.inviteCode ? copyInvite : undefined}
-      />
-
-      {counting || adOpened ? (
-        <div
-          className="relative w-full rounded-2xl overflow-hidden border-2 border-red-600/50 bg-gradient-to-b from-red-950 to-slate-950"
-          style={{ aspectRatio: "16/9", minHeight: 240 }}
-        >
-          <div className="absolute inset-0 flex flex-col items-center justify-center px-4 text-center gap-3">
-            {left > 0 && (
-              <div className="w-16 h-16 rounded-full border-4 border-red-400 border-t-transparent animate-spin" />
-            )}
-            <p className="text-3xl font-black text-white tabular-nums">
-              {left > 0 ? left : 0}s
-            </p>
-            <p className="text-sm text-red-100 font-medium">
-              {left <= 0
-                ? awarded > 0
-                  ? `+${awarded} point zimeongezwa!`
-                  : "Tayari — endelea kucheza"
-                : "Tangazo linaendelea… subiri countdown"}
-            </p>
-            {user && points !== null && (
-              <p className="text-xs text-amber-300 flex items-center gap-1 justify-center">
-                <Coins className="w-3.5 h-3.5" />
-                Point zako: {points}
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2 justify-center mt-1">
-              <button
-                type="button"
-                onClick={reopenAd}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold touch-manipulation"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Fungua tena
-              </button>
-              {left <= 0 && (
-                <button
-                  type="button"
-                  onClick={() => setUnlocked(true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold touch-manipulation"
-                >
-                  <Play className="w-4 h-4 fill-current" />
-                  Cheza sasa
-                </button>
-              )}
-            </div>
-            {msg && <p className="text-xs text-amber-300">{msg}</p>}
-          </div>
+      <div className="rounded-2xl border border-slate-700 bg-slate-900 p-5 space-y-4">
+        <div className="flex items-center gap-2 text-violet-300">
+          <Coins className="w-5 h-5" />
+          <h3 className="font-semibold text-sm">Tazama au lipia kwa point</h3>
         </div>
-      ) : (
-        <div
-          className="relative w-full rounded-2xl overflow-hidden border-2 border-red-600/40 bg-slate-950"
-          style={{ aspectRatio: "16/9", minHeight: 220 }}
-        >
-          <div className="absolute inset-0 flex flex-col items-center justify-center px-4 gap-3">
-            <p className="text-sm font-semibold text-white truncate max-w-full">
-              {title || "Video"}
-            </p>
+        {title && <p className="text-xs text-slate-400">{title}</p>}
+        {points !== null && (
+          <p className="text-xs text-slate-400">
+            Point zako: <b className="text-white">{points}</b>
+          </p>
+        )}
 
-            {user ? (
-              <p className="text-xs text-amber-300 flex items-center gap-1">
-                <Coins className="w-3.5 h-3.5" />
-                {points ?? 0} point
-              </p>
-            ) : (
-              <p className="text-xs text-slate-400">
-                <Link href="/login" className="text-red-300 underline">
-                  Ingia
-                </Link>{" "}
-                ·{" "}
-                <Link href="/signup" className="text-red-300 underline">
-                  Jisajili (+{POINTS.SIGNUP})
-                </Link>
-              </p>
-            )}
-
-            {msg && <p className="text-xs text-amber-300">{msg}</p>}
-
-            <div className="flex flex-wrap gap-2 justify-center">
-              {hasPoints && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={spendAndUnlock}
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-60 touch-manipulation"
-                >
-                  {busy ? "…" : `Cheza (−${POINTS.WATCH_COST} point)`}
-                </button>
-              )}
-
-              {!hasPoints && user && (
-                <button
-                  type="button"
-                  onClick={() => setShowOutModal(true)}
-                  className="px-5 py-2.5 rounded-xl bg-amber-600 text-white text-sm font-semibold touch-manipulation"
-                >
-                  Point zimeisha — fungua
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={startAd}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold touch-manipulation"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Tazama tangazo (+{POINTS.AD_REWARD})
-              </button>
-
-              {user?.inviteCode && (
-                <button
-                  type="button"
-                  onClick={copyInvite}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-600 text-slate-200 text-sm inline-flex items-center gap-1 touch-manipulation"
-                >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  Invite (+{POINTS.INVITE_REWARD})
-                </button>
-              )}
-            </div>
-
-            <p className="text-[11px] text-slate-500 text-center max-w-xs">
-              Point zinapatikana baada ya countdown ya tangazo kuisha (ukiwa
-              umeingia account).
-            </p>
+        {counting ? (
+          <p className="text-sm text-amber-200">
+            Subiri tangazo… {left}s
+          </p>
+        ) : (
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              type="button"
+              onClick={startAd}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold"
+            >
+              <Play className="w-4 h-4" /> Tazama tangazo (+point)
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={spendAndWatch}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold disabled:opacity-50"
+            >
+              <Coins className="w-4 h-4" /> Tumia point kutazama
+            </button>
+            <Link
+              href="/invite"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-600 text-slate-300 text-sm"
+            >
+              <UserPlus className="w-4 h-4" /> Alika rafiki
+            </Link>
+            <Link
+              href="/admin/payments"
+              className="hidden"
+            />
           </div>
-        </div>
+        )}
+
+        {adOpened && !counting && (
+          <a
+            href={PRE_ROLL_AD_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-slate-500"
+          >
+            <ExternalLink className="w-3 h-3" /> Fungua tangazo tena
+          </a>
+        )}
+
+        {msg && <p className="text-xs text-emerald-400">{msg}</p>}
+        {awarded > 0 && unlocked && (
+          <p className="text-xs text-slate-500">Umepewa point — content iko wazi.</p>
+        )}
+
+        <p className="text-[11px] text-slate-500">
+          Ukilipia kifurushi (wiki/mwezi…) hutakutana na tangazo hadi muda uishe.
+        </p>
+      </div>
+
+      {showOutModal && (
+        <PointsOutModal onClose={() => setShowOutModal(false)} />
       )}
     </>
   );
