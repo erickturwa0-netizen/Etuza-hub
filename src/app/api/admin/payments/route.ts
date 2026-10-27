@@ -79,6 +79,7 @@ const settingsSchema = z.object({
   instructions: z.string().optional().nullable(),
   paidCategories: z.array(z.string()).optional(),
   showPackages: z.boolean().optional(),
+  pointsAdsEnabled: z.boolean().optional(),
   vpnPackages: z.array(vpnPkgSchema).optional(),
 });
 
@@ -96,6 +97,7 @@ export async function PUT(req: Request) {
     .filter((c) => (CONTENT_TYPES as readonly string[]).includes(c))
     .join(",");
   const showPackages = d.showPackages === true;
+  const pointsAdsEnabled = d.pointsAdsEnabled !== false;
   const vpnPackages = JSON.stringify(
     d.vpnPackages?.length ? d.vpnPackages : DEFAULT_VPN_PACKAGES
   );
@@ -114,6 +116,7 @@ export async function PUT(req: Request) {
       instructions: d.instructions || null,
       paidCategories,
       showPackages,
+      pointsAdsEnabled,
       vpnPackages,
     },
     update: {
@@ -127,6 +130,7 @@ export async function PUT(req: Request) {
       instructions: d.instructions || null,
       paidCategories,
       showPackages,
+      pointsAdsEnabled,
       vpnPackages,
     },
   });
