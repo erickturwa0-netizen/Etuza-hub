@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Save, Check, X } from "lucide-react";
+import { Save, Check, X, Image as ImageIcon, FileUp } from "lucide-react";
 import {
   NETWORKS,
   CONTENT_TYPES,
@@ -39,6 +39,19 @@ type Req = {
   user: { email: string; fullName: string | null };
   content: { title: string; type: string } | null;
 };
+
+function readFileAsDataUrl(file: File, maxBytes: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (file.size > maxBytes) {
+      reject(new Error(`Faili kubwa mno (max ${Math.round(maxBytes / 1000)}KB)`));
+      return;
+    }
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ""));
+    r.onerror = () => reject(new Error("Imeshindikana kusoma faili"));
+    r.readAsDataURL(file);
+  });
+}
 
 export default function AdminPaymentsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -79,6 +92,33 @@ export default function AdminPaymentsPage() {
     setVpnPkgs((prev) =>
       prev.map((p) => (p.plan === plan ? { ...p, ...patch } : p))
     );
+  }
+
+  async function onVpnImage(plan: string, file: File | null) {
+    if (!file) return;
+    try {
+      const data = await readFileAsDataUrl(file, 1_200_000);
+      updateVpn(plan, { imageUrl: data });
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Picha imeshindikana");
+    }
+  }
+
+  async function onVpnFile(plan: string, file: File | null) {
+    if (!file) return;
+    try {
+      // Config files often small; allow up to ~1.8MB as data URL
+      const data = await readFileAsDataUrl(file, 1_800_000);
+      updateVpn(plan, { fileUrl: data });
+      setError("");
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message + " — au weka link ya faili badala yake"
+          : "Faili imeshindikana"
+      );
+    }
   }
 
   async function saveSettings() {
@@ -128,7 +168,7 @@ export default function AdminPaymentsPage() {
       <div>
         <h1 className="text-2xl font-bold">Malipo</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Bei ya content moja → auto. Tiki = sehemu zote (si VPN). VPN = vifurushi + config.
+          Bei ya content → auto. Tiki = sehemu (si VPN). VPN = vifurushi + picha + file.
         </p>
       </div>
 
@@ -158,7 +198,11 @@ export default function AdminPaymentsPage() {
                   <p className="text-violet-300 font-semibold">
                     {r.amount.toLocaleString()} TZS · {planLabel(r.plan)}
                   </p>
-                  {r.content && <p>{r.content.type}: {r.content.title}</p>}
+                  {r.content && (
+                    <p>
+                      {r.content.type}: {r.content.title}
+                    </p>
+                  )}
                 </div>
               </div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -185,16 +229,13 @@ export default function AdminPaymentsPage() {
         <label className="flex items-center justify-between gap-3">
           <div>
             <span className="font-semibold text-sm block">Onyesha vifurushi (si VPN)</span>
-            <span className="text-[11px] text-slate-500">Kwa movie n.k. bila bei maalum</span>
+            <span className="text-[11px] text-slate-500">Kwa movie n.k.</span>
           </div>
           <input type="checkbox" className="w-5 h-5" checked={!!settings.showPackages} onChange={(e) => setSettings({ ...settings, showPackages: e.target.checked })} />
         </label>
 
         <div className="rounded-xl border border-slate-700 p-3 space-y-2">
           <p className="text-sm font-semibold">Sehemu zinazolipiwa (si VPN)</p>
-          <p className="text-[11px] text-slate-500">
-            Tiki = content yote ya sehemu hiyo. Content yenye bei yake inalipishwa hata bila tiki.
-          </p>
           <div className="grid grid-cols-2 gap-2">
             {CONTENT_TYPES.map((cat) => (
               <label key={cat} className="flex items-center gap-2 text-sm px-2 py-2 rounded-lg border border-slate-800">
@@ -239,18 +280,18 @@ export default function AdminPaymentsPage() {
         </button>
       </section>
 
-      {/* VPN packages */}
       <section className="space-y-3 max-w-xl">
-        <h2 className="text-lg font-bold">VPN — vifurushi + config</h2>
+        <h2 className="text-lg font-bold">VPN — vifurushi + picha + file</h2>
         <p className="text-xs text-slate-500">
-          Kila kifurushi kina bei na config yake. User akilipia wiki → anapata config ya wiki.
+          Kila kifurushi: picha, file ya config, bei. Faili kubwa → tumia link badala ya kupakia.
         </p>
         {vpnPkgs.map((p) => (
-          <div key={p.plan} className="glass-card p-4 space-y-2">
+          <div key={p.plan} className="glass-card p-4 space-y-3">
             <label className="flex items-center justify-between">
               <span className="font-semibold text-sm">{p.title || planLabel(p.plan)}</span>
               <input type="checkbox" checked={p.enabled} onChange={(e) => updateVpn(p.plan, { enabled: e.target.checked })} />
             </label>
+
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[11px] text-slate-500">Jina</label>
@@ -261,16 +302,73 @@ export default function AdminPaymentsPage() {
                 <input type="number" value={p.priceTzs} onChange={(e) => updateVpn(p.plan, { priceTzs: Number(e.target.value) || 0 })} className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
               </div>
             </div>
+
+            {/* Image upload */}
+            <div className="rounded-xl border border-emerald-800/40 bg-emerald-950/20 p-3 space-y-2">
+              <p className="text-xs font-medium text-emerald-300 flex items-center gap-1">
+                <ImageIcon className="w-3.5 h-3.5" /> Picha ya kifurushi
+              </p>
+              <input
+                type="file"
+                accept="image/*"
+                className="w-full text-xs text-slate-400"
+                onChange={(e) => onVpnImage(p.plan, e.target.files?.[0] || null)}
+              />
+              {p.imageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={p.imageUrl}
+                  alt=""
+                  className="max-h-28 rounded-lg border border-slate-700 object-cover"
+                />
+              )}
+              <input
+                value={p.imageUrl.startsWith("data:") ? "(picha imepakiwa)" : p.imageUrl}
+                onChange={(e) => {
+                  if (!e.target.value.startsWith("(")) {
+                    updateVpn(p.plan, { imageUrl: e.target.value });
+                  }
+                }}
+                placeholder="au link ya picha https://…"
+                className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm"
+              />
+            </div>
+
+            {/* File upload */}
+            <div className="rounded-xl border border-sky-800/40 bg-sky-950/20 p-3 space-y-2">
+              <p className="text-xs font-medium text-sky-300 flex items-center gap-1">
+                <FileUp className="w-3.5 h-3.5" /> File ya VPN (config)
+              </p>
+              <input
+                type="file"
+                className="w-full text-xs text-slate-400"
+                onChange={(e) => onVpnFile(p.plan, e.target.files?.[0] || null)}
+              />
+              {p.fileUrl && (
+                <p className="text-[11px] text-slate-400 truncate">
+                  {p.fileUrl.startsWith("data:")
+                    ? "✓ File imepakiwa"
+                    : p.fileUrl}
+                </p>
+              )}
+              <input
+                value={p.fileUrl.startsWith("data:") ? "(file imepakiwa)" : p.fileUrl}
+                onChange={(e) => {
+                  if (!e.target.value.startsWith("(")) {
+                    updateVpn(p.plan, { fileUrl: e.target.value });
+                  }
+                }}
+                placeholder="au link ya file https://…"
+                className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm"
+              />
+            </div>
+
             <div>
               <label className="text-[11px] text-slate-500">Protocol</label>
-              <input value={p.protocol} onChange={(e) => updateVpn(p.plan, { protocol: e.target.value })} placeholder="OpenVPN / V2Ray…" className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
+              <input value={p.protocol} onChange={(e) => updateVpn(p.plan, { protocol: e.target.value })} placeholder="OpenVPN / V2Ray / HTTP Injector…" className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
             </div>
             <div>
-              <label className="text-[11px] text-slate-500">File / download URL</label>
-              <input value={p.fileUrl} onChange={(e) => updateVpn(p.plan, { fileUrl: e.target.value })} placeholder="https://…" className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-500">Config text</label>
+              <label className="text-[11px] text-slate-500">Config text (hiari)</label>
               <textarea value={p.configText} onChange={(e) => updateVpn(p.plan, { configText: e.target.value })} rows={2} className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm font-mono" />
             </div>
           </div>
@@ -285,7 +383,9 @@ export default function AdminPaymentsPage() {
           <h2 className="text-lg font-bold mb-2">Historia</h2>
           <ul className="text-sm text-slate-400 space-y-1">
             {recent.map((r) => (
-              <li key={r.id}>{r.status} · {r.user.email} · {r.amount.toLocaleString()} TZS</li>
+              <li key={r.id}>
+                {r.status} · {r.user.email} · {r.amount.toLocaleString()} TZS
+              </li>
             ))}
           </ul>
         </section>

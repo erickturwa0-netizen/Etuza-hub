@@ -33,9 +33,10 @@ export type VpnPackage = {
   protocol: string;
   configText: string;
   fileUrl: string;
+  /** Cover / preview image (url or data:) */
+  imageUrl: string;
 };
 
-/** Default VPN packages — no year */
 export const DEFAULT_VPN_PACKAGES: VpnPackage[] = [
   {
     plan: "once",
@@ -45,6 +46,7 @@ export const DEFAULT_VPN_PACKAGES: VpnPackage[] = [
     protocol: "",
     configText: "",
     fileUrl: "",
+    imageUrl: "",
   },
   {
     plan: "week",
@@ -54,6 +56,7 @@ export const DEFAULT_VPN_PACKAGES: VpnPackage[] = [
     protocol: "",
     configText: "",
     fileUrl: "",
+    imageUrl: "",
   },
   {
     plan: "month",
@@ -63,6 +66,7 @@ export const DEFAULT_VPN_PACKAGES: VpnPackage[] = [
     protocol: "",
     configText: "",
     fileUrl: "",
+    imageUrl: "",
   },
 ];
 
@@ -112,10 +116,17 @@ export function parseVpnPackages(raw: string | null | undefined): VpnPackage[] {
   try {
     const arr = JSON.parse(raw) as VpnPackage[];
     if (!Array.isArray(arr) || !arr.length) return base;
-    // Only keep once / week / month — drop year
     return base.map((def) => {
       const found = arr.find((a) => a.plan === def.plan);
-      return found ? { ...def, ...found, plan: def.plan } : { ...def };
+      return found
+        ? {
+            ...def,
+            ...found,
+            plan: def.plan,
+            imageUrl: found.imageUrl || "",
+            fileUrl: found.fileUrl || "",
+          }
+        : { ...def };
     });
   } catch {
     return base;
