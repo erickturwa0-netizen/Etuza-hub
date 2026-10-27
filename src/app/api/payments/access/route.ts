@@ -13,8 +13,14 @@ export async function GET(req: Request) {
     const contentId = searchParams.get("contentId") || "";
 
     const settings = await getPaymentSettings();
+
+    // Global paywall switch must be ON
     if (!settings.enabled) {
-      return NextResponse.json({ locked: false, enabled: false });
+      return NextResponse.json({
+        locked: false,
+        enabled: false,
+        reason: "payments_off",
+      });
     }
 
     const session = await getSession();
@@ -26,15 +32,11 @@ export async function GET(req: Request) {
       });
     }
 
-    if (session.role === "admin") {
-      return NextResponse.json({ locked: false, enabled: true, admin: true });
-    }
-
     const paidCats = parsePaidCategories(
       (settings as { paidCategories?: string }).paidCategories
     );
 
-    let priceMode = "once";
+    let priceMode = "free";
     let priceTzs = 0;
     let accessDays = 0;
     let contentType = "";
@@ -51,42 +53,47 @@ export async function GET(req: Request) {
           },
         });
         if (c) {
-          priceMode = c.priceMode || "once";
+          priceMode = c.priceMode || "free";
           priceTzs = c.priceTzs || 0;
           accessDays = c.accessDays || 0;
-          contentType = c.type;
-
-          if (priceMode === "free") {
-            return NextResponse.json({
-              locked: false,
-              enabled: true,
-              free: true,
-            });
-          }
-
-          // Category not in paid list → free unless content itself is priced
-          if (
-            contentType &&
-            !paidCats.includes(contentType) &&
-            (priceMode === "free" || !priceMode)
-          ) {
-            return NextResponse.json({ locked: false, enabled: true });
-          }
-          if (contentType && !paidCats.includes(contentType) && priceTzs <= 0 && priceMode === "free") {
-            return NextResponse.json({ locked: false, enabled: true });
-          }
-          // If category not ticked as paid and content is free-mode
-          if (contentType && !paidCats.includes(contentType)) {
-            // Only lock if this specific content is explicitly sold
-            if (priceMode === "free" || !priceMode) {
-              return NextResponse.json({ locked: false, enabled: true });
-            }
-          }
+          contentType = c.type || "";
         }
       } catch {
-        /* ignore */
+        /* columns missing */
       }
 
+      // Explicit free → always open
+      if (priceMode === "free") {
+        return NextResponse.json({
+          locked: false,
+          enabled: true,
+          free: true,
+        });
+      }
+
+      // Paid content (once / week / month / year / timed)
+      // OR type is in paid categories list
+      const explicitlyPaid =
+        priceMode === "once" ||
+        priceMode === "week" ||
+        priceMode === "month" ||
+        priceMode === "year" ||
+        priceMode === "timed" ||
+        (priceTzs > 0 && priceMode !== "free");
+
+      const categoryPaid =
+        !!contentType && paidCats.includes(contentType);
+
+      // If neither content nor category requires payment → open
+      if (!explicitlyPaid && !categoryPaid) {
+        return NextResponse.json({
+          locked: false,
+          enabled: true,
+          free: true,
+        });
+      }
+
+      // Has access already?
       const ok = await userHasAccess(session.userId, contentId);
       return NextResponse.json({
         locked: !ok,
@@ -94,11 +101,15 @@ export async function GET(req: Request) {
         priceMode,
         priceTzs,
         accessDays,
+        admin: session.role === "admin",
       });
     }
 
     const ok = await userHasAccess(session.userId, "");
-    return NextResponse.json({ locked: !ok, enabled: true });
+    return NextResponse.json({
+      locked: !ok,
+      enabled: true,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ locked: false, enabled: false });
