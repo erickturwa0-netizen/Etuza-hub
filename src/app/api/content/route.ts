@@ -49,6 +49,29 @@ async function ensureContentVpnColumn() {
   }
 }
 
+function isApiImport(item: {
+  category?: string | null;
+  type?: string;
+  createdBy?: string | null;
+}) {
+  const cat = (item.category || "").toLowerCase();
+  if (cat.includes("eliteplex")) return true;
+  if (cat.startsWith("api-")) return true;
+  // Manual types never come from ElitePlex API
+  if (
+    item.type === "vpn" ||
+    item.type === "game" ||
+    item.type === "radio" ||
+    item.type === "tv" ||
+    item.type === "music"
+  ) {
+    return false;
+  }
+  // Movies/drama without createdBy and with no category are often API bulk imports
+  // Keep those with createdBy; drop pure API imports tagged eliteplex (above)
+  return false;
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -70,7 +93,8 @@ export async function GET(req: Request) {
     if (publishedOnly) where.status = "published";
 
     if (mineOnly) {
-      where.createdBy = { not: null };
+      // Exclude ElitePlex / API-tagged rows only — do NOT require createdBy
+      // (older VPN/game rows may have null createdBy but are real uploads)
       where.NOT = {
         OR: [
           { category: { startsWith: "eliteplex" } },
@@ -86,12 +110,7 @@ export async function GET(req: Request) {
     });
 
     const filtered = mineOnly
-      ? items.filter((it) => {
-          const cat = (it.category || "").toLowerCase();
-          if (cat.includes("eliteplex")) return false;
-          if (!it.createdBy) return false;
-          return true;
-        })
+      ? items.filter((it) => !isApiImport(it))
       : items;
 
     return NextResponse.json({ items: filtered });
@@ -126,7 +145,6 @@ export async function POST(req: Request) {
         ? JSON.stringify(d.vpnPackages)
         : null;
 
-    // If VPN has packages, treat as paid content
     let priceMode = d.priceMode || "free";
     if (d.type === "vpn" && d.vpnPackages?.some((p) => p.enabled)) {
       if (priceMode === "free") priceMode = "once";
