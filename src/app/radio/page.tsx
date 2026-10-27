@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Radio, Search, X } from "lucide-react";
+import { Radio, Search, X, Play } from "lucide-react";
 import PresenceTracker from "@/components/PresenceTracker";
 import AudioPlayer from "@/components/AudioPlayer";
 import { radioCover } from "@/lib/covers";
@@ -56,7 +56,7 @@ export default function RadioPage() {
   }
 
   return (
-    <main className="flex-1 max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-36">
+    <main className="flex-1 max-w-6xl mx-auto px-3 sm:px-4 py-6 pb-48">
       <PresenceTracker section="radio" title={playing?.name || "Radio"} />
 
       <div className="flex items-center gap-3 mb-4">
@@ -66,32 +66,10 @@ export default function RadioPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-white">Radio</h1>
           <p className="text-sm text-slate-400">
-            Live stations{source ? ` · ${source}` : ""}
+            Bofya station kusikiliza{source ? ` · ${source}` : ""}
           </p>
         </div>
       </div>
-
-      {/* Sticky player — stays visible while scrolling station list */}
-      {playing && (
-        <div className="sticky top-14 z-30 mb-4 -mx-1">
-          <div className="relative rounded-2xl border border-pink-500/40 bg-slate-950/95 backdrop-blur-md shadow-xl shadow-black/40 p-2">
-            <button
-              type="button"
-              onClick={() => setPlaying(null)}
-              className="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300"
-              aria-label="Funga"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <AudioPlayer
-              src={playing.url}
-              title={playing.name}
-              coverUrl={coverOf(playing)}
-              kind="radio"
-            />
-          </div>
-        </div>
-      )}
 
       <div className="flex flex-wrap gap-2 mb-4">
         {(
@@ -157,11 +135,11 @@ export default function RadioPage() {
                 onClick={() => setPlaying(s)}
                 className={`text-left rounded-2xl border p-3.5 flex items-center gap-3 transition ${
                   active
-                    ? "border-pink-500/60 bg-pink-950/40"
+                    ? "border-pink-500/60 bg-pink-950/40 ring-1 ring-pink-500/40"
                     : "border-slate-700 bg-slate-900 active:border-pink-500/40"
                 }`}
               >
-                <div className="w-14 h-14 rounded-xl bg-white flex items-center justify-center overflow-hidden shrink-0 border border-slate-700 p-1.5">
+                <div className="w-14 h-14 rounded-xl bg-white flex items-center justify-center overflow-hidden shrink-0 border border-slate-700 p-1.5 relative">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={cover}
@@ -175,6 +153,11 @@ export default function RadioPage() {
                       }
                     }}
                   />
+                  {active && (
+                    <span className="absolute inset-0 bg-pink-600/30 flex items-center justify-center">
+                      <Play className="w-6 h-6 text-white fill-white" />
+                    </span>
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-[15px] text-white truncate">{s.name}</p>
@@ -187,6 +170,29 @@ export default function RadioPage() {
               </button>
             );
           })}
+        </div>
+      )}
+
+      {/* Fixed player — always visible above bottom nav while playing */}
+      {playing && (
+        <div className="fixed left-0 right-0 z-40 px-3" style={{ bottom: "4.5rem" }}>
+          <div className="max-w-lg mx-auto relative rounded-2xl border border-pink-500/50 bg-slate-950 shadow-2xl shadow-pink-900/40 p-2">
+            <button
+              type="button"
+              onClick={() => setPlaying(null)}
+              className="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300"
+              aria-label="Funga"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <AudioPlayer
+              key={playing.id}
+              src={playing.url}
+              title={playing.name}
+              coverUrl={coverOf(playing)}
+              kind="radio"
+            />
+          </div>
         </div>
       )}
     </main>
