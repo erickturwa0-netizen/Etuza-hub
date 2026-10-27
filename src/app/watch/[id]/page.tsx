@@ -90,6 +90,7 @@ export default async function WatchPage({
               ? "tv"
               : item.type;
 
+  const contentKey = `${item.type}:${item.id}`;
   const isDownload = item.linkType === "download" || item.type === "vpn";
   const isWebGame =
     item.type === "game" &&
@@ -153,7 +154,7 @@ export default async function WatchPage({
     if (item.type === "radio" || item.type === "music") {
       return (
         <PreRollGate
-          contentKey={`${item.type}:${item.id}`}
+          contentKey={contentKey}
           title={item.title}
           enabled={usePointsGate}
         >
@@ -168,12 +169,17 @@ export default async function WatchPage({
     }
     return (
       <PreRollGate
-        contentKey={`${item.type}:${item.id}`}
+        contentKey={contentKey}
         title={item.title}
         enabled={usePointsGate}
       >
         <div className="w-full max-w-full overflow-hidden">
-          <StreamPlayer src={link} poster={item.coverUrl} title={item.title} />
+          <StreamPlayer
+            src={link}
+            poster={item.coverUrl}
+            title={item.title}
+            contentKey={contentKey}
+          />
         </div>
       </PreRollGate>
     );
