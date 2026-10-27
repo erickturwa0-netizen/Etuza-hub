@@ -55,9 +55,7 @@ function ContentList() {
     setLoading(true);
     setError("");
     try {
-      const q = typeFilter
-        ? `?type=${typeFilter}&mine=1`
-        : "?mine=1";
+      const q = typeFilter ? `?type=${typeFilter}&mine=1` : "?mine=1";
       const [cRes, pRes] = await Promise.all([
         fetch(`/api/content${q}`, { credentials: "include" }),
         fetch("/api/admin/payments", { credentials: "include" }),
@@ -95,7 +93,10 @@ function ContentList() {
 
   async function remove(id: string) {
     if (!confirm("Futa content hii?")) return;
-    await fetch(`/api/content/${id}`, { method: "DELETE", credentials: "include" });
+    await fetch(`/api/content/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
     load();
   }
 
@@ -116,11 +117,10 @@ function ContentList() {
     setSavingAds(true);
     setPointsAds(next);
     try {
-      // Load full settings then PUT with pointsAdsEnabled
       const res = await fetch("/api/admin/payments", { credentials: "include" });
       const data = await res.json();
       const s = data.settings || {};
-      await fetch("/api/admin/payments", {
+      const put = await fetch("/api/admin/payments", {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -135,13 +135,16 @@ function ContentList() {
           instructions: s.instructions,
           showPackages: !!s.showPackages,
           pointsAdsEnabled: next,
-          paidCategories: (s.paidCategories || "")
-            .split(",")
-            .filter(Boolean),
+          paidCategories: (s.paidCategories || "").split(",").filter(Boolean),
           vpnPackages: s.vpnPackages,
         }),
       });
-      setMsg(next ? "Tangazo la point limewashwa" : "Tangazo la point limezimwa");
+      if (!put.ok) {
+        const e = await put.json().catch(() => ({}));
+        setError(e.error || "Imeshindikana kuhifadhi ads");
+      } else {
+        setMsg(next ? "Tangazo la point limewashwa ✓" : "Tangazo la point limezimwa ✓");
+      }
     } catch {
       setError("Imeshindikana kuhifadhi");
     }
@@ -158,6 +161,10 @@ function ContentList() {
 
   return (
     <div className="space-y-8">
+      <div className="rounded-xl border border-violet-700/40 bg-violet-950/30 px-3 py-2 text-xs text-violet-200">
+        Content panel v3 — Edit · Idhinisha malipo · Tick ya tangazo la point
+      </div>
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Content</h1>
@@ -176,42 +183,53 @@ function ContentList() {
       </div>
 
       {msg && (
-        <div className="px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-sm">{msg}</div>
+        <div className="px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-sm">
+          {msg}
+        </div>
       )}
       {error && (
-        <div className="px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-sm">{error}</div>
+        <div className="px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-sm">
+          {error}
+        </div>
       )}
 
-      {/* Points ads toggle */}
-      <label className="glass-card p-4 flex items-center justify-between gap-3 max-w-xl">
-        <div>
-          <p className="font-semibold text-sm">Tangazo la point (Tazama tangazo)</p>
-          <p className="text-[11px] text-slate-500">
-            Zima = hakuna "tazama tangazo". Mwenye kifurushi cha malipo haoni tangazo hadi muda uishe.
-          </p>
+      {/* Points ads toggle — very visible */}
+      <label className="block glass-card p-4 max-w-xl border-2 border-amber-500/40">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="font-bold text-sm text-amber-100">
+              ☑ Tangazo la point (Tazama tangazo)
+            </p>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Washa/zima ads za point. Mwenye kifurushi cha malipo haoni tangazo
+              hadi muda uishe.
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            className="w-6 h-6 accent-violet-500"
+            checked={pointsAds}
+            disabled={savingAds}
+            onChange={(e) => savePointsAds(e.target.checked)}
+          />
         </div>
-        <input
-          type="checkbox"
-          className="w-5 h-5"
-          checked={pointsAds}
-          disabled={savingAds}
-          onChange={(e) => savePointsAds(e.target.checked)}
-        />
       </label>
 
-      {/* Pending payments on content page */}
-      <section>
+      {/* Pending payments */}
+      <section className="rounded-2xl border border-emerald-700/30 bg-emerald-950/10 p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold">Idhinisha malipo ({pending.length})</h2>
+          <h2 className="text-lg font-bold text-emerald-100">
+            Idhinisha malipo ({pending.length})
+          </h2>
           <Link href="/admin/payments" className="text-xs text-violet-400">
             Malipo page →
           </Link>
         </div>
         <div className="space-y-3">
           {pending.length === 0 && (
-            <p className="text-sm text-slate-500 glass-card p-4">Hakuna anayesubiri.</p>
+            <p className="text-sm text-slate-500">Hakuna anayesubiri idhini.</p>
           )}
-          {pending.slice(0, 10).map((r) => (
+          {pending.slice(0, 15).map((r) => (
             <div key={r.id} className="glass-card p-4 space-y-2">
               <div className="flex flex-wrap justify-between gap-2 text-sm">
                 <div>
@@ -226,18 +244,31 @@ function ContentList() {
                   </p>
                   {r.content && (
                     <p>
-                      {TYPE_LABELS[r.content.type] || r.content.type}: {r.content.title}
+                      {TYPE_LABELS[r.content.type] || r.content.type}:{" "}
+                      {r.content.title}
                     </p>
                   )}
                 </div>
               </div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={r.screenshotUrl} alt="" className="max-h-40 rounded-lg border border-slate-700" />
+              <img
+                src={r.screenshotUrl}
+                alt=""
+                className="max-h-40 rounded-lg border border-slate-700"
+              />
               <div className="flex gap-2">
-                <button type="button" onClick={() => review(r.id, "approve")} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => review(r.id, "approve")}
+                  className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold inline-flex items-center gap-1"
+                >
                   <Check className="w-3.5 h-3.5" /> Idhinisha
                 </button>
-                <button type="button" onClick={() => review(r.id, "reject")} className="px-3 py-2 rounded-lg bg-red-600/80 text-white text-xs font-semibold inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => review(r.id, "reject")}
+                  className="px-3 py-2 rounded-lg bg-red-600/80 text-white text-xs font-semibold inline-flex items-center gap-1"
+                >
                   <X className="w-3.5 h-3.5" /> Kataa
                 </button>
               </div>
@@ -299,7 +330,9 @@ function ContentList() {
                         <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400">
                           {icon(c.type)}
                         </div>
-                        <span className="font-medium truncate max-w-[160px]">{c.title}</span>
+                        <span className="font-medium truncate max-w-[140px]">
+                          {c.title}
+                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-3 capitalize text-slate-400 hidden sm:table-cell">
@@ -317,18 +350,28 @@ function ContentList() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2 items-center">
                         <Link
                           href={`/admin/content/${c.id}/edit`}
-                          className="p-1.5 text-slate-400 hover:text-violet-300"
-                          title="Edit"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-600/30 border border-violet-500/40 text-violet-200 text-xs font-semibold"
                         >
-                          <Pencil className="w-4 h-4" />
+                          <Pencil className="w-3.5 h-3.5" />
+                          Edit
                         </Link>
-                        <button type="button" onClick={() => toggleStatus(c.id, c.status)} className="p-1.5 text-slate-400 hover:text-violet-300">
+                        <button
+                          type="button"
+                          onClick={() => toggleStatus(c.id, c.status)}
+                          className="p-1.5 text-slate-400 hover:text-violet-300"
+                          title="Publish/Draft"
+                        >
                           <ToggleLeft className="w-4 h-4" />
                         </button>
-                        <button type="button" onClick={() => remove(c.id)} className="p-1.5 text-slate-400 hover:text-red-400">
+                        <button
+                          type="button"
+                          onClick={() => remove(c.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-400"
+                          title="Futa"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -346,7 +389,7 @@ function ContentList() {
 
 export default function AdminContentPage() {
   return (
-    <Suspense fallback={<p className="text-slate-500">…</p>}>
+    <Suspense fallback={<p className="text-slate-500">Inapakia content…</p>}>
       <ContentList />
     </Suspense>
   );
