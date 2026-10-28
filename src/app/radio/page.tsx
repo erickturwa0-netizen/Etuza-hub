@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Radio, Search, X, Play, Pause, Volume2 } from "lucide-react";
+import { Radio, Search, X, Play, Pause } from "lucide-react";
 import PresenceTracker from "@/components/PresenceTracker";
 import { radioCover } from "@/lib/covers";
 
@@ -92,8 +92,63 @@ export default function RadioPage() {
   }
 
   return (
-    <main className="flex-1 max-w-6xl mx-auto px-3 sm:px-4 py-6 pb-28">
+    <main
+      className="flex-1 max-w-6xl mx-auto px-3 sm:px-4 py-6 pb-28"
+      style={{ paddingTop: playing ? "4.5rem" : undefined }}
+    >
       <PresenceTracker section="radio" title={playing?.name || "Radio"} />
+
+      {/* FIXED player — never scrolls away */}
+      {playing && (
+        <div
+          className="fixed left-0 right-0 z-40 px-3"
+          style={{ top: "3.5rem" }}
+        >
+          <div className="max-w-6xl mx-auto">
+            <div className="flex items-center gap-2 rounded-xl border border-pink-500/50 bg-slate-950 shadow-xl shadow-black/50 px-2.5 py-2">
+              <div className="w-11 h-11 rounded-lg bg-white overflow-hidden shrink-0 border border-slate-700 p-0.5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={coverOf(playing)}
+                  alt=""
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-white truncate">
+                  {playing.name}
+                </p>
+                <p className="text-[11px] text-slate-400 truncate">
+                  {isPlaying ? "● Inacheza" : streamErr || "Imezimwa"}
+                  {playing.bitrate ? ` · ${playing.bitrate}kbps` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={togglePlay}
+                className="w-10 h-10 rounded-full bg-pink-600 text-white flex items-center justify-center shrink-0"
+              >
+                {isPlaying ? (
+                  <Pause className="w-4 h-4 fill-current" />
+                ) : (
+                  <Play className="w-4 h-4 fill-current ml-0.5" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  audioRef.current?.pause();
+                  setPlaying(null);
+                  setIsPlaying(false);
+                }}
+                className="w-8 h-8 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300 shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-3 mb-4">
         <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-pink-500 to-rose-700 flex items-center justify-center text-white shrink-0 shadow-lg shadow-pink-900/40">
@@ -106,53 +161,6 @@ export default function RadioPage() {
           </p>
         </div>
       </div>
-
-      {/* Compact sticky player bar — list scrolls under it */}
-      {playing && (
-        <div className="sticky top-14 z-30 mb-3">
-          <div className="flex items-center gap-2 rounded-xl border border-pink-500/40 bg-slate-950/95 backdrop-blur-md px-2.5 py-2 shadow-lg shadow-black/40">
-            <div className="w-11 h-11 rounded-lg bg-white overflow-hidden shrink-0 border border-slate-700 p-0.5">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={coverOf(playing)}
-                alt=""
-                className="w-full h-full object-contain"
-              />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-white truncate">{playing.name}</p>
-              <p className="text-[11px] text-slate-400 truncate">
-                {isPlaying ? "● Inacheza" : streamErr || "Imezimwa"}
-                {playing.bitrate ? ` · ${playing.bitrate}kbps` : ""}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={togglePlay}
-              className="w-10 h-10 rounded-full bg-pink-600 text-white flex items-center justify-center shrink-0"
-              aria-label={isPlaying ? "Pause" : "Play"}
-            >
-              {isPlaying ? (
-                <Pause className="w-4 h-4 fill-current" />
-              ) : (
-                <Play className="w-4 h-4 fill-current ml-0.5" />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                audioRef.current?.pause();
-                setPlaying(null);
-                setIsPlaying(false);
-              }}
-              className="w-8 h-8 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300 shrink-0"
-              aria-label="Funga"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
 
       <div className="flex flex-wrap gap-2 mb-4">
         {(
@@ -222,7 +230,7 @@ export default function RadioPage() {
                     : "border-slate-700 bg-slate-900 active:border-pink-500/40"
                 }`}
               >
-                <div className="w-14 h-14 rounded-xl bg-white flex items-center justify-center overflow-hidden shrink-0 border border-slate-700 p-1.5 relative">
+                <div className="w-14 h-14 rounded-xl bg-white flex items-center justify-center overflow-hidden shrink-0 border border-slate-700 p-1.5">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={cover}

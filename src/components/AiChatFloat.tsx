@@ -69,24 +69,24 @@ export default function AiChatFloat() {
 
   return (
     <>
-      {/* Chat panel */}
       {open && (
         <div
-          className="fixed z-[60] flex flex-col rounded-2xl border border-violet-500/40 bg-slate-950 shadow-2xl shadow-violet-900/40 overflow-hidden"
+          className="fixed z-[70] flex flex-col rounded-2xl border border-violet-500/40 bg-slate-950 shadow-2xl shadow-violet-900/40 overflow-hidden"
           style={{
-            bottom: "5.5rem",
+            bottom: "5.75rem",
             right: "0.75rem",
             width: "min(22rem, calc(100vw - 1.5rem))",
-            height: "min(28rem, calc(100vh - 8rem))",
+            height: "min(26rem, calc(100vh - 9rem))",
           }}
         >
-          <div className="flex items-center gap-2 px-3 py-2.5 bg-gradient-to-r from-violet-700 to-fuchsia-700 text-white">
+          {/* Header — close only here */}
+          <div className="flex items-center gap-2 px-3 py-2.5 bg-gradient-to-r from-violet-700 to-fuchsia-700 text-white shrink-0">
             <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
               <Bot className="w-4 h-4" />
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-bold leading-tight">ETUZA AI</p>
-              <p className="text-[10px] text-white/80">Msaada · mercury-3</p>
+              <p className="text-[10px] text-white/80">Msaada</p>
             </div>
             <button
               type="button"
@@ -98,7 +98,7 @@ export default function AiChatFloat() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 bg-slate-950">
+          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 min-h-0">
             {msgs.map((m, i) => (
               <div
                 key={i}
@@ -128,34 +128,36 @@ export default function AiChatFloat() {
             <div ref={endRef} />
           </div>
 
-          <form
-            className="p-2 border-t border-slate-800 bg-slate-900 flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void send();
-            }}
-          >
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Uliza kitu…"
-              className="flex-1 px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder:text-slate-500 outline-none focus:border-violet-500"
-              disabled={busy}
-            />
-            <button
-              type="submit"
-              disabled={busy || !input.trim()}
-              className="w-11 h-11 rounded-xl bg-violet-600 text-white flex items-center justify-center disabled:opacity-40 shrink-0"
-              aria-label="Tuma"
+          {/* Input row — full width, never covered */}
+          <div className="shrink-0 p-2 border-t border-slate-800 bg-slate-900">
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void send();
+              }}
             >
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Uliza kitu…"
+                className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder:text-slate-500 outline-none focus:border-violet-500"
+                disabled={busy}
+              />
+              <button
+                type="submit"
+                disabled={busy || !input.trim()}
+                className="w-11 h-11 shrink-0 rounded-xl bg-violet-600 text-white flex items-center justify-center disabled:opacity-40"
+                aria-label="Tuma"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
         </div>
       )}
 
-      {/* Float button */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -163,11 +165,7 @@ export default function AiChatFloat() {
         style={{ bottom: "4.75rem", right: "0.85rem" }}
         aria-label={open ? "Funga AI" : "Fungua AI msaada"}
       >
-        {open ? (
-          <X className="w-6 h-6" />
-        ) : (
-          <MessageCircle className="w-6 h-6" />
-        )}
+        {open ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
       </button>
     </>
   );

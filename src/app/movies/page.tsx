@@ -11,11 +11,6 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const metadata = { title: "Movies – ETUZA HUB" };
 
-function yearFromCategory(cat: string | null): number {
-  const m = (cat || "").match(/(20\d{2}|19\d{2})/);
-  return m ? parseInt(m[1], 10) : 0;
-}
-
 export default async function MoviesPage({
   searchParams,
 }: {
@@ -29,11 +24,22 @@ export default async function MoviesPage({
     title: string;
     coverUrl: string | null;
     category: string | null;
+    streamStatus?: string | null;
+    createdAt?: Date;
   }[] = [];
   let bannerTitles: string[] = [];
 
   try {
     await ensureElitePlexContent("movie");
+
+    try {
+      await prisma.$executeRawUnsafe(`
+        ALTER TABLE "Content"
+        ADD COLUMN IF NOT EXISTS "stream_status" TEXT DEFAULT 'unknown'
+      `);
+    } catch {
+      /* ignore */
+    }
 
     const banner = await getNewContentBanner();
     if (banner?.titles) bannerTitles = banner.titles;
@@ -51,16 +57,47 @@ export default async function MoviesPage({
             }
           : {}),
       },
-      select: { id: true, title: true, coverUrl: true, category: true },
-      take: 120,
+      select: {
+        id: true,
+        title: true,
+        coverUrl: true,
+        category: true,
+        createdAt: true,
+      },
+      take: 200,
+      orderBy: { createdAt: "desc" },
     });
 
-    items = raw.sort((a, b) => {
-      const ya = yearFromCategory(a.category);
-      const yb = yearFromCategory(b.category);
-      if (yb !== ya) return yb - ya;
-      return a.title.localeCompare(b.title);
-    });
+    // Load stream_status via raw (column may not be in Prisma client yet)
+    let statusMap: Record<string, string> = {};
+    try {
+      const rows = (await prisma.$queryRawUnsafe(
+        `SELECT id, stream_status FROM "Content" WHERE type = 'movie' AND status = 'published' LIMIT 200`
+      )) as { id: string; stream_status: string | null }[];
+      for (const r of rows) {
+        statusMap[r.id] = (r.stream_status || "unknown").toLowerCase();
+      }
+    } catch {
+      /* column missing */
+    }
+
+    items = raw
+      .map((a) => ({
+        ...a,
+        streamStatus: statusMap[a.id] || "unknown",
+      }))
+      .sort((a, b) => {
+        // Working first, then unknown, bad last
+        const rank = (s?: string | null) =>
+          s === "ok" ? 0 : s === "bad" ? 2 : 1;
+        const ra = rank(a.streamStatus);
+        const rb = rank(b.streamStatus);
+        if (ra !== rb) return ra - rb;
+        // Newer first within same status
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tb - ta;
+      });
   } catch (e) {
     console.error("movies page", e);
   }
@@ -75,38 +112,32 @@ export default async function MoviesPage({
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-white">Movies</h1>
             <p className="text-sm text-slate-400">
-              {items.length} movies · zinazocheza
+              {items.length} movies · mpya juu · kijani=inacheza · nyekundu=haichezi
             </p>
           </div>
         </div>
-        <div className="sm:ml-auto w-full sm:w-auto">
-          <Suspense fallback={null}>
-            <ContentSearch placeholder="Tafuta movie…" />
-          </Suspense>
-        </div>
+        <Suspense fallback={null}>
+          <ContentSearch placeholder="Tafuta movie…" />
+        </Suspense>
       </div>
 
-      {bannerTitles.length > 0 && <NewContentBanner titles={bannerTitles} />}
+      {bannerTitles.length > 0 && (
+        <NewContentBanner titles={bannerTitles} type="movie" />
+      )}
 
       {items.length === 0 ? (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center">
-          <Film className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400 text-sm">
-            {q
-              ? `Hakuna matokeo ya "${q}"`
-              : "Inapakia movies… fungua tena sekunde chache."}
-          </p>
-        </div>
+        <p className="text-slate-500 text-sm mt-8">Hakuna movies.</p>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4">
-          {items.map((c) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+          {items.map((m) => (
             <MediaPosterCard
-              key={c.id}
-              id={c.id}
-              title={c.title}
-              coverUrl={c.coverUrl}
-              category={c.category}
+              key={m.id}
+              id={m.id}
+              title={m.title}
+              coverUrl={m.coverUrl}
+              category={m.category}
               kind="movie"
+              streamStatus={m.streamStatus}
             />
           ))}
         </div>

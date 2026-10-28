@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Film } from "lucide-react";
 import { movieCover, dramaCover } from "@/lib/covers";
 
 type Props = {
@@ -11,6 +10,7 @@ type Props = {
   coverUrl?: string | null;
   category?: string | null;
   kind?: "movie" | "drama";
+  streamStatus?: string | null;
 };
 
 function looksBroken(url?: string | null) {
@@ -28,6 +28,7 @@ export default function MediaPosterCard({
   coverUrl,
   category,
   kind = "movie",
+  streamStatus,
 }: Props) {
   const fallback =
     kind === "drama" ? dramaCover(title, null) : movieCover(title, null);
@@ -60,6 +61,8 @@ export default function MediaPosterCard({
     };
   }, [title, good]);
 
+  const st = (streamStatus || "unknown").toLowerCase();
+
   return (
     <Link
       href={`/watch/${id}`}
@@ -77,18 +80,30 @@ export default function MediaPosterCard({
         {loading && (
           <div className="absolute inset-0 bg-violet-950/40 animate-pulse" />
         )}
-        {src === fallback && !loading && (
-          <div className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/40 flex items-center justify-center">
-            <Film className="w-3.5 h-3.5 text-white/50" />
-          </div>
-        )}
+        {/* Stream health dot */}
+        <span
+          className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full border border-black/40 shadow ${
+            st === "ok"
+              ? "bg-emerald-400"
+              : st === "bad"
+                ? "bg-red-500"
+                : "bg-slate-400/80"
+          }`}
+          title={
+            st === "ok"
+              ? "Inacheza"
+              : st === "bad"
+                ? "Haichezi"
+                : "Haijulikani"
+          }
+        />
       </div>
-      <div className="p-2.5 sm:p-3">
-        <p className="text-sm font-semibold text-white leading-snug line-clamp-2">
+      <div className="p-2.5">
+        <p className="text-sm font-semibold text-white line-clamp-2 leading-snug">
           {title}
         </p>
         {category && (
-          <p className="text-[11px] text-violet-300/80 mt-1 truncate">{category}</p>
+          <p className="text-[11px] text-slate-500 mt-0.5 truncate">{category}</p>
         )}
       </div>
     </Link>
