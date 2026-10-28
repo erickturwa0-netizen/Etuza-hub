@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword, createSessionToken, setSessionCookie } from "@/lib/auth";
 import { ensureUserSchema } from "@/lib/db-migrate";
+import { assertIpAllowed, getClientIp } from "@/lib/ip-guard";
 
 const schema = z.object({
   email: z.string().email(),
@@ -16,7 +17,10 @@ export async function POST(req: Request) {
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Email au password si sahihi" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Email au password si sahihi" },
+        { status: 400 }
+      );
     }
 
     const email = parsed.data.email.toLowerCase().trim();
@@ -71,12 +75,24 @@ export async function POST(req: Request) {
     }
 
     if (!user) {
-      return NextResponse.json({ error: "Email au password si sahihi" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Email au password si sahihi" },
+        { status: 401 }
+      );
     }
 
     const ok = await verifyPassword(parsed.data.password, user.passwordHash);
     if (!ok) {
-      return NextResponse.json({ error: "Email au password si sahihi" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Email au password si sahihi" },
+        { status: 401 }
+      );
+    }
+
+    const ip = getClientIp(req);
+    const ipCheck = await assertIpAllowed(user.id, user.role, ip);
+    if (!ipCheck.ok) {
+      return NextResponse.json({ error: ipCheck.error }, { status: 403 });
     }
 
     const token = await createSessionToken({
@@ -88,23 +104,17 @@ export async function POST(req: Request) {
     await setSessionCookie(token);
 
     return NextResponse.json({
+      ok: true,
       user: {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
         role: user.role,
         points: user.points ?? 10,
-        inviteCode: user.inviteCode ?? null,
       },
     });
-  } catch (err) {
-    console.error("login error", err);
-    return NextResponse.json(
-      {
-        error: "Imeshindikana kuingia",
-        detail: err instanceof Error ? err.message : "unknown",
-      },
-      { status: 500 }
-    );
+  } catch (e) {
+    console.error("login", e);
+    return NextResponse.json({ error: "Login imeshindwa" }, { status: 500 });
   }
 }

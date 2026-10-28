@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth";
 import { ensureUserSchema } from "@/lib/db-migrate";
 import { generateInviteCode, POINTS } from "@/lib/points";
+import { assertIpAllowed, getClientIp } from "@/lib/ip-guard";
 import { randomBytes } from "crypto";
 
 const CLIENT_ID =
@@ -95,7 +96,10 @@ async function profileFromTokens(tokens: {
   return null;
 }
 
-async function loginUser(profile: { email: string; name?: string }) {
+async function loginUser(
+  profile: { email: string; name?: string },
+  ip: string
+) {
   await ensureUserSchema();
   const email = profile.email;
 
@@ -143,6 +147,11 @@ async function loginUser(profile: { email: string; name?: string }) {
       .catch(() => {});
   }
 
+  const ipCheck = await assertIpAllowed(user.id, user.role, ip);
+  if (!ipCheck.ok) {
+    throw new Error(ipCheck.error);
+  }
+
   const token = await createSessionToken({
     userId: user.id,
     email: user.email,
@@ -164,10 +173,7 @@ export async function GET(req: Request) {
   const state = url.searchParams.get("state");
 
   if (err) {
-    return redirectHome(
-      req,
-      `/login?error=${encodeURIComponent(err)}`
-    );
+    return redirectHome(req, `/login?error=${encodeURIComponent(err)}`);
   }
   if (!code) {
     return redirectHome(req, "/login?error=missing_code");
@@ -181,7 +187,8 @@ export async function GET(req: Request) {
     if (!profile) {
       return redirectHome(req, "/login?error=no_profile");
     }
-    const user = await loginUser(profile);
+    const ip = getClientIp(req);
+    const user = await loginUser(profile, ip);
     let next = "/";
     if (state) {
       try {
@@ -198,7 +205,7 @@ export async function GET(req: Request) {
     const msg = e instanceof Error ? e.message : "callback_failed";
     return redirectHome(
       req,
-      `/login?error=${encodeURIComponent(msg.slice(0, 120))}`
+      `/login?error=${encodeURIComponent(msg.slice(0, 180))}`
     );
   }
 }

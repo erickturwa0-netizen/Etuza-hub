@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { ensureIpColumns } from "@/lib/ip-guard";
 
 let migrated = false;
 
@@ -51,6 +52,11 @@ export async function ensureUserSchema() {
     await prisma.$executeRawUnsafe(
       `CREATE INDEX IF NOT EXISTS "PointLog_user_id_idx" ON "PointLog"(user_id)`
     );
+  } catch {
+    /* ignore */
+  }
+  try {
+    await ensureIpColumns();
   } catch {
     /* ignore */
   }

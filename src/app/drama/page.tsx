@@ -6,6 +6,7 @@ import MediaPosterCard from "@/components/MediaPosterCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const maxDuration = 60;
 export const metadata = { title: "Tamthilia – ETUZA HUB" };
 
 export default async function DramaPage() {
@@ -19,9 +20,10 @@ export default async function DramaPage() {
   }[] = [];
 
   try {
+    // Re-import / migrate embeds (vsembed → vidsrc)
     await ensureElitePlexContent("drama");
     try {
-      await probeUnknownStreams("drama", 8);
+      await probeUnknownStreams("drama", 16);
     } catch {
       /* ignore */
     }
@@ -51,23 +53,33 @@ export default async function DramaPage() {
       /* ignore */
     }
 
-    items = raw
-      .map((a) => ({
-        ...a,
-        streamStatus: statusMap[a.id] || "unknown",
-      }))
-      .sort((a, b) => {
-        const rank = (s?: string) => (s === "ok" ? 0 : s === "bad" ? 2 : 1);
-        const ra = rank(a.streamStatus);
-        const rb = rank(b.streamStatus);
-        if (ra !== rb) return ra - rb;
-        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return tb - ta;
-      });
+    const mapped = raw.map((a) => ({
+      ...a,
+      streamStatus: statusMap[a.id] || "unknown",
+    }));
+
+    const working = mapped
+      .filter((a) => a.streamStatus === "ok")
+      .sort(
+        (a, b) =>
+          (b.createdAt ? new Date(b.createdAt).getTime() : 0) -
+          (a.createdAt ? new Date(a.createdAt).getTime() : 0)
+      );
+    const unknown = mapped
+      .filter((a) => a.streamStatus !== "ok" && a.streamStatus !== "bad")
+      .sort(
+        (a, b) =>
+          (b.createdAt ? new Date(b.createdAt).getTime() : 0) -
+          (a.createdAt ? new Date(a.createdAt).getTime() : 0)
+      );
+
+    // Working first; hide pure bad from main grid
+    items = [...working, ...unknown.slice(0, 40)];
   } catch (e) {
     console.error("drama page", e);
   }
+
+  const okCount = items.filter((i) => i.streamStatus === "ok").length;
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 pb-24">
@@ -78,7 +90,7 @@ export default async function DramaPage() {
         <div>
           <h1 className="text-2xl font-bold">Tamthilia</h1>
           <p className="text-sm text-slate-500">
-            {items.length} · kijani juu · kijivu · nyekundu chini
+            {okCount} zinazocheza juu · {items.length} zinaonekana · badilisha server kwenye player
           </p>
         </div>
       </div>
