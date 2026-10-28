@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
 import { radioCover } from "@/lib/covers";
 
-const FALLBACK_TZ = [
+type Station = {
+  id: string;
+  name: string;
+  url: string;
+  favicon: string | null;
+  tags: string;
+  country: string;
+  bitrate: number;
+};
+
+const FALLBACK_TZ: Station[] = [
   {
     id: "fb-clouds",
     name: "Clouds FM",
@@ -9,6 +19,7 @@ const FALLBACK_TZ = [
     tags: "tanzania,music",
     country: "Tanzania",
     bitrate: 128,
+    favicon: null,
   },
   {
     id: "fb-radioone",
@@ -17,6 +28,7 @@ const FALLBACK_TZ = [
     tags: "news,tanzania",
     country: "Tanzania",
     bitrate: 128,
+    favicon: null,
   },
   {
     id: "fb-eastafrica",
@@ -25,6 +37,7 @@ const FALLBACK_TZ = [
     tags: "tanzania,music",
     country: "Tanzania",
     bitrate: 128,
+    favicon: null,
   },
   {
     id: "fb-wasafi",
@@ -33,6 +46,7 @@ const FALLBACK_TZ = [
     tags: "bongo,music",
     country: "Tanzania",
     bitrate: 128,
+    favicon: null,
   },
   {
     id: "fb-tbc",
@@ -41,6 +55,7 @@ const FALLBACK_TZ = [
     tags: "news,government",
     country: "Tanzania",
     bitrate: 64,
+    favicon: null,
   },
   {
     id: "fb-passion",
@@ -49,6 +64,7 @@ const FALLBACK_TZ = [
     tags: "gospel",
     country: "Tanzania",
     bitrate: 128,
+    favicon: null,
   },
   {
     id: "fb-abood",
@@ -57,6 +73,7 @@ const FALLBACK_TZ = [
     tags: "music",
     country: "Tanzania",
     bitrate: 128,
+    favicon: null,
   },
   {
     id: "fb-capital",
@@ -65,6 +82,7 @@ const FALLBACK_TZ = [
     tags: "music,tanzania",
     country: "Tanzania",
     bitrate: 128,
+    favicon: null,
   },
   {
     id: "fb-utume",
@@ -73,13 +91,11 @@ const FALLBACK_TZ = [
     tags: "religious",
     country: "Tanzania",
     bitrate: 64,
+    favicon: null,
   },
-].map((s) => ({
-  ...s,
-  favicon: radioCover(s.name),
-}));
+];
 
-const FALLBACK_WORLD = [
+const FALLBACK_WORLD: Station[] = [
   {
     id: "fb-bbc",
     name: "BBC World Service",
@@ -87,7 +103,7 @@ const FALLBACK_WORLD = [
     tags: "news",
     country: "United Kingdom",
     bitrate: 128,
-    favicon: radioCover("BBC World Service"),
+    favicon: null,
   },
   {
     id: "fb-npr",
@@ -96,11 +112,11 @@ const FALLBACK_WORLD = [
     tags: "news",
     country: "USA",
     bitrate: 128,
-    favicon: radioCover("NPR News"),
+    favicon: null,
   },
 ];
 
-async function fetchStations(path: string) {
+async function fetchStations(path: string): Promise<unknown[]> {
   const bases = [
     "https://de1.api.radio-browser.info",
     "https://nl1.api.radio-browser.info",
@@ -113,12 +129,53 @@ async function fetchStations(path: string) {
         next: { revalidate: 1800 },
       });
       if (!res.ok) continue;
-      return await res.json();
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
     } catch {
       /* try next */
     }
   }
   return [];
+}
+
+function mapRaw(list: unknown[], fallbackCountry: string): Station[] {
+  return (list as {
+    stationuuid?: string;
+    name?: string;
+    url_resolved?: string;
+    url?: string;
+    favicon?: string;
+    tags?: string;
+    country?: string;
+    bitrate?: number;
+  }[])
+    .filter((s) => s.url_resolved || s.url)
+    .map((s) => ({
+      id: s.stationuuid || String(Math.random()),
+      name: s.name || "Station",
+      url: (s.url_resolved || s.url) as string,
+      favicon: radioCover(s.name || "Station", s.favicon || null),
+      tags: s.tags || "",
+      country: s.country || fallbackCountry,
+      bitrate: s.bitrate || 0,
+    }));
+}
+
+function mergeStations(lists: Station[][]): Station[] {
+  const seen = new Set<string>();
+  const out: Station[] = [];
+  for (const list of lists) {
+    for (const s of list) {
+      const key = (s.url || "").split("?")[0].toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        ...s,
+        favicon: radioCover(s.name, s.favicon),
+      });
+    }
+  }
+  return out;
 }
 
 export const dynamic = "force-dynamic";
@@ -127,89 +184,98 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = (searchParams.get("q") || "").trim();
   const country = (searchParams.get("country") || "TZ").toUpperCase();
-  const limit = Math.min(Number(searchParams.get("limit") || 200), 500);
+  const limit = Math.min(Number(searchParams.get("limit") || 400), 800);
 
-  let stations: {
-    id: string;
-    name: string;
-    url: string;
-    favicon: string | null;
-    tags: string;
-    country: string;
-    bitrate: number;
-  }[] = [];
+  let stations: Station[] = [];
   let source = "fallback";
 
   try {
-    let data: unknown = [];
     if (q) {
-      data = await fetchStations(
+      const data = await fetchStations(
         `/json/stations/search?name=${encodeURIComponent(q)}&hidebroken=true&limit=${limit}`
       );
+      stations = mapRaw(data, "World");
+      if (stations.length) source = "radio-browser.info";
     } else if (country === "TOP") {
-      data = await fetchStations(
+      const data = await fetchStations(
         `/json/stations/topvote?limit=${limit}&hidebroken=true`
       );
+      stations = mapRaw(data, "World");
+      if (stations.length) source = "radio-browser.info";
     } else if (country === "MUSIC") {
-      data = await fetchStations(
-        `/json/stations/search?tag=pop&hidebroken=true&limit=${limit}&order=clickcount&reverse=true`
-      );
+      const [pop, afro, hiphop, gospel] = await Promise.all([
+        fetchStations(
+          `/json/stations/search?tag=pop&hidebroken=true&limit=200&order=clickcount&reverse=true`
+        ),
+        fetchStations(
+          `/json/stations/search?tag=afrobeats&hidebroken=true&limit=100&order=clickcount&reverse=true`
+        ),
+        fetchStations(
+          `/json/stations/search?tag=hiphop&hidebroken=true&limit=100&order=clickcount&reverse=true`
+        ),
+        fetchStations(
+          `/json/stations/search?tag=gospel&hidebroken=true&limit=100&order=clickcount&reverse=true`
+        ),
+      ]);
+      stations = mergeStations([
+        mapRaw(pop, "World"),
+        mapRaw(afro, "World"),
+        mapRaw(hiphop, "World"),
+        mapRaw(gospel, "World"),
+      ]);
+      if (stations.length) source = "radio-browser.info";
+    } else if (country === "TZ" || country === "EA") {
+      // Tanzania is small in radio-browser — pull East Africa + name search
+      const [tz, ke, ug, rw, byName, top] = await Promise.all([
+        fetchStations(
+          `/json/stations/bycountrycodeexact/TZ?hidebroken=true&limit=200&order=clickcount&reverse=true`
+        ),
+        fetchStations(
+          `/json/stations/bycountrycodeexact/KE?hidebroken=true&limit=200&order=clickcount&reverse=true`
+        ),
+        fetchStations(
+          `/json/stations/bycountrycodeexact/UG?hidebroken=true&limit=150&order=clickcount&reverse=true`
+        ),
+        fetchStations(
+          `/json/stations/bycountrycodeexact/RW?hidebroken=true&limit=80&order=clickcount&reverse=true`
+        ),
+        fetchStations(
+          `/json/stations/search?name=tanzania&hidebroken=true&limit=100`
+        ),
+        fetchStations(`/json/stations/topvote?limit=100&hidebroken=true`),
+      ]);
+      stations = mergeStations([
+        FALLBACK_TZ.map((s) => ({
+          ...s,
+          favicon: radioCover(s.name),
+        })),
+        mapRaw(tz, "Tanzania"),
+        mapRaw(byName, "Tanzania"),
+        mapRaw(ke, "Kenya"),
+        mapRaw(ug, "Uganda"),
+        mapRaw(rw, "Rwanda"),
+        mapRaw(top, "World"),
+      ]);
+      if (stations.length > FALLBACK_TZ.length) source = "radio-browser.info";
+      else source = "fallback";
     } else {
-      data = await fetchStations(
+      const data = await fetchStations(
         `/json/stations/bycountrycodeexact/${country}?hidebroken=true&limit=${limit}&order=clickcount&reverse=true`
       );
+      stations = mapRaw(data, country);
+      if (stations.length) source = "radio-browser.info";
     }
-
-    const list = Array.isArray(data) ? data : [];
-    stations = list
-      .filter(
-        (s: { url_resolved?: string; url?: string }) =>
-          s.url_resolved || s.url
-      )
-      .map(
-        (s: {
-          stationuuid: string;
-          name: string;
-          url_resolved?: string;
-          url?: string;
-          favicon?: string;
-          tags?: string;
-          country?: string;
-          bitrate?: number;
-        }) => ({
-          id: s.stationuuid,
-          name: s.name,
-          url: (s.url_resolved || s.url) as string,
-          favicon: radioCover(s.name, s.favicon || null),
-          tags: s.tags || "",
-          country: s.country || country,
-          bitrate: s.bitrate || 0,
-        })
-      );
-    if (stations.length) source = "radio-browser.info";
   } catch (err) {
     console.error("radio-browser", err);
   }
 
   if (stations.length === 0) {
-    stations =
-      country === "TOP" || country === "MUSIC"
-        ? [...FALLBACK_WORLD, ...FALLBACK_TZ]
-        : [...FALLBACK_TZ, ...FALLBACK_WORLD];
+    stations = [...FALLBACK_TZ, ...FALLBACK_WORLD].map((s) => ({
+      ...s,
+      favicon: radioCover(s.name),
+    }));
     source = "fallback";
-  } else if (country === "TZ") {
-    const seen = new Set(stations.map((s) => s.name.toLowerCase()));
-    for (const e of FALLBACK_TZ) {
-      if (!seen.has(e.name.toLowerCase())) {
-        stations.unshift({ ...e, favicon: radioCover(e.name) });
-      }
-    }
   }
-
-  stations = stations.map((s) => ({
-    ...s,
-    favicon: radioCover(s.name, s.favicon),
-  }));
 
   if (q) {
     const qq = q.toLowerCase();
@@ -223,6 +289,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     stations: stations.slice(0, limit),
+    total: stations.length,
     source,
   });
 }

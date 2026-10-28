@@ -17,7 +17,7 @@ type Station = {
 
 export default function RadioPage() {
   const [stations, setStations] = useState<Station[]>([]);
-  const [tab, setTab] = useState<"TZ" | "TOP" | "SEARCH">("TZ");
+  const [tab, setTab] = useState<"TZ" | "TOP" | "MUSIC" | "SEARCH">("TZ");
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<Station | null>(null);
@@ -27,14 +27,19 @@ export default function RadioPage() {
   const [source, setSource] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  async function load(kind: "TZ" | "TOP" | "SEARCH", query?: string) {
+  async function load(
+    kind: "TZ" | "TOP" | "MUSIC" | "SEARCH",
+    query?: string
+  ) {
     setLoading(true);
     setError("");
     try {
-      let path = "/api/radio/stations?country=TZ&limit=60";
-      if (kind === "TOP") path = "/api/radio/stations?country=TOP&limit=60";
+      let path = "/api/radio/stations?country=TZ&limit=500";
+      if (kind === "TOP") path = "/api/radio/stations?country=TOP&limit=500";
+      if (kind === "MUSIC")
+        path = "/api/radio/stations?country=MUSIC&limit=500";
       if (kind === "SEARCH" && query) {
-        path = `/api/radio/stations?q=${encodeURIComponent(query)}&limit=40`;
+        path = `/api/radio/stations?q=${encodeURIComponent(query)}&limit=300`;
       }
       const res = await fetch(path, { cache: "no-store" });
       const data = await res.json();
@@ -93,7 +98,6 @@ export default function RadioPage() {
 
   return (
     <>
-      {/* Portal-like FIXED bar — outside main scroll content */}
       {playing && (
         <div
           className="fixed inset-x-0 z-[55] px-3 pt-1"
@@ -109,7 +113,9 @@ export default function RadioPage() {
               />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-white truncate">{playing.name}</p>
+              <p className="text-sm font-semibold text-white truncate">
+                {playing.name}
+              </p>
               <p className="text-[11px] text-slate-400 truncate">
                 {isPlaying ? "● Inacheza" : streamErr || "Imezimwa"}
                 {playing.bitrate ? ` · ${playing.bitrate}kbps` : ""}
@@ -154,6 +160,7 @@ export default function RadioPage() {
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-white">Radio</h1>
             <p className="text-sm text-slate-400">
+              {stations.length ? `${stations.length} stations · ` : ""}
               Bofya station kusikiliza{source ? ` · ${source}` : ""}
             </p>
           </div>
@@ -162,8 +169,9 @@ export default function RadioPage() {
         <div className="flex flex-wrap gap-2 mb-4">
           {(
             [
-              { id: "TZ" as const, label: "Tanzania" },
+              { id: "TZ" as const, label: "East Africa" },
               { id: "TOP" as const, label: "Top world" },
+              { id: "MUSIC" as const, label: "Music" },
               { id: "SEARCH" as const, label: "Search" },
             ] as const
           ).map((t) => (
@@ -199,7 +207,10 @@ export default function RadioPage() {
               placeholder="Tafuta station…"
               className="flex-1 px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
             />
-            <button type="submit" className="px-4 py-2.5 rounded-xl bg-pink-600 text-white">
+            <button
+              type="submit"
+              className="px-4 py-2.5 rounded-xl bg-pink-600 text-white"
+            >
               <Search className="w-4 h-4" />
             </button>
           </form>
@@ -218,7 +229,7 @@ export default function RadioPage() {
               const active = playing?.id === s.id;
               return (
                 <button
-                  key={s.id}
+                  key={s.id + s.url}
                   type="button"
                   onClick={() => setPlaying(s)}
                   className={`text-left rounded-2xl border p-3.5 flex items-center gap-3 transition ${
@@ -243,7 +254,9 @@ export default function RadioPage() {
                     />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-[15px] text-white truncate">{s.name}</p>
+                    <p className="font-semibold text-[15px] text-white truncate">
+                      {s.name}
+                    </p>
                     <p className="text-xs text-slate-400 mt-0.5 truncate">
                       {s.country}
                       {s.bitrate ? ` · ${s.bitrate}kbps` : ""}

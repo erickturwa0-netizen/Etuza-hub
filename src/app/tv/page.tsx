@@ -25,7 +25,7 @@ export default async function TvPage({
 
   try {
     const result = await loadIptvChannels({
-      limit: 3000,
+      limit: 5000,
       q,
       group,
       liveOnly,
@@ -48,8 +48,11 @@ export default async function TvPage({
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-white">TV Channels</h1>
           <p className="text-sm text-slate-400">
-            {channels.length} zinaonekana
-            {total > channels.length ? ` / ${total}` : ""} · {source}
+            {channels.length.toLocaleString()} zinaonekana
+            {total > channels.length
+              ? ` · catalog ${total.toLocaleString()}`
+              : ""}{" "}
+            · {source}
           </p>
         </div>
         <div className="w-full sm:max-w-md sm:ml-auto">
