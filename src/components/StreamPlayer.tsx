@@ -30,15 +30,32 @@ function proxyHls(url: string) {
   return "/api/proxy/stream?url=" + encodeURIComponent(url);
 }
 
+function contentIdFromKey(key?: string) {
+  if (!key || !key.includes(":")) return "";
+  return key.split(":").slice(1).join(":");
+}
+
+function markStream(contentId: string, status: "ok" | "bad") {
+  if (!contentId) return;
+  void fetch("/api/content/stream-status", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contentId, status }),
+  }).catch(() => {});
+}
+
 export default function StreamPlayer({
   src,
   poster,
   title,
+  contentKey,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const chargedRef = useRef(false);
+  const markedRef = useRef(false);
   const charge = usePlaybackCharge();
   const raw = (src || "").trim();
+  const cid = contentIdFromKey(contentKey);
   const social = useMemo(() => detectSocial(raw), [raw]);
   const [error, setError] = useState("");
   const [needsTap, setNeedsTap] = useState(false);
@@ -51,17 +68,35 @@ export default function StreamPlayer({
       : null);
   const videoUrl = isHls(raw) ? proxyHls(raw) : isDirect(raw) ? raw : null;
 
+  const mark = useCallback(
+    (status: "ok" | "bad") => {
+      if (markedRef.current && status === "ok") return;
+      if (status === "ok") markedRef.current = true;
+      markStream(cid, status);
+    },
+    [cid]
+  );
+
   const onRealPlay = useCallback(() => {
+    mark("ok");
     if (chargedRef.current) return;
     chargedRef.current = true;
     void charge?.chargeOnPlay();
-  }, [charge]);
+  }, [charge, mark]);
+
+  const fail = useCallback(
+    (msg: string) => {
+      setError(msg);
+      mark("bad");
+    },
+    [mark]
+  );
 
   useEffect(() => {
-    if (!raw) setError("Hakuna link ya kucheza.");
+    if (!raw) fail("Hakuna link ya kucheza.");
     else if (!embedUrl && !videoUrl && !external)
-      setError("Content haipatikani / link haitambuliwi.");
-  }, [raw, embedUrl, videoUrl, external]);
+      fail("Content haipatikani / link haitambuliwi.");
+  }, [raw, embedUrl, videoUrl, external, fail]);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -80,9 +115,7 @@ export default function StreamPlayer({
             hls.loadSource(videoUrl);
             hls.attachMedia(el);
             hls.on(Hls.Events.ERROR, (_e: unknown, data: { fatal?: boolean }) => {
-              if (!cancelled && data?.fatal) {
-                setError("Video / stream haipatikani.");
-              }
+              if (!cancelled && data?.fatal) fail("Video / stream haipatikani.");
             });
           } else {
             el.src = videoUrl;
@@ -93,7 +126,7 @@ export default function StreamPlayer({
         el.muted = true;
         await el.play().catch(() => setNeedsTap(true));
       } catch {
-        if (!cancelled) setError("Video haikucheza.");
+        if (!cancelled) fail("Video haikucheza.");
       }
     })();
 
@@ -105,7 +138,7 @@ export default function StreamPlayer({
         /* ignore */
       }
     };
-  }, [videoUrl, raw]);
+  }, [videoUrl, raw, fail]);
 
   const box =
     "relative w-full max-w-full rounded-2xl overflow-hidden border-2 border-red-600/80 bg-black touch-manipulation";
@@ -166,7 +199,7 @@ export default function StreamPlayer({
             playsInline
             poster={poster || undefined}
             onPlaying={onRealPlay}
-            onError={() => setError("Video haikucheza / haipatikani.")}
+            onError={() => fail("Video haikucheza / haipatikani.")}
           />
           {needsTap && (
             <button
@@ -180,7 +213,7 @@ export default function StreamPlayer({
                     setNeedsTap(false);
                     onRealPlay();
                   })
-                  .catch(() => setError("Video haikucheza."));
+                  .catch(() => fail("Video haikucheza."));
               }}
               className="absolute inset-0 flex flex-col items-center justify-center bg-black/55 text-white"
             >

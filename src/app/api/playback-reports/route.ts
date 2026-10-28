@@ -37,6 +37,22 @@ export async function POST(req: Request) {
       },
     });
 
+    // Mark stream as bad so it sorts lower + red dot
+    if (contentId) {
+      try {
+        await prisma.$executeRawUnsafe(`
+          ALTER TABLE "Content"
+          ADD COLUMN IF NOT EXISTS "stream_status" TEXT DEFAULT 'unknown'
+        `);
+        await prisma.$executeRawUnsafe(
+          `UPDATE "Content" SET "stream_status" = 'bad' WHERE id = $1`,
+          contentId
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+
     return NextResponse.json({ ok: true, id: report.id });
   } catch (e) {
     console.error("playback report", e);
