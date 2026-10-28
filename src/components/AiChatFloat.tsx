@@ -22,7 +22,7 @@ export default function AiChatFloat() {
   useEffect(() => {
     if (open) {
       endRef.current?.scrollIntoView({ behavior: "smooth" });
-      setTimeout(() => inputRef.current?.focus(), 100);
+      setTimeout(() => inputRef.current?.focus(), 120);
     }
   }, [open, msgs, busy]);
 
@@ -71,30 +71,32 @@ export default function AiChatFloat() {
     <>
       {open && (
         <div
-          className="fixed z-[70] flex flex-col rounded-2xl border border-violet-500/40 bg-slate-950 shadow-2xl shadow-violet-900/40 overflow-hidden"
+          className="fixed z-[80] flex flex-col rounded-2xl border border-violet-500/40 bg-slate-950 shadow-2xl shadow-violet-900/50 overflow-hidden"
           style={{
-            bottom: "5.75rem",
+            /* Above bottom nav + safe area; leave room so input is never covered */
+            bottom: "5.25rem",
+            left: "0.75rem",
             right: "0.75rem",
-            width: "min(22rem, calc(100vw - 1.5rem))",
-            height: "min(26rem, calc(100vh - 9rem))",
+            maxWidth: "24rem",
+            marginLeft: "auto",
+            height: "min(70vh, 28rem)",
           }}
         >
-          {/* Header — close only here */}
           <div className="flex items-center gap-2 px-3 py-2.5 bg-gradient-to-r from-violet-700 to-fuchsia-700 text-white shrink-0">
             <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
               <Bot className="w-4 h-4" />
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-bold leading-tight">ETUZA AI</p>
-              <p className="text-[10px] text-white/80">Msaada</p>
+              <p className="text-[10px] text-white/80">Msaada · mercury-3</p>
             </div>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="p-1.5 rounded-lg hover:bg-white/15"
+              className="p-2 rounded-lg hover:bg-white/15"
               aria-label="Funga"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
           </div>
 
@@ -128,8 +130,7 @@ export default function AiChatFloat() {
             <div ref={endRef} />
           </div>
 
-          {/* Input row — full width, never covered */}
-          <div className="shrink-0 p-2 border-t border-slate-800 bg-slate-900">
+          <div className="shrink-0 border-t border-slate-800 bg-slate-900 p-2.5 pb-3">
             <form
               className="flex items-center gap-2"
               onSubmit={(e) => {
@@ -142,13 +143,13 @@ export default function AiChatFloat() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Uliza kitu…"
-                className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder:text-slate-500 outline-none focus:border-violet-500"
+                className="flex-1 min-w-0 h-11 px-3 rounded-xl bg-slate-950 border border-slate-600 text-sm text-white placeholder:text-slate-500 outline-none focus:border-violet-500"
                 disabled={busy}
               />
               <button
                 type="submit"
                 disabled={busy || !input.trim()}
-                className="w-11 h-11 shrink-0 rounded-xl bg-violet-600 text-white flex items-center justify-center disabled:opacity-40"
+                className="h-11 w-11 shrink-0 rounded-xl bg-violet-600 text-white flex items-center justify-center disabled:opacity-40"
                 aria-label="Tuma"
               >
                 <Send className="w-4 h-4" />
@@ -158,15 +159,18 @@ export default function AiChatFloat() {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="fixed z-[60] w-14 h-14 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white shadow-lg shadow-violet-600/40 flex items-center justify-center active:scale-95 border-2 border-white/20"
-        style={{ bottom: "4.75rem", right: "0.85rem" }}
-        aria-label={open ? "Funga AI" : "Fungua AI msaada"}
-      >
-        {open ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
-      </button>
+      {/* FAB only when chat is CLOSED — avoids covering Send */}
+      {!open && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="fixed z-[60] w-14 h-14 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white shadow-lg shadow-violet-600/40 flex items-center justify-center active:scale-95 border-2 border-white/20"
+          style={{ bottom: "4.75rem", right: "0.85rem" }}
+          aria-label="Fungua AI msaada"
+        >
+          <MessageCircle className="w-6 h-6" />
+        </button>
+      )}
     </>
   );
 }
