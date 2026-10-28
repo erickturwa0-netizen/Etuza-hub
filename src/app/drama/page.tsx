@@ -13,15 +13,60 @@ export default async function DramaPage() {
     title: string;
     coverUrl: string | null;
     category: string | null;
+    streamStatus?: string;
+    createdAt?: Date;
   }[] = [];
 
   try {
     await ensureElitePlexContent("drama");
-    items = await prisma.content.findMany({
+    try {
+      await prisma.$executeRawUnsafe(`
+        ALTER TABLE "Content"
+        ADD COLUMN IF NOT EXISTS "stream_status" TEXT DEFAULT 'unknown'
+      `);
+    } catch {
+      /* ignore */
+    }
+
+    const raw = await prisma.content.findMany({
       where: { type: "drama", status: "published" },
       orderBy: { createdAt: "desc" },
-      select: { id: true, title: true, coverUrl: true, category: true },
+      select: {
+        id: true,
+        title: true,
+        coverUrl: true,
+        category: true,
+        createdAt: true,
+      },
+      take: 200,
     });
+
+    let statusMap: Record<string, string> = {};
+    try {
+      const rows = (await prisma.$queryRawUnsafe(
+        `SELECT id, stream_status FROM "Content" WHERE type = 'drama' AND status = 'published' LIMIT 200`
+      )) as { id: string; stream_status: string | null }[];
+      for (const r of rows) {
+        statusMap[r.id] = (r.stream_status || "unknown").toLowerCase();
+      }
+    } catch {
+      /* ignore */
+    }
+
+    items = raw
+      .map((a) => ({
+        ...a,
+        streamStatus: statusMap[a.id] || "unknown",
+      }))
+      .sort((a, b) => {
+        const rank = (s?: string) => (s === "ok" ? 0 : s === "bad" ? 2 : 1);
+        const ra = rank(a.streamStatus);
+        const rb = rank(b.streamStatus);
+        if (ra !== rb) return ra - rb;
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tb - ta;
+      });
   } catch (e) {
     console.error("drama page", e);
   }
@@ -35,7 +80,7 @@ export default async function DramaPage() {
         <div>
           <h1 className="text-2xl font-bold">Tamthilia</h1>
           <p className="text-sm text-slate-500">
-            {items.length} series / anime · ElitePlex
+            {items.length} · mpya juu · kijani=inacheza · nyekundu=haichezi
           </p>
         </div>
       </div>
@@ -54,6 +99,7 @@ export default async function DramaPage() {
               coverUrl={c.coverUrl}
               category={c.category}
               kind="drama"
+              streamStatus={c.streamStatus}
             />
           ))}
         </div>
