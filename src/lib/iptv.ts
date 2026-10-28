@@ -23,7 +23,7 @@ function ch(
     group,
     url,
     tvgId,
-    logo: tvCover(title, logo || null),
+    logo: tvCover(title, logo || null) || null,
   };
 }
 
@@ -153,8 +153,12 @@ export function isPlayableStream(url: string): boolean {
 function parseM3u(text: string, defaultGroup = "World"): IptvChannel[] {
   const lines = text.split(/\r?\n/);
   const out: IptvChannel[] = [];
-  let meta: { title: string; logo: string | null; group: string; tvgId: string | null } | null =
-    null;
+  let meta: {
+    title: string;
+    logo: string | null;
+    group: string;
+    tvgId: string | null;
+  } | null = null;
 
   for (const line of lines) {
     const t = line.trim();
@@ -179,9 +183,7 @@ function parseM3u(text: string, defaultGroup = "World"): IptvChannel[] {
         const id =
           "m3u-" +
           Buffer.from(t).toString("base64url").slice(0, 22);
-        out.push(
-          ch(id, meta.title, meta.group, t, meta.tvgId, meta.logo)
-        );
+        out.push(ch(id, meta.title, meta.group, t, meta.tvgId, meta.logo));
       }
       meta = null;
     }
@@ -225,16 +227,13 @@ async function fetchJson<T>(url: string, ms = 15000): Promise<T | null> {
   }
 }
 
-/** Load thousands of free channels from public IPTV catalogs */
 async function loadRemoteCatalogs(): Promise<IptvChannel[]> {
   const collected: IptvChannel[] = [];
 
-  // 1) iptv-org streams API (large)
   type StreamRow = {
     channel?: string;
     title?: string;
     url?: string;
-    quality?: string;
   };
   type ChannelRow = {
     id?: string;
@@ -244,12 +243,8 @@ async function loadRemoteCatalogs(): Promise<IptvChannel[]> {
   };
 
   const [streams, channelsMeta] = await Promise.all([
-    fetchJson<StreamRow[]>(
-      "https://iptv-org.github.io/api/streams.json"
-    ),
-    fetchJson<ChannelRow[]>(
-      "https://iptv-org.github.io/api/channels.json"
-    ),
+    fetchJson<StreamRow[]>("https://iptv-org.github.io/api/streams.json"),
+    fetchJson<ChannelRow[]>("https://iptv-org.github.io/api/channels.json"),
   ]);
 
   const metaById = new Map<string, ChannelRow>();
@@ -268,13 +263,11 @@ async function loadRemoteCatalogs(): Promise<IptvChannel[]> {
       const group = meta?.country || "World";
       const logo = meta?.logo || null;
       const id =
-        "org-" +
-        Buffer.from(url).toString("base64url").slice(0, 20);
+        "org-" + Buffer.from(url).toString("base64url").slice(0, 20);
       collected.push(ch(id, title, group, url, s.channel || null, logo));
     }
   }
 
-  // 2) Country / region m3u playlists (Africa focus + world)
   const playlists = [
     "https://iptv-org.github.io/iptv/countries/tz.m3u",
     "https://iptv-org.github.io/iptv/countries/ke.m3u",
@@ -287,18 +280,14 @@ async function loadRemoteCatalogs(): Promise<IptvChannel[]> {
     "https://iptv-org.github.io/iptv/categories/news.m3u",
     "https://iptv-org.github.io/iptv/categories/sports.m3u",
     "https://iptv-org.github.io/iptv/categories/music.m3u",
-    "https://iptv-org.github.io/iptv/index.country.m3u",
     "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
   ];
 
   const texts = await Promise.all(playlists.map((u) => fetchText(u)));
-  for (let i = 0; i < texts.length; i++) {
-    if (texts[i]) {
-      collected.push(...parseM3u(texts[i], "IPTV"));
-    }
+  for (const text of texts) {
+    if (text) collected.push(...parseM3u(text, "IPTV"));
   }
 
-  // Dedupe by URL
   const seen = new Set<string>();
   const unique: IptvChannel[] = [];
   for (const c of collected) {
@@ -307,7 +296,7 @@ async function loadRemoteCatalogs(): Promise<IptvChannel[]> {
     seen.add(key);
     unique.push({
       ...c,
-      logo: tvCover(c.title, c.logo),
+      logo: (tvCover(c.title, c.logo) as string | null) || c.logo,
     });
   }
   return unique;
@@ -323,9 +312,9 @@ export async function loadIptvChannels(opts?: {
   const q = (opts?.q || "").toLowerCase().trim();
   const group = (opts?.group || "").toLowerCase().trim();
 
-  const pinned = PINNED_CHANNELS.map((c) => ({
+  const pinned: IptvChannel[] = PINNED_CHANNELS.map((c) => ({
     ...c,
-    logo: tvCover(c.title, c.logo),
+    logo: (tvCover(c.title, c.logo) as string | null) || c.logo,
   }));
 
   let remote: IptvChannel[] = [];
@@ -337,9 +326,10 @@ export async function loadIptvChannels(opts?: {
     source = "pinned-only";
   }
 
-  // Pinned first, then remote
-  const seen = new Set(pinned.map((c) => c.url.split("?")[0].toLowerCase()));
-  const merged = [...pinned];
+  const seen = new Set(
+    pinned.map((c) => c.url.split("?")[0].toLowerCase())
+  );
+  const merged: IptvChannel[] = [...pinned];
   for (const c of remote) {
     const key = c.url.split("?")[0].toLowerCase();
     if (seen.has(key)) continue;
@@ -347,7 +337,7 @@ export async function loadIptvChannels(opts?: {
     merged.push(c);
   }
 
-  let channels = merged;
+  let channels: IptvChannel[] = merged;
 
   if (opts?.liveOnly) {
     channels = channels.filter((c) => isPlayableStream(c.url));
@@ -363,7 +353,6 @@ export async function loadIptvChannels(opts?: {
     channels = channels.filter((c) => c.group.toLowerCase().includes(group));
   }
 
-  // Prioritize TZ/KE/UG/RW/Africa-ish groups slightly at top after pinned
   const rank = (g: string) => {
     const x = g.toLowerCase();
     if (/tanzania|tz\b/.test(x)) return 0;
