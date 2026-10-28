@@ -9,6 +9,7 @@ import GameDownloadPanel from "@/components/GameDownloadPanel";
 import PresenceTracker from "@/components/PresenceTracker";
 import WebGamePlayer from "@/components/WebGamePlayer";
 import WatchPaywallGate from "@/components/WatchPaywallGate";
+import PlaybackReportForm from "@/components/PlaybackReportForm";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -104,6 +105,15 @@ export default async function WatchPage({
     item.type === "music" ||
     item.type === "radio";
 
+  const reportForm = (
+    <PlaybackReportForm
+      contentKey={contentKey}
+      contentTitle={item.title}
+      contentType={item.type}
+      contentId={item.id}
+    />
+  );
+
   const body = (() => {
     if (isGameDownload || item.type === "vpn") {
       return (
@@ -164,6 +174,7 @@ export default async function WatchPage({
             coverUrl={item.coverUrl}
             kind={item.type === "radio" ? "radio" : "music"}
           />
+          {reportForm}
         </PreRollGate>
       );
     }
@@ -181,6 +192,7 @@ export default async function WatchPage({
             contentKey={contentKey}
           />
         </div>
+        {reportForm}
       </PreRollGate>
     );
   })();
