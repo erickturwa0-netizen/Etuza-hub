@@ -68,7 +68,6 @@ export default async function MoviesPage({
       orderBy: { createdAt: "desc" },
     });
 
-    // Load stream_status via raw (column may not be in Prisma client yet)
     let statusMap: Record<string, string> = {};
     try {
       const rows = (await prisma.$queryRawUnsafe(
@@ -87,13 +86,11 @@ export default async function MoviesPage({
         streamStatus: statusMap[a.id] || "unknown",
       }))
       .sort((a, b) => {
-        // Working first, then unknown, bad last
         const rank = (s?: string | null) =>
           s === "ok" ? 0 : s === "bad" ? 2 : 1;
         const ra = rank(a.streamStatus);
         const rb = rank(b.streamStatus);
         if (ra !== rb) return ra - rb;
-        // Newer first within same status
         const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return tb - ta;
@@ -121,9 +118,7 @@ export default async function MoviesPage({
         </Suspense>
       </div>
 
-      {bannerTitles.length > 0 && (
-        <NewContentBanner titles={bannerTitles} type="movie" />
-      )}
+      {bannerTitles.length > 0 && <NewContentBanner titles={bannerTitles} />}
 
       {items.length === 0 ? (
         <p className="text-slate-500 text-sm mt-8">Hakuna movies.</p>
