@@ -14,7 +14,6 @@ model User {
   fullName               String?   @map("full_name")
   role                   String    @default("user")
   points                 Int       @default(10)
-  /** Bonus points from paid package — expire with package */
   packagePoints          Int       @default(0) @map("package_points")
   packagePointsExpiresAt DateTime? @map("package_points_expires_at")
   inviteCode             String?   @unique @map("invite_code")
@@ -22,9 +21,10 @@ model User {
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
 
-  pointLogs       PointLog[]
-  paymentRequests PaymentRequest[]
-  accesses        UserAccess[]
+  pointLogs        PointLog[]
+  paymentRequests  PaymentRequest[]
+  accesses         UserAccess[]
+  playbackReports  PlaybackReport[]
 
   @@map("User")
 }
@@ -69,6 +69,7 @@ model Content {
 
   paymentRequests PaymentRequest[]
   accesses        UserAccess[]
+  playbackReports PlaybackReport[]
 
   @@index([type])
   @@index([status])
@@ -78,7 +79,7 @@ model Content {
 model ApiSource {
   id        String   @id @default(cuid())
   category  String   @unique
-  name      String   @default("")
+  name      String
   url       String   @default("")
   enabled   Boolean  @default(true)
   notes     String?
@@ -158,4 +159,28 @@ model UserAccess {
   @@index([userId])
   @@index([contentId])
   @@map("UserAccess")
+}
+
+/** User reports stream/video failed — admin can refund points */
+model PlaybackReport {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  contentId     String?  @map("content_id")
+  contentKey    String   @map("content_key")
+  contentTitle  String   @map("content_title")
+  contentType   String   @default("movie") @map("content_type")
+  note          String?  @db.Text
+  screenshotUrl String?  @map("screenshot_url") @db.Text
+  status        String   @default("pending")
+  adminNote     String?  @map("admin_note")
+  refundPoints  Int      @default(1) @map("refund_points")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content Content? @relation(fields: [contentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@map("PlaybackReport")
 }

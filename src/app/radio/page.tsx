@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Radio, Search, X, Play } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Radio, Search, X, Play, Pause, Volume2 } from "lucide-react";
 import PresenceTracker from "@/components/PresenceTracker";
-import AudioPlayer from "@/components/AudioPlayer";
 import { radioCover } from "@/lib/covers";
 
 type Station = {
@@ -22,8 +21,11 @@ export default function RadioPage() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<Station | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState("");
+  const [streamErr, setStreamErr] = useState("");
   const [source, setSource] = useState("");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   async function load(kind: "TZ" | "TOP" | "SEARCH", query?: string) {
     setLoading(true);
@@ -51,12 +53,46 @@ export default function RadioPage() {
     load("TZ");
   }, []);
 
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el || !playing) return;
+    setStreamErr("");
+    setIsPlaying(false);
+    el.pause();
+    el.src = playing.url;
+    el.load();
+    el.play()
+      .then(() => setIsPlaying(true))
+      .catch(() => {
+        setIsPlaying(false);
+        setStreamErr("Stream haipatikani");
+      });
+  }, [playing?.id]);
+
   function coverOf(s: Station) {
     return radioCover(s.name, s.favicon);
   }
 
+  async function togglePlay() {
+    const el = audioRef.current;
+    if (!el || !playing) return;
+    try {
+      if (isPlaying) {
+        el.pause();
+        setIsPlaying(false);
+      } else {
+        await el.play();
+        setIsPlaying(true);
+        setStreamErr("");
+      }
+    } catch {
+      setStreamErr("Stream haipatikani");
+      setIsPlaying(false);
+    }
+  }
+
   return (
-    <main className="flex-1 max-w-6xl mx-auto px-3 sm:px-4 py-6 pb-48">
+    <main className="flex-1 max-w-6xl mx-auto px-3 sm:px-4 py-6 pb-28">
       <PresenceTracker section="radio" title={playing?.name || "Radio"} />
 
       <div className="flex items-center gap-3 mb-4">
@@ -70,6 +106,53 @@ export default function RadioPage() {
           </p>
         </div>
       </div>
+
+      {/* Compact sticky player bar — list scrolls under it */}
+      {playing && (
+        <div className="sticky top-14 z-30 mb-3">
+          <div className="flex items-center gap-2 rounded-xl border border-pink-500/40 bg-slate-950/95 backdrop-blur-md px-2.5 py-2 shadow-lg shadow-black/40">
+            <div className="w-11 h-11 rounded-lg bg-white overflow-hidden shrink-0 border border-slate-700 p-0.5">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={coverOf(playing)}
+                alt=""
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white truncate">{playing.name}</p>
+              <p className="text-[11px] text-slate-400 truncate">
+                {isPlaying ? "● Inacheza" : streamErr || "Imezimwa"}
+                {playing.bitrate ? ` · ${playing.bitrate}kbps` : ""}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={togglePlay}
+              className="w-10 h-10 rounded-full bg-pink-600 text-white flex items-center justify-center shrink-0"
+              aria-label={isPlaying ? "Pause" : "Play"}
+            >
+              {isPlaying ? (
+                <Pause className="w-4 h-4 fill-current" />
+              ) : (
+                <Play className="w-4 h-4 fill-current ml-0.5" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                audioRef.current?.pause();
+                setPlaying(null);
+                setIsPlaying(false);
+              }}
+              className="w-8 h-8 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300 shrink-0"
+              aria-label="Funga"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2 mb-4">
         {(
@@ -153,11 +236,6 @@ export default function RadioPage() {
                       }
                     }}
                   />
-                  {active && (
-                    <span className="absolute inset-0 bg-pink-600/30 flex items-center justify-center">
-                      <Play className="w-6 h-6 text-white fill-white" />
-                    </span>
-                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-[15px] text-white truncate">{s.name}</p>
@@ -173,28 +251,18 @@ export default function RadioPage() {
         </div>
       )}
 
-      {/* Fixed player — always visible above bottom nav while playing */}
-      {playing && (
-        <div className="fixed left-0 right-0 z-40 px-3" style={{ bottom: "4.5rem" }}>
-          <div className="max-w-lg mx-auto relative rounded-2xl border border-pink-500/50 bg-slate-950 shadow-2xl shadow-pink-900/40 p-2">
-            <button
-              type="button"
-              onClick={() => setPlaying(null)}
-              className="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300"
-              aria-label="Funga"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <AudioPlayer
-              key={playing.id}
-              src={playing.url}
-              title={playing.name}
-              coverUrl={coverOf(playing)}
-              kind="radio"
-            />
-          </div>
-        </div>
-      )}
+      <audio
+        ref={audioRef}
+        preload="none"
+        playsInline
+        onPlaying={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onError={() => {
+          setIsPlaying(false);
+          setStreamErr("Stream haipatikani");
+        }}
+        className="hidden"
+      />
     </main>
   );
 }
