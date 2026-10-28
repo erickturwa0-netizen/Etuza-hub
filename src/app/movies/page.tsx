@@ -33,7 +33,6 @@ export default async function MoviesPage({
 
   try {
     await ensureElitePlexContent("movie");
-    // Fix false "bad" on embed links so list is not empty
     await resetEmbedStatuses("movie");
 
     try {
@@ -63,14 +62,14 @@ export default async function MoviesPage({
         category: true,
         createdAt: true,
       },
-      take: 300,
+      take: 2000,
       orderBy: { createdAt: "desc" },
     });
 
     let statusMap: Record<string, string> = {};
     try {
       const rows = (await prisma.$queryRawUnsafe(
-        `SELECT id, stream_status FROM "Content" WHERE type = 'movie' AND status = 'published' LIMIT 400`
+        `SELECT id, stream_status FROM "Content" WHERE type = 'movie' AND status = 'published' LIMIT 3000`
       )) as { id: string; stream_status: string | null }[];
       for (const r of rows) {
         statusMap[r.id] = (r.stream_status || "unknown").toLowerCase();
@@ -79,7 +78,7 @@ export default async function MoviesPage({
       /* ignore */
     }
 
-    // Show ALL published; sort ok → unknown → bad; newest within group
+    // Working (ok) first, then unknown, then bad; newest within each
     items = raw
       .map((a) => ({
         ...a,
@@ -99,6 +98,8 @@ export default async function MoviesPage({
     console.error("movies page", e);
   }
 
+  const okCount = items.filter((i) => i.streamStatus === "ok").length;
+
   return (
     <main className="max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-28">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
@@ -109,7 +110,8 @@ export default async function MoviesPage({
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-white">Movies</h1>
             <p className="text-sm text-slate-400">
-              {items.length} movies · mpya juu · badilisha server kwenye player
+              {items.length} movies
+              {okCount ? ` · ${okCount} zinazocheza juu` : ""} · badilisha server
             </p>
           </div>
         </div>
@@ -122,7 +124,7 @@ export default async function MoviesPage({
 
       {items.length === 0 ? (
         <p className="text-slate-500 text-sm mt-8">
-          Hakuna movies bado. Subiri sekunde chache kisha refresh.
+          Inapakia movies… refresh baada ya sekunde chache.
         </p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">

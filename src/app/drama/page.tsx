@@ -33,13 +33,13 @@ export default async function DramaPage() {
         category: true,
         createdAt: true,
       },
-      take: 300,
+      take: 2000,
     });
 
     let statusMap: Record<string, string> = {};
     try {
       const rows = (await prisma.$queryRawUnsafe(
-        `SELECT id, stream_status FROM "Content" WHERE type = 'drama' AND status = 'published' LIMIT 400`
+        `SELECT id, stream_status FROM "Content" WHERE type = 'drama' AND status = 'published' LIMIT 3000`
       )) as { id: string; stream_status: string | null }[];
       for (const r of rows) {
         statusMap[r.id] = (r.stream_status || "unknown").toLowerCase();
@@ -66,6 +66,8 @@ export default async function DramaPage() {
     console.error("drama page", e);
   }
 
+  const okCount = items.filter((i) => i.streamStatus === "ok").length;
+
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 pb-24">
       <div className="flex items-center gap-3 mb-6">
@@ -75,7 +77,8 @@ export default async function DramaPage() {
         <div>
           <h1 className="text-2xl font-bold">Tamthilia</h1>
           <p className="text-sm text-slate-500">
-            {items.length} · mpya juu · badilisha server kwenye player
+            {items.length} series
+            {okCount ? ` · ${okCount} zinazocheza juu` : ""} · badilisha server
           </p>
         </div>
       </div>
@@ -83,7 +86,7 @@ export default async function DramaPage() {
       {items.length === 0 ? (
         <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center">
           <p className="text-slate-400 text-sm">
-            Hakuna tamthilia bado. Refresh baada ya sekunde chache.
+            Inapakia tamthilia… refresh baada ya sekunde chache.
           </p>
         </div>
       ) : (
