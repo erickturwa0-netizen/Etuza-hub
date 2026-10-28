@@ -7,71 +7,71 @@ const MODEL = "mercury-3";
 const SYSTEM_BASE = `Wewe ni msaidizi rasmi wa ETUZA HUB (https://etuza-hub-v2.vercel.app) — Tanzania.
 Jibu kwa Kiswahili rahisi na SAHIHI. Kiingereza tu mteja akitaka.
 
+=== SALAMU (LAZIMA) ===
+Ukipokea salamu (habari, hujambo, mambo, hi, hello, vipi, za asubuhi, n.k.) JIBU kwa urafiki.
+USIKATAE salamu. Usiseme "siwezi". Jibu mfano:
+
+# HABARI!
+
+Karibu *ETUZA HUB*. Unaweza kuniuliza kuhusu **movies**, **TV**, **radio**, **point** au **VPN**.
+
 === MTINDO WA KUANDIKA (LAZIMA) ===
 Andika kwa UREMBO na MPANGO — usibana maneno pamoja.
+1. Weka **nafasi** kati ya sentensi na aya.
+2. Tumia Markdown: **bold**, *italic*, # titles, orodha -, links.
+3. Usibana maneno. Aya fupi + line breaks.
 
-1. Weka **nafasi** kati ya sentensi na aya. Aya fupi, mistari mitupu kati ya sehemu.
-2. Tumia Markdown:
-   - **maneno muhimu** kwa bold
-   - *maelezo* kwa italic
-   - # AU ## kwa vyeo (titles) — title iwe HERUFI KUBWA inapofaa
-   - Orodha kwa - au 1. 2. 3.
-   - Link: [jina](https://...)
-3. Usibana maneno: "Habari!" si "Habari!Mimi..." — weka nafasi na line breaks.
-4. Muundo wa kawaida:
-   - Kwanza: salamu au kichwa fupi (# ...)
-   - Kisha: aya fupi
-   - Kisha: orodha kama kuna hatua
-   - Mwisho: ushauri mfupi au link
-5. Usitumie block kubwa bila mapumziko. Max ~6–10 sentensi isipokuwa orodha ya content.
-
-Mfano mzuri:
-# POINT ZINAFANYA KAZI VIPI?
-
-Point **zinakatwa** baada ya video *kuanza* kucheza tu.
-
-Unaweza kupata point kwa:
-- Kualika marafiki
-- Kutazama tangazo
-- Kulipia kifurushi
-
-Kama ads hazioneshi, **zima VPN** kisha jaribu tena.
-
-=== TOA MOVIE / CONTENT NDANI YA CHAT ===
-Ukipata orodha ya CONTENT KUTOKA DATABASE hapa chini, TUMIA hiyo tu.
-- Orodhesha kwa bullet: **jina** (aina) — [Cheza](https://etuza-hub-v2.vercel.app/watch/{id})
-- Usizusha movie ambazo hazipo kwenye orodha hiyo.
-- Kama hakuna matokeo, sema wazi na pendekeza /movies au /drama.
+=== CONTENT KUTOKA DATABASE ===
+Ukipata orodha hapa chini, tumia hiyo tu. Usizusha.
 
 === POINT ===
-- Point zinakatwa TU baada ya video/audio KUANZA kucheza.
-- Haikucheza → point hazikatwi.
-- Pata point: invite, tazama tangazo (ads), lipia kifurushi.
-
-=== ADS + VPN ===
-Ads hazioneshi / point haziingii:
-1. **Zima VPN** / proxy / ad-blocker
-2. Tumia internet ya kawaida (bando)
-3. Refresh → jaribu tena *Tazama tangazo*
-
-=== RADIO ===
-/radio → bofya station → player FIXED juu.
-
-=== DOTS ===
-Kijani=inacheza, Kijivu=haijulikani, Nyekundu=haichezi.
-
-=== RIPOTI ===
-Watch → "Haikucheza? Ripoti" → Admin anarudisha point.
-
-=== MALIPO ===
-Tuma pesa → screenshot + namba + mtandao → Admin anaapprove.
+Zinakatwa TU baada ya video kuanza. Ads: zima VPN kisha jaribu tena.
 
 === SHERIA ===
-Usitoe cracking/DRM/secrets. Usidai unaapprove malipo. Kama hujui, sema wazi.`;
+Usitoe cracking/secrets. Kama hujui, sema wazi.`;
+
+function isGreeting(message: string): boolean {
+  const m = message.trim().toLowerCase().replace(/[!?.]+$/g, "");
+  if (m.length > 40) return false;
+  const greets = [
+    "habari",
+    "hujambo",
+    "jambo",
+    "mambo",
+    "vipi",
+    "salama",
+    "hello",
+    "hi",
+    "hey",
+    "good morning",
+    "good evening",
+    "habari yako",
+    "habari za asubuhi",
+    "habari za jioni",
+    "shikamoo",
+    "asante",
+    "thanks",
+    "thank you",
+  ];
+  return greets.some((g) => m === g || m.startsWith(g + " ") || m.endsWith(" " + g));
+}
+
+const GREETING_REPLY = `# HABARI!
+
+Karibu **ETUZA HUB** 👋
+
+Naweza kukusaidia kuhusu:
+- **Movies** na **Tamthilia**
+- **TV channels** na **Radio**
+- **Point**, ads na **VPN**
+- Jinsi ya kutumia site
+
+*Uliza chochote* — niko hapa.`;
 
 function extractSearchQuery(message: string): string | null {
   const m = message.trim();
   if (m.length < 2) return null;
+  if (isGreeting(m)) return null;
 
   const patterns = [
     /(?:tafuta|search|nipatie|nipa|naomba|nataka|nimesikia|ipo\s+movie|movie\s+ya|filamu\s+ya|tamthilia\s+ya|series\s+ya|wapi\s+)(.+)/i,
@@ -99,6 +99,8 @@ function extractSearchQuery(message: string): string | null {
       "thanks",
       "help",
       "msaada",
+      "mambo",
+      "hujambo",
     ];
     if (!skip.some((s) => lower === s || lower.startsWith(s + " "))) {
       return m;
@@ -136,14 +138,6 @@ async function searchContent(q: string) {
 }
 
 export async function POST(req: Request) {
-  const key = process.env.INCEPTION_API_KEY;
-  if (!key) {
-    return NextResponse.json(
-      { error: "AI haijasetiwa (INCEPTION_API_KEY)" },
-      { status: 503 }
-    );
-  }
-
   let message = "";
   let history: { role: string; content: string }[] = [];
   try {
@@ -170,22 +164,38 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Andika ujumbe" }, { status: 400 });
   }
 
+  // Always answer greetings even without API key
+  if (isGreeting(message)) {
+    return NextResponse.json({ reply: GREETING_REPLY, searched: null });
+  }
+
+  const key = process.env.INCEPTION_API_KEY;
+  if (!key) {
+    return NextResponse.json(
+      {
+        reply:
+          "**Samahani**\n\nAI haijasetiwa kikamilifu sasa (*INCEPTION_API_KEY*).\n\nBado naweza kukusaidia kwa mambo ya msingi ya site: **/movies**, **/tv**, **/radio**, point na VPN.",
+      },
+      { status: 200 }
+    );
+  }
+
   let researchBlock = "";
   const q = extractSearchQuery(message);
   if (q) {
     const hits = await searchContent(q);
     if (hits.length) {
       researchBlock =
-        "\n\n=== CONTENT KUTOKA DATABASE (tumia hii kujibu, panga kwa markdown) ===\n" +
+        "\n\n=== CONTENT KUTOKA DATABASE ===\n" +
         hits
           .map(
             (h, i) =>
-              `${i + 1}. **${h.title}** (${h.type}${h.category ? " · " + h.category : ""})\n   Link: https://etuza-hub-v2.vercel.app/watch/${h.id}`
+              `${i + 1}. **${h.title}** (${h.type})\n   https://etuza-hub-v2.vercel.app/watch/${h.id}`
           )
           .join("\n") +
         "\n=== MWISHO ===\n";
     } else {
-      researchBlock = `\n\n=== CONTENT KUTOKA DATABASE ===\nHakuna matokeo kwa: "${q}". Usizusha.===\n`;
+      researchBlock = `\n\n=== DATABASE ===\nHakuna matokeo kwa "${q}". Usizusha.\n`;
     }
   }
 
@@ -213,10 +223,11 @@ export async function POST(req: Request) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       console.error("inception", res.status, data);
-      return NextResponse.json(
-        { error: data?.error?.message || "AI imeshindwa kujibu" },
-        { status: 502 }
-      );
+      // Friendly fallback instead of hard error
+      return NextResponse.json({
+        reply:
+          "**Samahani**, sijaweza kufikia AI sasa.\n\nJaribu tena baadaye, au tembelea:\n- [Movies](https://etuza-hub-v2.vercel.app/movies)\n- [TV](https://etuza-hub-v2.vercel.app/tv)\n- [Radio](https://etuza-hub-v2.vercel.app/radio)",
+      });
     }
 
     const reply =
@@ -230,6 +241,9 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.error("ai chat", e);
-    return NextResponse.json({ error: "Tatizo la mtandao" }, { status: 500 });
+    return NextResponse.json({
+      reply:
+        "**Tatizo la mtandao.**\n\nJaribu tena baada ya sekunde chache.",
+    });
   }
 }
