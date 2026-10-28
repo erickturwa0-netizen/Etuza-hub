@@ -2,6 +2,7 @@ import { Film } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensureElitePlexContent } from "@/lib/eliteplex";
 import { getNewContentBanner } from "@/lib/catalog-sync";
+import { probeUnknownStreams } from "@/lib/stream-probe";
 import ContentSearch from "@/components/ContentSearch";
 import NewContentBanner from "@/components/NewContentBanner";
 import MediaPosterCard from "@/components/MediaPosterCard";
@@ -28,15 +29,17 @@ export default async function MoviesPage({
     createdAt?: Date;
   }[] = [];
   let bannerTitles: string[] = [];
+  let probeInfo = "";
 
   try {
     await ensureElitePlexContent("movie");
 
+    // Auto-check some unknown streams each visit (fills green/red dots)
     try {
-      await prisma.$executeRawUnsafe(`
-        ALTER TABLE "Content"
-        ADD COLUMN IF NOT EXISTS "stream_status" TEXT DEFAULT 'unknown'
-      `);
+      const pr = await probeUnknownStreams("movie", 10);
+      if (pr.checked > 0) {
+        probeInfo = ` · checked ${pr.checked} (${pr.ok} ok / ${pr.bad} bad)`;
+      }
     } catch {
       /* ignore */
     }
@@ -71,7 +74,7 @@ export default async function MoviesPage({
     let statusMap: Record<string, string> = {};
     try {
       const rows = (await prisma.$queryRawUnsafe(
-        `SELECT id, stream_status FROM "Content" WHERE type = 'movie' AND status = 'published' LIMIT 200`
+        `SELECT id, stream_status FROM "Content" WHERE type = 'movie' AND status = 'published' LIMIT 300`
       )) as { id: string; stream_status: string | null }[];
       for (const r of rows) {
         statusMap[r.id] = (r.stream_status || "unknown").toLowerCase();
@@ -80,6 +83,7 @@ export default async function MoviesPage({
       /* column missing */
     }
 
+    // Sort: green(ok) → gray(unknown) → red(bad); within group newest first
     items = raw
       .map((a) => ({
         ...a,
@@ -109,7 +113,8 @@ export default async function MoviesPage({
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-white">Movies</h1>
             <p className="text-sm text-slate-400">
-              {items.length} movies · mpya juu · kijani=inacheza · nyekundu=haichezi
+              {items.length} · kijani juu · kijivu · nyekundu chini
+              {probeInfo}
             </p>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { Clapperboard } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensureElitePlexContent } from "@/lib/eliteplex";
+import { probeUnknownStreams } from "@/lib/stream-probe";
 import MediaPosterCard from "@/components/MediaPosterCard";
 
 export const dynamic = "force-dynamic";
@@ -20,10 +21,7 @@ export default async function DramaPage() {
   try {
     await ensureElitePlexContent("drama");
     try {
-      await prisma.$executeRawUnsafe(`
-        ALTER TABLE "Content"
-        ADD COLUMN IF NOT EXISTS "stream_status" TEXT DEFAULT 'unknown'
-      `);
+      await probeUnknownStreams("drama", 8);
     } catch {
       /* ignore */
     }
@@ -44,7 +42,7 @@ export default async function DramaPage() {
     let statusMap: Record<string, string> = {};
     try {
       const rows = (await prisma.$queryRawUnsafe(
-        `SELECT id, stream_status FROM "Content" WHERE type = 'drama' AND status = 'published' LIMIT 200`
+        `SELECT id, stream_status FROM "Content" WHERE type = 'drama' AND status = 'published' LIMIT 300`
       )) as { id: string; stream_status: string | null }[];
       for (const r of rows) {
         statusMap[r.id] = (r.stream_status || "unknown").toLowerCase();
@@ -80,7 +78,7 @@ export default async function DramaPage() {
         <div>
           <h1 className="text-2xl font-bold">Tamthilia</h1>
           <p className="text-sm text-slate-500">
-            {items.length} · mpya juu · kijani=inacheza · nyekundu=haichezi
+            {items.length} · kijani juu · kijivu · nyekundu chini
           </p>
         </div>
       </div>
