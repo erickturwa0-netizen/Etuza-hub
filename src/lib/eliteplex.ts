@@ -1,10 +1,9 @@
 import { prisma } from "@/lib/prisma";
 
 const BASE = "https://eliteplex-api.vercel.app";
-/** Bump tag to force re-import with working embed hosts */
-const MOVIE_TAG = "eliteplex-vidsrc-v12-no-vsembed";
-const DRAMA_TAG = "eliteplex-drama-vidsrc-v12";
-const MAX_YEAR = 2024;
+const MOVIE_TAG = "eliteplex-vidsrc-v13-safe-import";
+const DRAMA_TAG = "eliteplex-drama-vidsrc-v13";
+const MAX_YEAR = 2026;
 
 type EliteItem = {
   id?: string;
@@ -33,7 +32,7 @@ async function fetchPages(path: string, pages: number[]): Promise<EliteItem[]> {
       const data = await res.json();
       const list = Array.isArray(data)
         ? data
-        : data?.results || data?.movies || data?.data || [];
+        : data?.results || data?.movies || data?.items || data?.data || [];
       if (Array.isArray(list)) out.push(...list);
     } catch {
       /* ignore page */
@@ -42,7 +41,6 @@ async function fetchPages(path: string, pages: number[]): Promise<EliteItem[]> {
   return out;
 }
 
-/** Rewrite broken vsembed.ru links still in DB → vidsrc */
 export async function migrateBrokenEmbeds() {
   try {
     await prisma.$executeRawUnsafe(`
@@ -57,34 +55,81 @@ export async function migrateBrokenEmbeds() {
     `);
     await prisma.$executeRawUnsafe(`
       UPDATE "Content"
-      SET link_url = REPLACE(link_url, 'http://vsembed.ru/embed/movie/', 'https://vidsrc.to/embed/movie/')
-      WHERE link_url LIKE '%vsembed.ru%'
-    `);
-    // Reset stream_status so probe re-checks
-    await prisma.$executeRawUnsafe(`
-      UPDATE "Content"
       SET stream_status = 'unknown'
-      WHERE link_url LIKE '%vidsrc.%'
-        AND (stream_status = 'bad' OR stream_status IS NULL)
+      WHERE status = 'published'
+        AND stream_status = 'bad'
+        AND (
+          link_url ILIKE '%vidsrc%'
+          OR link_url ILIKE '%2embed%'
+          OR link_url ILIKE '%embed%'
+        )
     `);
   } catch (e) {
     console.error("migrateBrokenEmbeds", e);
   }
 }
 
+const CLASSIC_SEEDS: { id: string; title: string; year: string; poster: string }[] = [
+  { id: "603", title: "The Matrix", year: "1999", poster: "https://image.tmdb.org/t/p/w500/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg" },
+  { id: "550", title: "Fight Club", year: "1999", poster: "https://image.tmdb.org/t/p/w500/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg" },
+  { id: "680", title: "Pulp Fiction", year: "1994", poster: "https://image.tmdb.org/t/p/w500/d5iIlFn5s0ImszYzBPb8JPAsjYt.jpg" },
+  { id: "155", title: "The Dark Knight", year: "2008", poster: "https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg" },
+  { id: "27205", title: "Inception", year: "2010", poster: "https://image.tmdb.org/t/p/w500/9gk7adHYeQ2FqDwLMLlOWiDQTj.jpg" },
+  { id: "157336", title: "Interstellar", year: "2014", poster: "https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg" },
+  { id: "11", title: "Star Wars", year: "1977", poster: "https://image.tmdb.org/t/p/w500/6FfCtAuVAW8XMvVWm8Xm4PVg1L.jpg" },
+  { id: "120", title: "The Lord of the Rings: The Fellowship of the Ring", year: "2001", poster: "https://image.tmdb.org/t/p/w500/6oom5QYQ2yQTMJIbnvbkBL9cHo6.jpg" },
+  { id: "122", title: "The Lord of the Rings: The Return of the King", year: "2003", poster: "https://image.tmdb.org/t/p/w500/rCzpDGLbOoPwLjy3OAm5NUPOTrC.jpg" },
+  { id: "13", title: "Forrest Gump", year: "1994", poster: "https://image.tmdb.org/t/p/w500/arw2k3l4n9wYpOg6SClRpjYvWq.jpg" },
+  { id: "424", title: "Schindler's List", year: "1993", poster: "https://image.tmdb.org/t/p/w500/sF1U4EUQS8YHUYjNl3pMGNIQyr0.jpg" },
+  { id: "278", title: "The Shawshank Redemption", year: "1994", poster: "https://image.tmdb.org/t/p/w500/q6y0Go1tsGEsmtFryDOJo3dEmqu.jpg" },
+  { id: "238", title: "The Godfather", year: "1972", poster: "https://image.tmdb.org/t/p/w500/3bhkrj58Vtu7enYsRolD1fZdja1.jpg" },
+  { id: "497", title: "The Green Mile", year: "1999", poster: "https://image.tmdb.org/t/p/w500/8VG8fDNiy50H4FedGwdSVUPoaJe.jpg" },
+  { id: "105", title: "Back to the Future", year: "1985", poster: "https://image.tmdb.org/t/p/w500/fNOH9f1aA7wxTTvQJtHlmQyRbDr.jpg" },
+  { id: "597", title: "Titanic", year: "1997", poster: "https://image.tmdb.org/t/p/w500/9xjZS2rlVxm8SFx8kPWJTlXoKjm.jpg" },
+  { id: "24428", title: "The Avengers", year: "2012", poster: "https://image.tmdb.org/t/p/w500/RYMX2wcKCBAr24TyDxvIjpgj.png" },
+  { id: "299536", title: "Avengers: Infinity War", year: "2018", poster: "https://image.tmdb.org/t/p/w500/7WsyChQLEftFiDOVTGkv3hFpyyt.jpg" },
+  { id: "299534", title: "Avengers: Endgame", year: "2019", poster: "https://image.tmdb.org/t/p/w500/or06FN3Dka5tukK1e9sl16pB3iy.jpg" },
+  { id: "324857", title: "Spider-Man: Into the Spider-Verse", year: "2018", poster: "https://image.tmdb.org/t/p/w500/iiGBER8XQVANxzhffxwB9d7WjS.jpg" },
+  { id: "569094", title: "Spider-Man: Across the Spider-Verse", year: "2023", poster: "https://image.tmdb.org/t/p/w500/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg" },
+  { id: "346698", title: "Barbie", year: "2023", poster: "https://image.tmdb.org/t/p/w500/iuFNMS8U5cb6xfzi51Dbkovj7vM.jpg" },
+  { id: "872585", title: "Oppenheimer", year: "2023", poster: "https://image.tmdb.org/t/p/w500/8Gxv8gSFCU0XGDykE0UmQdlMMp.jpg" },
+  { id: "76600", title: "Avatar: The Way of Water", year: "2022", poster: "https://image.tmdb.org/t/p/w500/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg" },
+  { id: "19995", title: "Avatar", year: "2009", poster: "https://image.tmdb.org/t/p/w500/kyeqWdyUXW608qlYkRqosgbbJyK.jpg" },
+  { id: "786892", title: "Furiosa: A Mad Max Saga", year: "2024", poster: "https://image.tmdb.org/t/p/w500/iADOJ8Zymht2JPMoy3R7xceZprc.jpg" },
+  { id: "823464", title: "Godzilla x Kong: The New Empire", year: "2024", poster: "https://image.tmdb.org/t/p/w500/z1p34vh7dEOnLDmyCrlUVLuoDzd.jpg" },
+  { id: "693134", title: "Dune: Part Two", year: "2024", poster: "https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg" },
+  { id: "533535", title: "Deadpool & Wolverine", year: "2024", poster: "https://image.tmdb.org/t/p/w500/8cdWjvZQUExUUOejeaAMJOy5r2r.jpg" },
+  { id: "7451", title: "xXx", year: "2002", poster: "https://image.tmdb.org/t/p/w500/cGrS0ZomSOfVuHsGpkdHuhcV1Y.jpg" },
+];
+
 export async function importElitePlexMovies(force = false): Promise<number> {
   const existing = await prisma.apiSource.findUnique({
     where: { category: "movie" },
   });
-  if (!force && existing?.notes === MOVIE_TAG) {
+  const count = await prisma.content.count({
+    where: { type: "movie", status: "published" },
+  });
+
+  // Already imported and has rows — just migrate embeds
+  if (!force && existing?.notes === MOVIE_TAG && count > 20) {
     await migrateBrokenEmbeds();
-    return prisma.content.count({ where: { type: "movie", status: "published" } });
+    return count;
   }
 
+  // If empty, always reimport
   const remote = await fetchPages("/api/movies", [
-    1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30,
+    1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20,
   ]);
+
   const byId = new Map<string, EliteItem>();
+  for (const s of CLASSIC_SEEDS) {
+    byId.set(s.id, {
+      tmdb_id: s.id,
+      name: s.title,
+      year: s.year,
+      poster: s.poster,
+    });
+  }
   for (const row of remote) {
     const id = String(row.tmdb_id || row.id || "");
     if (!/^\d{2,7}$/.test(id)) continue;
@@ -93,6 +138,12 @@ export async function importElitePlexMovies(force = false): Promise<number> {
     if (!byId.has(id)) byId.set(id, row);
   }
 
+  if (byId.size < 5) {
+    console.error("eliteplex movie import: too few items", byId.size);
+    return count;
+  }
+
+  // Only delete after we have data
   await prisma.content.deleteMany({ where: { type: "movie" } });
 
   const ordered = [...byId.values()].sort(
@@ -164,12 +215,21 @@ export async function importElitePlexDrama(force = false): Promise<number> {
   const existing = await prisma.apiSource.findUnique({
     where: { category: "drama" },
   });
-  if (!force && existing?.notes === DRAMA_TAG) {
+  const count = await prisma.content.count({
+    where: { type: "drama", status: "published" },
+  });
+
+  if (!force && existing?.notes === DRAMA_TAG && count > 5) {
     await migrateBrokenEmbeds();
-    return prisma.content.count({ where: { type: "drama", status: "published" } });
+    return count;
   }
 
   const series = await fetchPages("/api/series", [1, 2, 3, 4, 5, 6, 8, 10]);
+  if (series.length < 3) {
+    console.error("eliteplex drama import: too few");
+    return count;
+  }
+
   await prisma.content.deleteMany({ where: { type: "drama" } });
 
   const seen = new Set<string>();

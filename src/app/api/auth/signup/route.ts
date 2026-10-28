@@ -45,7 +45,6 @@ export async function POST(req: Request) {
     const deviceId = parsed.data.deviceId;
     const ip = getClientIp(req);
 
-    // Block signup if this device already has an account
     if (deviceId && deviceId.length >= 16) {
       try {
         const existingDevice = (await prisma.$queryRawUnsafe(
@@ -62,7 +61,7 @@ export async function POST(req: Request) {
           );
         }
       } catch {
-        /* ignore until column exists */
+        /* ignore */
       }
     }
 
@@ -187,7 +186,6 @@ export async function POST(req: Request) {
       deviceId
     );
     if (!check.ok) {
-      // rollback soft: user exists but blocked — delete orphan
       try {
         await prisma.user.delete({ where: { id: user.id } });
       } catch {
@@ -207,16 +205,17 @@ export async function POST(req: Request) {
       })
       .catch(() => {});
 
+    const invitePts = POINTS.INVITE_REWARD || 5;
     if (referredById) {
       try {
         await prisma.user.update({
           where: { id: referredById },
-          data: { points: { increment: POINTS.INVITE || 5 } },
+          data: { points: { increment: invitePts } },
         });
         await prisma.pointLog.create({
           data: {
             userId: referredById,
-            amount: POINTS.INVITE || 5,
+            amount: invitePts,
             reason: "invite",
             meta: user.id,
           },
