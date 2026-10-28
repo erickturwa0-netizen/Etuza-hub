@@ -3,6 +3,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
 const schema = z.object({
   category: z.enum(["movie", "tv", "radio", "music", "drama", "game", "vpn"]),
   apiUrl: z.string().url(),
@@ -17,7 +20,6 @@ type NormItem = {
 };
 
 function normalize(data: unknown, category: string): NormItem[] {
-  // ElitePlex: { creator, items: [{ id, tmdb_id, name, poster, overview, year }] }
   const eliteItems = (data as { items?: unknown[]; creator?: string })?.items;
   if (
     Array.isArray(eliteItems) &&
@@ -39,10 +41,12 @@ function normalize(data: unknown, category: string): NormItem[] {
       play?: string;
     }[]).map((row) => {
       const id = String(row.tmdb_id || row.id || "");
-      const media = row.type === "tv" || row.type === "series" ? "tv" : "movie";
-      // Prefer known phone-friendly embed; fallback to ElitePlex play JSON URL
+      const media =
+        row.type === "tv" || row.type === "series" || category === "drama"
+          ? "tv"
+          : "movie";
       const linkUrl = id
-        ? `https://player.videasy.net/${media}/${id}`
+        ? `https://player.videasy.to/${media}/${id}`
         : row.stream
           ? `https://eliteplex-api.vercel.app${row.stream}`
           : "";
@@ -56,7 +60,6 @@ function normalize(data: unknown, category: string): NormItem[] {
     });
   }
 
-  // Radio Browser stations
   if (
     Array.isArray(data) &&
     data[0] &&
@@ -78,7 +81,6 @@ function normalize(data: unknown, category: string): NormItem[] {
     }));
   }
 
-  // iTunes Search
   const itunes = (data as { results?: Record<string, unknown>[] })?.results;
   if (
     Array.isArray(itunes) &&
@@ -103,7 +105,6 @@ function normalize(data: unknown, category: string): NormItem[] {
     });
   }
 
-  // TVmaze
   if (
     Array.isArray(data) &&
     data[0] &&
@@ -130,7 +131,6 @@ function normalize(data: unknown, category: string): NormItem[] {
     }));
   }
 
-  // FreeToGame
   if (
     Array.isArray(data) &&
     data[0] &&
@@ -162,7 +162,8 @@ function normalize(data: unknown, category: string): NormItem[] {
           ? (data as { data: unknown[] }).data
           : [];
 
-  return (raw as Record<string, unknown>[]).slice(0, 50).map((row, i) => {
+  // NO LIMIT
+  return (raw as Record<string, unknown>[]).map((row, i) => {
     const title = String(row.title || row.name || `Item ${i + 1}`);
     const linkUrl = String(
       row.linkUrl ||
@@ -192,9 +193,10 @@ function normalize(data: unknown, category: string): NormItem[] {
       linkUrl,
       coverUrl,
       category: String(row.category || row.tags || row.genre || category),
-      description: (row.overview || row.description || row.short_description || null) as
-        | string
-        | null,
+      description: (row.overview ||
+        row.description ||
+        row.short_description ||
+        null) as string | null,
     };
   });
 }
@@ -230,6 +232,7 @@ export async function POST(req: Request) {
         Accept: "application/json",
         "User-Agent": "ETUZA-HUB/1.0",
       },
+      cache: "no-store",
     });
 
     if (!res.ok) {
@@ -249,10 +252,13 @@ export async function POST(req: Request) {
       });
     }
 
+    // NO LIMIT — import everything
     let count = 0;
-    for (const item of items.slice(0, 80)) {
-      await prisma.content.create({
-        data: {
+    const BATCH = 100;
+    for (let i = 0; i < items.length; i += BATCH) {
+      const batch = items.slice(i, i + BATCH);
+      await prisma.content.createMany({
+        data: batch.map((item) => ({
           type: category,
           title: item.title.slice(0, 200),
           description: item.description,
@@ -263,12 +269,16 @@ export async function POST(req: Request) {
           category: item.category?.slice(0, 100) || null,
           status: "published",
           createdBy: session.userId,
-        },
+        })),
+        skipDuplicates: true,
       });
-      count++;
+      count += batch.length;
     }
 
-    return NextResponse.json({ count, message: `${count} items imported` });
+    return NextResponse.json({
+      count,
+      message: `${count} items imported (unlimited)`,
+    });
   } catch (err) {
     console.error(err);
     const message = err instanceof Error ? err.message : "Import failed";

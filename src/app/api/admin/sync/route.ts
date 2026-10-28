@@ -8,12 +8,11 @@ import {
 import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 /**
  * POST /api/admin/sync
  * Body optional: { "scope": "all" | "movies" | "drama" | "tv" }
- * Auth: admin session cookie OR x-admin-secret / Authorization Bearer
  */
 export async function POST(req: NextRequest) {
   const secret = process.env.CRON_SECRET || process.env.ADMIN_SECRET || "";
@@ -23,12 +22,10 @@ export async function POST(req: NextRequest) {
 
   let allowed = false;
 
-  // 1) Secret-based (cron / external)
   if (secret && token === secret) {
     allowed = true;
   }
 
-  // 2) Admin session (dashboard buttons)
   if (!allowed) {
     try {
       const session = await getSession();
@@ -40,7 +37,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3) No secret configured → allow (dev)
   if (!secret && !allowed) {
     allowed = true;
   }

@@ -2,8 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { PINNED_CHANNELS, type IptvChannel } from "@/lib/iptv";
 
 const ELITE = "https://eliteplex-api.vercel.app";
-const MAX_PLAYABLE_YEAR = 2025;
-// TMDB key from Movian Media Center APK (fallback if TMDB_API_KEY env missing)
+// Include current year content
+const MAX_PLAYABLE_YEAR = 2026;
 const TMDB_KEY =
   process.env.TMDB_API_KEY || "a0d71cffe2d6693d462af9e4f336bc06";
 
@@ -58,14 +58,15 @@ async function fetchElitePages(path: string, pages: number[]): Promise<EliteItem
   return out;
 }
 
-/** Fetch many movies from TMDB (popular + top_rated + trending) */
-async function fetchTmdbMovies(pages = 8): Promise<TmdbMovie[]> {
+/** Fetch many movies from TMDB — more pages, no artificial small cap */
+async function fetchTmdbMovies(pages = 20): Promise<TmdbMovie[]> {
   const out: TmdbMovie[] = [];
   const endpoints = [
     "movie/popular",
     "movie/top_rated",
     "trending/movie/week",
     "movie/now_playing",
+    "movie/upcoming",
   ];
 
   for (const ep of endpoints) {
@@ -86,7 +87,40 @@ async function fetchTmdbMovies(pages = 8): Promise<TmdbMovie[]> {
       }
     }
   }
-  // dedupe by id
+  const seen = new Set<number>();
+  return out.filter((m) => {
+    if (!m.id || seen.has(m.id)) return false;
+    seen.add(m.id);
+    return true;
+  });
+}
+
+async function fetchTmdbTv(pages = 15): Promise<TmdbMovie[]> {
+  const out: TmdbMovie[] = [];
+  const endpoints = [
+    "tv/popular",
+    "tv/top_rated",
+    "trending/tv/week",
+    "tv/on_the_air",
+  ];
+  for (const ep of endpoints) {
+    for (let page = 1; page <= pages; page++) {
+      try {
+        const url = `https://api.themoviedb.org/3/${ep}?api_key=${TMDB_KEY}&language=en-US&page=${page}&include_adult=false`;
+        const res = await fetch(url, {
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        });
+        if (!res.ok) break;
+        const data = await res.json();
+        const results = (data?.results || []) as TmdbMovie[];
+        if (!results.length) break;
+        out.push(...results);
+      } catch {
+        break;
+      }
+    }
+  }
   const seen = new Set<number>();
   return out.filter((m) => {
     if (!m.id || seen.has(m.id)) return false;
@@ -145,14 +179,11 @@ export async function syncNewMovies(): Promise<{
   total: number;
   titles: string[];
 }> {
-  // 1) ElitePlex source (existing)
   const remote = await fetchElitePages(
     "/api/movies",
-    [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 18, 20]
+    Array.from({ length: 40 }, (_, i) => i + 1)
   );
-
-  // 2) Direct TMDB popular / top_rated / trending (new – many more movies)
-  const tmdbMovies = await fetchTmdbMovies(10);
+  const tmdbMovies = await fetchTmdbMovies(20);
 
   const existing = await prisma.content.findMany({
     where: { type: "movie" },
@@ -170,24 +201,25 @@ export async function syncNewMovies(): Promise<{
   let added = 0;
   const titles: string[] = [];
 
-  // Process Elite items
   for (const row of remote) {
     const id = String(row.tmdb_id || row.id || "");
     const title = String(row.name || row.title || "").trim();
     if (!/^\d{2,7}$/.test(id) || !title || have.has(id)) continue;
     const y = yearNum(row.year);
-    if (!y || y > MAX_PLAYABLE_YEAR) continue;
+    if (y && y > MAX_PLAYABLE_YEAR) continue;
     await prisma.content.create({
       data: {
         type: "movie",
         title: title.slice(0, 200),
         description: row.overview
           ? String(row.overview).slice(0, 500)
-          : `Year ${y}`,
+          : y
+            ? `Year ${y}`
+            : null,
         linkUrl: `https://player.videasy.to/movie/${id}`,
         coverUrl: row.poster || null,
         linkType: "stream",
-        category: `Movie · ${y}`,
+        category: y ? `Movie · ${y}` : "Movie",
         status: "published",
       },
     });
@@ -196,7 +228,6 @@ export async function syncNewMovies(): Promise<{
     titles.push(title);
   }
 
-  // Process TMDB items (this adds a lot more)
   for (const m of tmdbMovies) {
     const id = String(m.id);
     const title = String(m.title || m.name || "").trim();
@@ -238,7 +269,11 @@ export async function syncNewDrama(): Promise<{
   total: number;
   titles: string[];
 }> {
-  const series = await fetchElitePages("/api/series", [1, 2, 3, 4, 5, 6, 8, 10]);
+  const series = await fetchElitePages(
+    "/api/series",
+    Array.from({ length: 30 }, (_, i) => i + 1)
+  );
+  const tmdbTv = await fetchTmdbTv(15);
 
   const existing = await prisma.content.findMany({
     where: { type: "drama" },
@@ -255,6 +290,7 @@ export async function syncNewDrama(): Promise<{
 
   let added = 0;
   const titles: string[] = [];
+
   for (const row of series) {
     const id = String(row.tmdb_id || row.id || "");
     const title = String(row.name || row.title || "").trim();
@@ -268,6 +304,32 @@ export async function syncNewDrama(): Promise<{
         description: row.overview ? String(row.overview).slice(0, 500) : null,
         linkUrl: `https://player.videasy.to/tv/${id}`,
         coverUrl: row.poster || null,
+        linkType: "stream",
+        category: y ? `Series · ${y}` : "Series",
+        status: "published",
+      },
+    });
+    haveIds.add(id);
+    added++;
+    titles.push(title);
+  }
+
+  for (const m of tmdbTv) {
+    const id = String(m.id);
+    const title = String(m.name || m.title || "").trim();
+    if (!title || haveIds.has(id)) continue;
+    const y = yearNum(m.first_air_date || m.release_date);
+    if (y && y > MAX_PLAYABLE_YEAR) continue;
+    const poster = m.poster_path
+      ? `https://image.tmdb.org/t/p/w500${m.poster_path}`
+      : null;
+    await prisma.content.create({
+      data: {
+        type: "drama",
+        title: title.slice(0, 200),
+        description: m.overview ? String(m.overview).slice(0, 500) : null,
+        linkUrl: `https://player.videasy.to/tv/${id}`,
+        coverUrl: poster,
         linkType: "stream",
         category: y ? `Series · ${y}` : "Series",
         status: "published",

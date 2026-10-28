@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
 type NormItem = {
   title: string;
   linkUrl: string;
@@ -32,35 +35,51 @@ function normalize(data: unknown, category: string): NormItem[] {
     }));
   }
 
-  const archiveDocs = (data as { response?: { docs?: unknown[] } })?.response?.docs;
+  const archiveDocs = (data as { response?: { docs?: unknown[] } })?.response
+    ?.docs;
   if (Array.isArray(archiveDocs)) {
-    return (archiveDocs as { identifier?: string; title?: string }[]).map((d) => {
-      const id = d.identifier || "";
-      return {
-        title: String(d.title || id),
-        linkUrl: id ? `https://archive.org/embed/${id}` : "",
-        coverUrl: id ? `https://archive.org/services/img/${id}` : null,
-        category,
-        description: null,
-      };
-    });
+    return (archiveDocs as { identifier?: string; title?: string }[]).map(
+      (d) => {
+        const id = d.identifier || "";
+        return {
+          title: String(d.title || id),
+          linkUrl: id ? `https://archive.org/embed/${id}` : "",
+          coverUrl: id ? `https://archive.org/services/img/${id}` : null,
+          category,
+          description: null,
+        };
+      }
+    );
   }
 
   const itunes = (data as { results?: Record<string, unknown>[] })?.results;
-  if (Array.isArray(itunes) && itunes[0] && ("trackId" in itunes[0] || "collectionId" in itunes[0])) {
+  if (
+    Array.isArray(itunes) &&
+    itunes[0] &&
+    ("trackId" in itunes[0] || "collectionId" in itunes[0])
+  ) {
     return itunes.map((m) => {
       const art = String(m.artworkUrl100 || "");
       return {
         title: String(m.trackName || m.collectionName || "Untitled"),
-        linkUrl: String(m.previewUrl || m.trackViewUrl || m.collectionViewUrl || ""),
+        linkUrl: String(
+          m.previewUrl || m.trackViewUrl || m.collectionViewUrl || ""
+        ),
         coverUrl: art ? art.replace("100x100", "600x600") : null,
         category: String(m.primaryGenreName || category),
-        description: (m.longDescription || m.shortDescription || null) as string | null,
+        description: (m.longDescription ||
+          m.shortDescription ||
+          null) as string | null,
       };
     });
   }
 
-  if (Array.isArray(data) && data[0] && typeof data[0] === "object" && "show" in (data[0] as object)) {
+  if (
+    Array.isArray(data) &&
+    data[0] &&
+    typeof data[0] === "object" &&
+    "show" in (data[0] as object)
+  ) {
     return (data as {
       show: {
         id: number;
@@ -81,7 +100,12 @@ function normalize(data: unknown, category: string): NormItem[] {
     }));
   }
 
-  if (Array.isArray(data) && data[0] && typeof data[0] === "object" && "game_url" in (data[0] as object)) {
+  if (
+    Array.isArray(data) &&
+    data[0] &&
+    typeof data[0] === "object" &&
+    "game_url" in (data[0] as object)
+  ) {
     return (data as {
       title: string;
       thumbnail?: string;
@@ -97,6 +121,39 @@ function normalize(data: unknown, category: string): NormItem[] {
     }));
   }
 
+  const eliteItems = (data as { items?: unknown[] })?.items;
+  if (
+    Array.isArray(eliteItems) &&
+    eliteItems[0] &&
+    typeof eliteItems[0] === "object" &&
+    ("tmdb_id" in (eliteItems[0] as object) ||
+      "poster" in (eliteItems[0] as object))
+  ) {
+    return (eliteItems as {
+      id?: string;
+      tmdb_id?: string;
+      name?: string;
+      title?: string;
+      poster?: string;
+      overview?: string;
+      year?: string;
+      type?: string;
+    }[]).map((row) => {
+      const id = String(row.tmdb_id || row.id || "");
+      const media =
+        row.type === "tv" || row.type === "series" || category === "drama"
+          ? "tv"
+          : "movie";
+      return {
+        title: String(row.name || row.title || "Untitled"),
+        linkUrl: id ? `https://player.videasy.to/${media}/${id}` : "",
+        coverUrl: row.poster || null,
+        category: row.year ? `${category} · ${row.year}` : category,
+        description: row.overview ? String(row.overview).slice(0, 500) : null,
+      };
+    });
+  }
+
   const raw = Array.isArray(data)
     ? data
     : Array.isArray((data as { results?: unknown[] }).results)
@@ -107,7 +164,8 @@ function normalize(data: unknown, category: string): NormItem[] {
           ? (data as { data: unknown[] }).data
           : [];
 
-  return (raw as Record<string, unknown>[]).slice(0, 50).map((row, i) => ({
+  // NO LIMIT — return all items from API
+  return (raw as Record<string, unknown>[]).map((row, i) => ({
     title: String(row.title || row.name || `Item ${i + 1}`),
     linkUrl: String(
       row.linkUrl ||
@@ -154,6 +212,7 @@ export async function POST() {
             Accept: "application/json",
             "User-Agent": "ETUZA-HUB/1.0",
           },
+          cache: "no-store",
         });
         if (!res.ok) {
           report.push({
@@ -165,15 +224,20 @@ export async function POST() {
         }
 
         const data = await res.json();
-        const items = normalize(data, src.category).filter((i) => i.linkUrl && i.title);
+        const items = normalize(data, src.category).filter(
+          (i) => i.linkUrl && i.title
+        );
 
-        // Replace old content of this type so stale API data is gone
+        // Replace old API-scraped content of this type
         await prisma.content.deleteMany({ where: { type: src.category } });
 
+        // Batch insert — NO item limit
         let count = 0;
-        for (const item of items.slice(0, 50)) {
-          await prisma.content.create({
-            data: {
+        const BATCH = 100;
+        for (let i = 0; i < items.length; i += BATCH) {
+          const batch = items.slice(i, i + BATCH);
+          await prisma.content.createMany({
+            data: batch.map((item) => ({
               type: src.category,
               title: item.title.slice(0, 200),
               description: item.description,
@@ -186,9 +250,10 @@ export async function POST() {
               category: item.category?.slice(0, 100) || null,
               status: "published",
               createdBy: session.userId,
-            },
+            })),
+            skipDuplicates: true,
           });
-          count++;
+          count += batch.length;
         }
         report.push({ category: src.category, count });
       } catch (e) {
@@ -204,6 +269,7 @@ export async function POST() {
       ok: true,
       report,
       total: report.reduce((s, r) => s + r.count, 0),
+      message: "Sync All: unlimited — hakuna limit ya items",
     });
   } catch (err) {
     console.error(err);
