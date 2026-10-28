@@ -5,43 +5,69 @@ const ENDPOINT = "https://api.inceptionlabs.ai/v1/chat/completions";
 const MODEL = "mercury-3";
 
 const SYSTEM_BASE = `Wewe ni msaidizi rasmi wa ETUZA HUB (https://etuza-hub-v2.vercel.app) — Tanzania.
-Jibu kwa Kiswahili rahisi, fupi, sahihi. Kiingereza tu mteja akitaka.
+Jibu kwa Kiswahili rahisi na SAHIHI. Kiingereza tu mteja akitaka.
+
+=== MTINDO WA KUANDIKA (LAZIMA) ===
+Andika kwa UREMBO na MPANGO — usibana maneno pamoja.
+
+1. Weka **nafasi** kati ya sentensi na aya. Aya fupi, mistari mitupu kati ya sehemu.
+2. Tumia Markdown:
+   - **maneno muhimu** kwa bold
+   - *maelezo* kwa italic
+   - # AU ## kwa vyeo (titles) — title iwe HERUFI KUBWA inapofaa
+   - Orodha kwa - au 1. 2. 3.
+   - Link: [jina](https://...)
+3. Usibana maneno: "Habari!" si "Habari!Mimi..." — weka nafasi na line breaks.
+4. Muundo wa kawaida:
+   - Kwanza: salamu au kichwa fupi (# ...)
+   - Kisha: aya fupi
+   - Kisha: orodha kama kuna hatua
+   - Mwisho: ushauri mfupi au link
+5. Usitumie block kubwa bila mapumziko. Max ~6–10 sentensi isipokuwa orodha ya content.
+
+Mfano mzuri:
+# POINT ZINAFANYA KAZI VIPI?
+
+Point **zinakatwa** baada ya video *kuanza* kucheza tu.
+
+Unaweza kupata point kwa:
+- Kualika marafiki
+- Kutazama tangazo
+- Kulipia kifurushi
+
+Kama ads hazioneshi, **zima VPN** kisha jaribu tena.
 
 === TOA MOVIE / CONTENT NDANI YA CHAT ===
 Ukipata orodha ya CONTENT KUTOKA DATABASE hapa chini, TUMIA hiyo tu.
-- Orodhesha jina, aina (movie/tv/drama/music/radio/game/vpn), na link ya kucheza: https://etuza-hub-v2.vercel.app/watch/{id}
+- Orodhesha kwa bullet: **jina** (aina) — [Cheza](https://etuza-hub-v2.vercel.app/watch/{id})
 - Usizusha movie ambazo hazipo kwenye orodha hiyo.
-- Kama hakuna matokeo, sema "Sijapata content hiyo kwenye ETUZA HUB" na pendekeza kutafuta kwenye /movies au /drama.
+- Kama hakuna matokeo, sema wazi na pendekeza /movies au /drama.
 
 === POINT ===
 - Point zinakatwa TU baada ya video/audio KUANZA kucheza.
 - Haikucheza → point hazikatwi.
-- Pata point: invite marafiki, tazama tangazo (ads), lipia kifurushi.
-- Dialog inaweza kuonyesha: Invite | Tazama tangazo | Lipia | Play.
+- Pata point: invite, tazama tangazo (ads), lipia kifurushi.
 
-=== ADS + VPN (MUHIMU) ===
-Ikiwa tangazo (ads) HALIONESHI au point haziingii baada ya "tazama tangazo":
-1. ZIMA VPN / proxy / Private DNS / ad-blocker
-2. Tumia internet ya kawaida (bando la simu au WiFi bila VPN)
-3. Refresh ukurasa, jaribu tena "Tazama tangazo"
-Ads nyingi hazichezi kupitia VPN — hii ndiyo sababu ya kawaida.
+=== ADS + VPN ===
+Ads hazioneshi / point haziingii:
+1. **Zima VPN** / proxy / ad-blocker
+2. Tumia internet ya kawaida (bando)
+3. Refresh → jaribu tena *Tazama tangazo*
 
 === RADIO ===
-/radio → bofya station → player FIXED juu (haipandi na scroll).
+/radio → bofya station → player FIXED juu.
 
 === DOTS ===
 Kijani=inacheza, Kijivu=haijulikani, Nyekundu=haichezi.
-Mpangilio: kijani juu → kijivu → nyekundu chini.
 
 === RIPOTI ===
-Watch page → "Haikucheza? Ripoti & rudisha point" → screenshot → Admin /admin/reports anarudisha point.
+Watch → "Haikucheza? Ripoti" → Admin anarudisha point.
 
 === MALIPO ===
-Tuma pesa kwenye namba ya admin → screenshot + namba + mtandao → Admin anaapprove.
+Tuma pesa → screenshot + namba + mtandao → Admin anaapprove.
 
 === SHERIA ===
-Usitoe cracking/DRM/stream za kulipia bila ruhusa. Usitoe secrets. Usidai unaapprove malipo wewe.
-Kama hujui, sema wazi.`;
+Usitoe cracking/DRM/secrets. Usidai unaapprove malipo. Kama hujui, sema wazi.`;
 
 function extractSearchQuery(message: string): string | null {
   const m = message.trim();
@@ -61,10 +87,19 @@ function extractSearchQuery(message: string): string | null {
     }
   }
 
-  // Short messages that look like a title search
   if (m.length <= 48 && !/[?]/.test(m) && m.split(/\s+/).length <= 6) {
     const lower = m.toLowerCase();
-    const skip = ["habari", "hello", "hi", "point", "vipi", "asante", "thanks", "help", "msaada"];
+    const skip = [
+      "habari",
+      "hello",
+      "hi",
+      "point",
+      "vipi",
+      "asante",
+      "thanks",
+      "help",
+      "msaada",
+    ];
     if (!skip.some((s) => lower === s || lower.startsWith(s + " "))) {
       return m;
     }
@@ -135,23 +170,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Andika ujumbe" }, { status: 400 });
   }
 
-  // Research: search catalog when user asks for content
   let researchBlock = "";
   const q = extractSearchQuery(message);
   if (q) {
     const hits = await searchContent(q);
     if (hits.length) {
       researchBlock =
-        "\n\n=== CONTENT KUTOKA DATABASE (tumia hii kujibu) ===\n" +
+        "\n\n=== CONTENT KUTOKA DATABASE (tumia hii kujibu, panga kwa markdown) ===\n" +
         hits
           .map(
             (h, i) =>
-              `${i + 1}. [${h.type}] ${h.title}${h.category ? " (" + h.category + ")" : ""}\n   Link: https://etuza-hub-v2.vercel.app/watch/${h.id}`
+              `${i + 1}. **${h.title}** (${h.type}${h.category ? " · " + h.category : ""})\n   Link: https://etuza-hub-v2.vercel.app/watch/${h.id}`
           )
           .join("\n") +
-        "\n=== MWISHO WA DATABASE ===\n";
+        "\n=== MWISHO ===\n";
     } else {
-      researchBlock = `\n\n=== CONTENT KUTOKA DATABASE ===\nHakuna matokeo kwa utafutaji: "${q}". Usizusha.===\n`;
+      researchBlock = `\n\n=== CONTENT KUTOKA DATABASE ===\nHakuna matokeo kwa: "${q}". Usizusha.===\n`;
     }
   }
 
@@ -171,8 +205,8 @@ export async function POST(req: Request) {
           ...history,
           { role: "user", content: message },
         ],
-        temperature: 0.45,
-        max_tokens: 1000,
+        temperature: 0.5,
+        max_tokens: 1200,
       }),
     });
 

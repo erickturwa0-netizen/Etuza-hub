@@ -1,9 +1,155 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MessageCircle, X, Send, Bot, Loader2 } from "lucide-react";
 
 type Msg = { role: "user" | "assistant"; content: string };
+
+/** Lightweight markdown → React (bold, italic, titles, lists, links, breaks) */
+function formatInline(text: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  // **bold**, *italic*, `code`, [text](url)
+  const re =
+    /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)]+\))/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let k = 0;
+  while ((m = re.exec(text))) {
+    if (m.index > last) {
+      parts.push(text.slice(last, m.index));
+    }
+    const token = m[0];
+    if (token.startsWith("**")) {
+      parts.push(
+        <strong key={k++} className="font-bold text-white">
+          {token.slice(2, -2)}
+        </strong>
+      );
+    } else if (token.startsWith("*")) {
+      parts.push(
+        <em key={k++} className="italic text-violet-200">
+          {token.slice(1, -1)}
+        </em>
+      );
+    } else if (token.startsWith("`")) {
+      parts.push(
+        <code
+          key={k++}
+          className="px-1 py-0.5 rounded bg-slate-900 text-violet-300 text-[12px]"
+        >
+          {token.slice(1, -1)}
+        </code>
+      );
+    } else if (token.startsWith("[")) {
+      const lm = token.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+      if (lm) {
+        parts.push(
+          <a
+            key={k++}
+            href={lm[2]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-violet-300 underline underline-offset-2 break-all"
+          >
+            {lm[1]}
+          </a>
+        );
+      } else {
+        parts.push(token);
+      }
+    }
+    last = m.index + token.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function FormattedMessage({ content }: { content: string }) {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const blocks: ReactNode[] = [];
+  let listBuf: string[] = [];
+  let k = 0;
+
+  function flushList() {
+    if (!listBuf.length) return;
+    blocks.push(
+      <ul key={k++} className="list-disc pl-4 my-1.5 space-y-1">
+        {listBuf.map((item, i) => (
+          <li key={i} className="leading-relaxed">
+            {formatInline(item)}
+          </li>
+        ))}
+      </ul>
+    );
+    listBuf = [];
+  }
+
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    const t = line.trim();
+
+    if (!t) {
+      flushList();
+      blocks.push(<div key={k++} className="h-2" />);
+      continue;
+    }
+
+    // # Title / ## Subtitle
+    if (/^#{1,3}\s+/.test(t)) {
+      flushList();
+      const level = (t.match(/^#+/) || ["#"])[0].length;
+      const text = t.replace(/^#{1,3}\s+/, "");
+      const cls =
+        level === 1
+          ? "text-base font-extrabold uppercase tracking-wide text-violet-200 mt-1 mb-1"
+          : level === 2
+            ? "text-sm font-bold text-white mt-1 mb-0.5"
+            : "text-sm font-semibold text-slate-100 mt-1";
+      blocks.push(
+        <p key={k++} className={cls}>
+          {formatInline(text)}
+        </p>
+      );
+      continue;
+    }
+
+    // ALL CAPS short line as title
+    if (
+      t.length >= 3 &&
+      t.length <= 48 &&
+      t === t.toUpperCase() &&
+      /[A-ZÀ-Ÿ]/.test(t) &&
+      !/^https?:\/\//i.test(t)
+    ) {
+      flushList();
+      blocks.push(
+        <p
+          key={k++}
+          className="text-sm font-extrabold uppercase tracking-wide text-violet-200 mt-1 mb-0.5"
+        >
+          {formatInline(t)}
+        </p>
+      );
+      continue;
+    }
+
+    // bullet list
+    if (/^([-*•]|\d+[.)])\s+/.test(t)) {
+      listBuf.push(t.replace(/^([-*•]|\d+[.)])\s+/, ""));
+      continue;
+    }
+
+    flushList();
+    blocks.push(
+      <p key={k++} className="leading-relaxed my-0.5">
+        {formatInline(t)}
+      </p>
+    );
+  }
+  flushList();
+
+  return <div className="space-y-0.5 text-[13px] sm:text-sm">{blocks}</div>;
+}
 
 export default function AiChatFloat() {
   const [open, setOpen] = useState(false);
@@ -13,7 +159,7 @@ export default function AiChatFloat() {
     {
       role: "assistant",
       content:
-        "Habari! Mimi ni msaidizi wa ETUZA HUB. Unaweza kuniuliza kuhusu movies, radio, TV, VPN, point au jinsi ya kutumia site.",
+        "**HABARI!**\n\nMimi ni msaidizi wa *ETUZA HUB*.\n\nUnaweza kuniuliza kuhusu:\n- Movies & Tamthilia\n- Radio & TV\n- VPN & Point\n- Jinsi ya kutumia site",
     },
   ]);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -73,7 +219,6 @@ export default function AiChatFloat() {
         <div
           className="fixed z-[80] flex flex-col rounded-2xl border border-violet-500/40 bg-slate-950 shadow-2xl shadow-violet-900/50 overflow-hidden"
           style={{
-            /* Above bottom nav + safe area; leave room so input is never covered */
             bottom: "5.25rem",
             left: "0.75rem",
             right: "0.75rem",
@@ -109,13 +254,17 @@ export default function AiChatFloat() {
                 }`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                  className={`max-w-[90%] rounded-2xl px-3 py-2.5 ${
                     m.role === "user"
-                      ? "bg-violet-600 text-white rounded-br-md"
+                      ? "bg-violet-600 text-white rounded-br-md text-sm leading-relaxed whitespace-pre-wrap"
                       : "bg-slate-800 text-slate-100 rounded-bl-md border border-slate-700"
                   }`}
                 >
-                  {m.content}
+                  {m.role === "assistant" ? (
+                    <FormattedMessage content={m.content} />
+                  ) : (
+                    m.content
+                  )}
                 </div>
               </div>
             ))}
@@ -159,7 +308,6 @@ export default function AiChatFloat() {
         </div>
       )}
 
-      {/* FAB only when chat is CLOSED — avoids covering Send */}
       {!open && (
         <button
           type="button"
