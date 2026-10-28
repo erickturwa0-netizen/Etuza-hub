@@ -7,14 +7,14 @@ import {
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const q = searchParams.get("q") || undefined;
     const group = searchParams.get("group") || undefined;
-    const limit = Number(searchParams.get("limit") || 300);
-    // ?live=1 = playable only; default = full catalog from all apps
+    const limit = Number(searchParams.get("limit") || 2000);
     const liveOnly = searchParams.get("live") === "1";
 
     const result = await loadIptvChannels({ q, group, limit, liveOnly });

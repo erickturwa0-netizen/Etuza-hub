@@ -87,6 +87,7 @@ const FALLBACK_WORLD = [
     tags: "news",
     country: "United Kingdom",
     bitrate: 128,
+    favicon: radioCover("BBC World Service"),
   },
   {
     id: "fb-npr",
@@ -95,87 +96,38 @@ const FALLBACK_WORLD = [
     tags: "news",
     country: "USA",
     bitrate: 128,
+    favicon: radioCover("NPR News"),
   },
-  {
-    id: "fb-kexp",
-    name: "KEXP Seattle",
-    url: "https://kexp-mp3-128.streamguys1.com/kexp128.mp3",
-    tags: "alternative,music",
-    country: "USA",
-    bitrate: 128,
-  },
-  {
-    id: "fb-soma",
-    name: "SomaFM Groove Salad",
-    url: "https://ice1.somafm.com/groovesalad-128-mp3",
-    tags: "chill,electronic",
-    country: "USA",
-    bitrate: 128,
-  },
-  {
-    id: "fb-classic",
-    name: "Classic FM",
-    url: "https://media-ssl.musicradio.com/ClassicFM",
-    tags: "classical",
-    country: "United Kingdom",
-    bitrate: 128,
-  },
-  {
-    id: "fb-capitaluk",
-    name: "Capital UK",
-    url: "https://media-ssl.musicradio.com/Capital",
-    tags: "pop",
-    country: "United Kingdom",
-    bitrate: 128,
-  },
-  {
-    id: "fb-franceinfo",
-    name: "France Info",
-    url: "https://stream.radiofrance.fr/franceinfo/franceinfo_hifi.m3u8",
-    tags: "news",
-    country: "France",
-    bitrate: 192,
-  },
-].map((s) => ({
-  ...s,
-  favicon: radioCover(s.name),
-}));
-
-const BASES = [
-  "https://de1.api.radio-browser.info",
-  "https://nl1.api.radio-browser.info",
-  "https://fi1.api.radio-browser.info",
-  "https://all.api.radio-browser.info",
 ];
 
 async function fetchStations(path: string) {
-  let lastErr: unknown;
-  for (const base of BASES) {
+  const bases = [
+    "https://de1.api.radio-browser.info",
+    "https://nl1.api.radio-browser.info",
+    "https://fr1.api.radio-browser.info",
+  ];
+  for (const base of bases) {
     try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 6000);
       const res = await fetch(`${base}${path}`, {
-        headers: {
-          "User-Agent": "ETUZA-HUB/1.0 (etuza-hub-v2.vercel.app)",
-          Accept: "application/json",
-        },
-        signal: ctrl.signal,
-        cache: "no-store",
+        headers: { "User-Agent": "ETUZA-HUB/1.0", Accept: "application/json" },
+        next: { revalidate: 1800 },
       });
-      clearTimeout(t);
-      if (res.ok) return res.json();
-    } catch (e) {
-      lastErr = e;
+      if (!res.ok) continue;
+      return await res.json();
+    } catch {
+      /* try next */
     }
   }
-  throw lastErr || new Error("Radio API failed");
+  return [];
 }
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
+  const q = (searchParams.get("q") || "").trim();
   const country = (searchParams.get("country") || "TZ").toUpperCase();
-  const q = searchParams.get("q")?.trim();
-  const limit = Math.min(Number(searchParams.get("limit") || 50), 100);
+  const limit = Math.min(Number(searchParams.get("limit") || 200), 500);
 
   let stations: {
     id: string;
@@ -189,7 +141,7 @@ export async function GET(req: Request) {
   let source = "fallback";
 
   try {
-    let data: unknown;
+    let data: unknown = [];
     if (q) {
       data = await fetchStations(
         `/json/stations/search?name=${encodeURIComponent(q)}&hidebroken=true&limit=${limit}`
@@ -197,6 +149,10 @@ export async function GET(req: Request) {
     } else if (country === "TOP") {
       data = await fetchStations(
         `/json/stations/topvote?limit=${limit}&hidebroken=true`
+      );
+    } else if (country === "MUSIC") {
+      data = await fetchStations(
+        `/json/stations/search?tag=pop&hidebroken=true&limit=${limit}&order=clickcount&reverse=true`
       );
     } else {
       data = await fetchStations(
@@ -235,26 +191,21 @@ export async function GET(req: Request) {
     console.error("radio-browser", err);
   }
 
-  if (stations.length === 0 || country === "TOP") {
-    const extra =
-      country === "TOP"
-        ? FALLBACK_WORLD
-        : country === "TZ"
-          ? FALLBACK_TZ
-          : [...FALLBACK_TZ, ...FALLBACK_WORLD];
-
-    if (stations.length === 0) {
-      stations = extra;
-      source = "fallback";
-    } else if (country === "TOP") {
-      const seen = new Set(stations.map((s) => s.name.toLowerCase()));
-      for (const e of FALLBACK_WORLD) {
-        if (!seen.has(e.name.toLowerCase())) stations.push(e);
+  if (stations.length === 0) {
+    stations =
+      country === "TOP" || country === "MUSIC"
+        ? [...FALLBACK_WORLD, ...FALLBACK_TZ]
+        : [...FALLBACK_TZ, ...FALLBACK_WORLD];
+    source = "fallback";
+  } else if (country === "TZ") {
+    const seen = new Set(stations.map((s) => s.name.toLowerCase()));
+    for (const e of FALLBACK_TZ) {
+      if (!seen.has(e.name.toLowerCase())) {
+        stations.unshift({ ...e, favicon: radioCover(e.name) });
       }
     }
   }
 
-  // Ensure every station has a cover
   stations = stations.map((s) => ({
     ...s,
     favicon: radioCover(s.name, s.favicon),
@@ -268,14 +219,6 @@ export async function GET(req: Request) {
         s.tags.toLowerCase().includes(qq) ||
         s.country.toLowerCase().includes(qq)
     );
-    if (!stations.length) {
-      stations = [...FALLBACK_TZ, ...FALLBACK_WORLD].filter(
-        (s) =>
-          s.name.toLowerCase().includes(qq) ||
-          s.tags.toLowerCase().includes(qq)
-      );
-      source = "fallback";
-    }
   }
 
   return NextResponse.json({

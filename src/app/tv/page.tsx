@@ -6,6 +6,7 @@ import ContentSearch from "@/components/ContentSearch";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const maxDuration = 60;
 export const metadata = { title: "TV Channels – ETUZA HUB" };
 
 export default async function TvPage({
@@ -16,19 +17,24 @@ export default async function TvPage({
   const sp = await searchParams;
   const q = sp.q || "";
   const group = sp.group || "";
-  // Default: full catalog. ?live=1 = playable streams only
   const liveOnly = sp.live === "1";
 
   let channels = PINNED_CHANNELS;
+  let total = PINNED_CHANNELS.length;
+  let source = "pinned";
 
   try {
     const result = await loadIptvChannels({
-      limit: 300,
+      limit: 3000,
       q,
       group,
       liveOnly,
     });
-    if (result.channels.length > 0) channels = result.channels;
+    if (result.channels.length > 0) {
+      channels = result.channels;
+      total = result.total;
+      source = result.source;
+    }
   } catch (e) {
     console.error("tv page", e);
   }
@@ -38,10 +44,19 @@ export default async function TvPage({
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 pb-28">
       <PresenceTrackerClient section="tv" title="TV Channels" />
-      <div className="mb-4 w-full sm:max-w-md sm:ml-auto">
-        <Suspense fallback={null}>
-          <ContentSearch placeholder="Tafuta channel…" />
-        </Suspense>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-white">TV Channels</h1>
+          <p className="text-sm text-slate-400">
+            {channels.length} zinaonekana
+            {total > channels.length ? ` / ${total}` : ""} · {source}
+          </p>
+        </div>
+        <div className="w-full sm:max-w-md sm:ml-auto">
+          <Suspense fallback={null}>
+            <ContentSearch placeholder="Tafuta channel…" />
+          </Suspense>
+        </div>
       </div>
       <TvChannelGrid channels={channels} />
     </main>

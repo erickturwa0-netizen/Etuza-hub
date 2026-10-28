@@ -27,11 +27,8 @@ function ch(
   };
 }
 
-/**
- * Verified live free m3u8 only.
- */
+/** Always-on East Africa / news pins */
 export const PINNED_CHANNELS: IptvChannel[] = [
-  // Tanzania
   ch(
     "pin-safari",
     "Safari Channel",
@@ -61,7 +58,6 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     "https://mahaasintv.livebox.co.in/mahaasintvhls/mahaasintv.m3u8",
     "MahaasinTV.tz"
   ),
-  // Kenya
   ch(
     "pin-akili",
     "Akili Kids!",
@@ -78,7 +74,6 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     "InooroTV.ke",
     "https://i.imgur.com/5qFJtmo.png"
   ),
-  // Uganda
   ch(
     "pin-bukedde1",
     "Bukedde TV 1",
@@ -95,7 +90,6 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     "ArkTV.ug",
     "https://i.imgur.com/yCHNZXD.png"
   ),
-  // Rwanda
   ch(
     "pin-tv1rw",
     "TV1 Rwanda",
@@ -103,7 +97,6 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     "https://live.tv1.rw/index.m3u8",
     "TV1.rw"
   ),
-  // South Africa
   ch(
     "pin-1kzn",
     "1KZN TV",
@@ -116,32 +109,14 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     "Cape Town TV",
     "South Africa",
     "https://cdn.freevisiontv.co.za/sttv/smil:ctv.stream.smil/playlist.m3u8",
-    "CTV.za",
-    "https://i.imgur.com/Y8FK1Kk.png"
+    "CTV.za"
   ),
-  // Uzbekistan / AllaTV sample
   ch(
-    "pin-cinerama",
-    "Cinerama",
-    "Movies",
-    "https://stream8.cinerama.uz/1024/tracks-v1a1/mono.m3u8",
-    "Cinerama.uz"
-  ),
-  // News / Science / Sports (verified)
-  ch(
-    "pin-france24",
+    "pin-f24",
     "France 24 English",
     "News",
     "https://static.france24.com/live/F24_EN_LO_HLS/live_web.m3u8",
     "France24.en"
-  ),
-  ch(
-    "pin-abc-news",
-    "ABC News",
-    "News",
-    "https://abc-news-dmd-streams-1.akamaized.net/out/v1/701126012d044971b3fa89406a440133/index.m3u8",
-    "ABCNews",
-    "https://i.imgur.com/BrW7gk8.png"
   ),
   ch(
     "pin-dw",
@@ -162,14 +137,7 @@ export const PINNED_CHANNELS: IptvChannel[] = [
     "NASA TV",
     "Science",
     "https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8",
-    "NASATV.us"
-  ),
-  ch(
-    "pin-redbull",
-    "Red Bull TV",
-    "Sports",
-    "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
-    "RedBullTV"
+    "NASA.tv"
   ),
 ];
 
@@ -179,7 +147,170 @@ export function isPlayableStream(url: string): boolean {
   if (url.includes("cdn.apisfast.top")) return false;
   if (/player\.php/i.test(url)) return false;
   if (/youtube\.com|youtu\.be/i.test(url)) return false;
-  return /m3u8|castr\.net|\.mp4|smil/i.test(url);
+  return /m3u8|castr\.net|\.mp4|smil|\.ts(\?|$)/i.test(url);
+}
+
+function parseM3u(text: string, defaultGroup = "World"): IptvChannel[] {
+  const lines = text.split(/\r?\n/);
+  const out: IptvChannel[] = [];
+  let meta: { title: string; logo: string | null; group: string; tvgId: string | null } | null =
+    null;
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (t.startsWith("#EXTINF:")) {
+      const nameMatch = t.match(/,(.+)$/);
+      const title = (nameMatch?.[1] || "Channel").trim();
+      const logo =
+        t.match(/tvg-logo="([^"]+)"/i)?.[1] ||
+        t.match(/tvg-logo='([^']+)'/i)?.[1] ||
+        null;
+      const group =
+        t.match(/group-title="([^"]+)"/i)?.[1] ||
+        t.match(/group-title='([^']+)'/i)?.[1] ||
+        defaultGroup;
+      const tvgId =
+        t.match(/tvg-id="([^"]+)"/i)?.[1] ||
+        t.match(/tvg-id='([^']+)'/i)?.[1] ||
+        null;
+      meta = { title, logo, group, tvgId };
+    } else if (meta && /^https?:\/\//i.test(t)) {
+      if (isPlayableStream(t)) {
+        const id =
+          "m3u-" +
+          Buffer.from(t).toString("base64url").slice(0, 22);
+        out.push(
+          ch(id, meta.title, meta.group, t, meta.tvgId, meta.logo)
+        );
+      }
+      meta = null;
+    }
+  }
+  return out;
+}
+
+async function fetchText(url: string, ms = 12000): Promise<string> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { Accept: "*/*", "User-Agent": "ETUZA-HUB/1.0" },
+      next: { revalidate: 3600 },
+    });
+    clearTimeout(timer);
+    if (!res.ok) return "";
+    return await res.text();
+  } catch {
+    clearTimeout(timer);
+    return "";
+  }
+}
+
+async function fetchJson<T>(url: string, ms = 15000): Promise<T | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { Accept: "application/json" },
+      next: { revalidate: 3600 },
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    clearTimeout(timer);
+    return null;
+  }
+}
+
+/** Load thousands of free channels from public IPTV catalogs */
+async function loadRemoteCatalogs(): Promise<IptvChannel[]> {
+  const collected: IptvChannel[] = [];
+
+  // 1) iptv-org streams API (large)
+  type StreamRow = {
+    channel?: string;
+    title?: string;
+    url?: string;
+    quality?: string;
+  };
+  type ChannelRow = {
+    id?: string;
+    name?: string;
+    country?: string;
+    logo?: string;
+  };
+
+  const [streams, channelsMeta] = await Promise.all([
+    fetchJson<StreamRow[]>(
+      "https://iptv-org.github.io/api/streams.json"
+    ),
+    fetchJson<ChannelRow[]>(
+      "https://iptv-org.github.io/api/channels.json"
+    ),
+  ]);
+
+  const metaById = new Map<string, ChannelRow>();
+  if (Array.isArray(channelsMeta)) {
+    for (const c of channelsMeta) {
+      if (c.id) metaById.set(c.id, c);
+    }
+  }
+
+  if (Array.isArray(streams)) {
+    for (const s of streams) {
+      const url = (s.url || "").trim();
+      if (!isPlayableStream(url)) continue;
+      const meta = s.channel ? metaById.get(s.channel) : undefined;
+      const title = (s.title || meta?.name || s.channel || "Channel").trim();
+      const group = meta?.country || "World";
+      const logo = meta?.logo || null;
+      const id =
+        "org-" +
+        Buffer.from(url).toString("base64url").slice(0, 20);
+      collected.push(ch(id, title, group, url, s.channel || null, logo));
+    }
+  }
+
+  // 2) Country / region m3u playlists (Africa focus + world)
+  const playlists = [
+    "https://iptv-org.github.io/iptv/countries/tz.m3u",
+    "https://iptv-org.github.io/iptv/countries/ke.m3u",
+    "https://iptv-org.github.io/iptv/countries/ug.m3u",
+    "https://iptv-org.github.io/iptv/countries/rw.m3u",
+    "https://iptv-org.github.io/iptv/countries/za.m3u",
+    "https://iptv-org.github.io/iptv/countries/ng.m3u",
+    "https://iptv-org.github.io/iptv/countries/gh.m3u",
+    "https://iptv-org.github.io/iptv/countries/eg.m3u",
+    "https://iptv-org.github.io/iptv/categories/news.m3u",
+    "https://iptv-org.github.io/iptv/categories/sports.m3u",
+    "https://iptv-org.github.io/iptv/categories/music.m3u",
+    "https://iptv-org.github.io/iptv/index.country.m3u",
+    "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
+  ];
+
+  const texts = await Promise.all(playlists.map((u) => fetchText(u)));
+  for (let i = 0; i < texts.length; i++) {
+    if (texts[i]) {
+      collected.push(...parseM3u(texts[i], "IPTV"));
+    }
+  }
+
+  // Dedupe by URL
+  const seen = new Set<string>();
+  const unique: IptvChannel[] = [];
+  for (const c of collected) {
+    const key = c.url.split("?")[0].toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push({
+      ...c,
+      logo: tvCover(c.title, c.logo),
+    });
+  }
+  return unique;
 }
 
 export async function loadIptvChannels(opts?: {
@@ -188,15 +319,39 @@ export async function loadIptvChannels(opts?: {
   limit?: number;
   liveOnly?: boolean;
 }): Promise<{ channels: IptvChannel[]; total: number; source: string }> {
-  const limit = Math.min(opts?.limit || 100, 200);
+  const limit = Math.min(Math.max(opts?.limit || 500, 1), 5000);
   const q = (opts?.q || "").toLowerCase().trim();
   const group = (opts?.group || "").toLowerCase().trim();
 
-  let channels: IptvChannel[] = PINNED_CHANNELS.map((c) => ({
+  const pinned = PINNED_CHANNELS.map((c) => ({
     ...c,
     logo: tvCover(c.title, c.logo),
   }));
 
+  let remote: IptvChannel[] = [];
+  let source = "pinned+remote";
+  try {
+    remote = await loadRemoteCatalogs();
+  } catch (e) {
+    console.error("loadRemoteCatalogs", e);
+    source = "pinned-only";
+  }
+
+  // Pinned first, then remote
+  const seen = new Set(pinned.map((c) => c.url.split("?")[0].toLowerCase()));
+  const merged = [...pinned];
+  for (const c of remote) {
+    const key = c.url.split("?")[0].toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(c);
+  }
+
+  let channels = merged;
+
+  if (opts?.liveOnly) {
+    channels = channels.filter((c) => isPlayableStream(c.url));
+  }
   if (q) {
     channels = channels.filter(
       (c) =>
@@ -208,11 +363,30 @@ export async function loadIptvChannels(opts?: {
     channels = channels.filter((c) => c.group.toLowerCase().includes(group));
   }
 
+  // Prioritize TZ/KE/UG/RW/Africa-ish groups slightly at top after pinned
+  const rank = (g: string) => {
+    const x = g.toLowerCase();
+    if (/tanzania|tz\b/.test(x)) return 0;
+    if (/kenya|uganda|rwanda|africa/.test(x)) return 1;
+    if (/news|sport/.test(x)) return 2;
+    return 3;
+  };
+  const pinnedIds = new Set(PINNED_CHANNELS.map((c) => c.id));
+  channels.sort((a, b) => {
+    const ap = pinnedIds.has(a.id) ? 0 : 1;
+    const bp = pinnedIds.has(b.id) ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    const ra = rank(a.group);
+    const rb = rank(b.group);
+    if (ra !== rb) return ra - rb;
+    return a.title.localeCompare(b.title);
+  });
+
   return {
     channels: channels.slice(0, limit),
     total: channels.length,
-    source: "verified-live",
+    source: remote.length ? source : "pinned-only",
   };
 }
 
-export const IPTV_SOURCE_URL = "verified-live-m3u8";
+export const IPTV_SOURCE_URL = "iptv-org+free-tv+pinned";
