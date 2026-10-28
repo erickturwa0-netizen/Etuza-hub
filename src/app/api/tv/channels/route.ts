@@ -14,13 +14,13 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const q = searchParams.get("q") || undefined;
     const group = searchParams.get("group") || undefined;
-    const limit = Number(searchParams.get("limit") || 5000);
+    const limit = Number(searchParams.get("limit") || 20000);
     const liveOnly = searchParams.get("live") === "1";
 
     const result = await loadIptvChannels({
       q,
       group,
-      limit: Math.min(limit, 8000),
+      limit: Math.min(limit, 20000),
       liveOnly,
     });
 

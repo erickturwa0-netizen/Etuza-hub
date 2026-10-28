@@ -25,7 +25,7 @@ export default async function TvPage({
 
   try {
     const result = await loadIptvChannels({
-      limit: 5000,
+      limit: 20000,
       q,
       group,
       liveOnly,

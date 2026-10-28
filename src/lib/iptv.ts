@@ -308,7 +308,8 @@ export async function loadIptvChannels(opts?: {
   limit?: number;
   liveOnly?: boolean;
 }): Promise<{ channels: IptvChannel[]; total: number; source: string }> {
-  const limit = Math.min(Math.max(opts?.limit || 500, 1), 5000);
+  // Raised to 20000 so the full iptv-org + playlists catalog (~18k) can be returned
+  const limit = Math.min(Math.max(opts?.limit || 500, 1), 20000);
   const q = (opts?.q || "").toLowerCase().trim();
   const group = (opts?.group || "").toLowerCase().trim();
 
