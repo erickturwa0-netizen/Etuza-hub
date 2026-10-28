@@ -10,7 +10,7 @@ export async function POST(req: Request) {
     const type = String(body?.type || "movie").slice(0, 20);
     const limit = Math.min(Number(body?.limit) || 12, 25);
     const result = await probeUnknownStreams(type, limit);
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({ success: true, ...result });
   } catch (e) {
     console.error("probe route", e);
     return NextResponse.json({ error: "Probe failed" }, { status: 500 });
@@ -22,5 +22,5 @@ export async function GET(req: Request) {
   const type = (searchParams.get("type") || "movie").slice(0, 20);
   const limit = Math.min(Number(searchParams.get("limit") || 12), 25);
   const result = await probeUnknownStreams(type, limit);
-  return NextResponse.json({ ok: true, ...result });
+  return NextResponse.json({ success: true, ...result });
 }
