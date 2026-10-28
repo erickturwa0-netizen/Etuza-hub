@@ -8,10 +8,15 @@ import {
 } from "@/lib/auth";
 import { ensureUserSchema } from "@/lib/db-migrate";
 import { generateInviteCode, POINTS } from "@/lib/points";
+import {
+  assertDeviceAndIpAllowed,
+  getClientIp,
+} from "@/lib/ip-guard";
 import { randomBytes } from "crypto";
 
 const schema = z.object({
   idToken: z.string().min(20),
+  deviceId: z.string().min(8).max(64).optional(),
 });
 
 const FIREBASE_API_KEY =
@@ -21,7 +26,6 @@ const FIREBASE_API_KEY =
 
 type Profile = { email: string; name?: string; picture?: string };
 
-/** Verify Google / Firebase ID token via Google tokeninfo (works for GIS credentials). */
 async function verifyGoogleIdToken(idToken: string): Promise<Profile | null> {
   try {
     const res = await fetch(
@@ -33,7 +37,6 @@ async function verifyGoogleIdToken(idToken: string): Promise<Profile | null> {
         email_verified?: string;
         name?: string;
         picture?: string;
-        aud?: string;
       };
       if (data.email && data.email_verified !== "false") {
         return {
@@ -47,7 +50,6 @@ async function verifyGoogleIdToken(idToken: string): Promise<Profile | null> {
     console.error("tokeninfo", e);
   }
 
-  // Fallback: Firebase Identity Toolkit lookup
   try {
     const res = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_API_KEY}`,
@@ -88,10 +90,7 @@ export async function POST(req: Request) {
     const profile = await verifyGoogleIdToken(parsed.data.idToken);
     if (!profile) {
       return NextResponse.json(
-        {
-          error:
-            "Google token imeshindikana. Hakikisha Web client ID iko sahihi kwenye Vercel.",
-        },
+        { error: "Google token haikubaliki" },
         { status: 401 }
       );
     }
@@ -165,6 +164,17 @@ export async function POST(req: Request) {
           },
         })
         .catch(() => {});
+    }
+
+    const ip = getClientIp(req);
+    const check = await assertDeviceAndIpAllowed(
+      user.id,
+      user.role,
+      ip,
+      parsed.data.deviceId
+    );
+    if (!check.ok) {
+      return NextResponse.json({ error: check.error }, { status: 403 });
     }
 
     const token = await createSessionToken({

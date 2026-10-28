@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { hashPassword, createSessionToken, setSessionCookie } from "@/lib/auth";
-import { POINTS, generateInviteCode } from "@/lib/points";
+import {
+  createSessionToken,
+  setSessionCookie,
+  hashPassword,
+} from "@/lib/auth";
 import { ensureUserSchema } from "@/lib/db-migrate";
+import { generateInviteCode, POINTS } from "@/lib/points";
+import {
+  assertDeviceAndIpAllowed,
+  getClientIp,
+} from "@/lib/ip-guard";
 import { randomBytes } from "crypto";
 
 const schema = z.object({
@@ -11,30 +19,59 @@ const schema = z.object({
   password: z.string().min(6),
   fullName: z.string().optional(),
   inviteCode: z.string().optional(),
+  deviceId: z.string().min(8).max(64).optional(),
 });
 
 function newId() {
-  return "c" + Date.now().toString(36) + randomBytes(8).toString("hex");
+  return Date.now().toString(36) + randomBytes(8).toString("hex");
 }
 
 export async function POST(req: Request) {
   try {
-    // Fix missing columns before any User query
     await ensureUserSchema();
 
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Email au password si sahihi" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Email au password si sahihi" },
+        { status: 400 }
+      );
     }
 
     const email = parsed.data.email.toLowerCase().trim();
     const passwordHash = await hashPassword(parsed.data.password);
     const fullName = parsed.data.fullName?.trim() || null;
+    const deviceId = parsed.data.deviceId;
+    const ip = getClientIp(req);
+
+    // Block signup if this device already has an account
+    if (deviceId && deviceId.length >= 16) {
+      try {
+        const existingDevice = (await prisma.$queryRawUnsafe(
+          `SELECT id, email FROM "User" WHERE device_id = $1 AND (role IS NULL OR role <> 'admin') LIMIT 1`,
+          deviceId.slice(0, 64)
+        )) as { id: string; email: string }[];
+        if (existingDevice[0]) {
+          return NextResponse.json(
+            {
+              error:
+                "Kifaa hiki tayari kina account. Huwezi kusajili account nyingine (hata Gmail nyingine) kwenye simu/browser hii.",
+            },
+            { status: 403 }
+          );
+        }
+      } catch {
+        /* ignore until column exists */
+      }
+    }
 
     let existing = false;
     try {
-      const u = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+      const u = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true },
+      });
       existing = !!u;
     } catch {
       const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
@@ -44,7 +81,10 @@ export async function POST(req: Request) {
       existing = rows.length > 0;
     }
     if (existing) {
-      return NextResponse.json({ error: "Email hii tayari inatumika" }, { status: 409 });
+      return NextResponse.json(
+        { error: "Email hii tayari inatumika" },
+        { status: 409 }
+      );
     }
 
     let userCount = 0;
@@ -99,6 +139,7 @@ export async function POST(req: Request) {
     try {
       user = await prisma.user.create({
         data: {
+          id,
           email,
           passwordHash,
           fullName,
@@ -116,69 +157,69 @@ export async function POST(req: Request) {
           inviteCode: true,
         },
       });
-    } catch (e1) {
-      console.error("prisma create", e1);
-      try {
-        await prisma.$executeRawUnsafe(
-          `INSERT INTO "User" (id, email, password_hash, full_name, role, points, invite_code, referred_by_id, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())`,
-          id,
-          email,
-          passwordHash,
-          fullName,
-          role,
-          POINTS.SIGNUP,
-          inviteCode,
-          referredById
-        );
-        user = {
-          id,
-          email,
-          fullName,
-          role,
-          points: POINTS.SIGNUP,
-          inviteCode,
-        };
-      } catch (e2) {
-        console.error("raw insert", e2);
-        await prisma.$executeRawUnsafe(
-          `INSERT INTO "User" (id, email, password_hash, full_name, role, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,NOW(),NOW())`,
-          id,
-          email,
-          passwordHash,
-          fullName,
-          role
-        );
-        user = {
-          id,
-          email,
-          fullName,
-          role,
-          points: POINTS.SIGNUP,
-          inviteCode: null,
-        };
-      }
+    } catch {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "User" (id, email, password_hash, full_name, role, points, invite_code, referred_by_id, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())`,
+        id,
+        email,
+        passwordHash,
+        fullName,
+        role,
+        POINTS.SIGNUP,
+        inviteCode,
+        referredById
+      );
+      user = {
+        id,
+        email,
+        fullName,
+        role,
+        points: POINTS.SIGNUP,
+        inviteCode,
+      };
     }
 
-    try {
-      await prisma.pointLog.create({
+    const check = await assertDeviceAndIpAllowed(
+      user.id,
+      user.role,
+      ip,
+      deviceId
+    );
+    if (!check.ok) {
+      // rollback soft: user exists but blocked — delete orphan
+      try {
+        await prisma.user.delete({ where: { id: user.id } });
+      } catch {
+        /* ignore */
+      }
+      return NextResponse.json({ error: check.error }, { status: 403 });
+    }
+
+    await prisma.pointLog
+      .create({
         data: {
           userId: user.id,
           amount: POINTS.SIGNUP,
-          reason: "signup_bonus",
-          meta: "Point 10 za kuanza",
+          reason: "signup",
+          meta: referredById ? `ref:${referredById}` : null,
         },
-      });
-    } catch {
-      /* optional */
-    }
+      })
+      .catch(() => {});
 
     if (referredById) {
       try {
         await prisma.user.update({
           where: { id: referredById },
-          data: { points: { increment: POINTS.INVITE_REWARD } },
+          data: { points: { increment: POINTS.INVITE || 5 } },
+        });
+        await prisma.pointLog.create({
+          data: {
+            userId: referredById,
+            amount: POINTS.INVITE || 5,
+            reason: "invite",
+            meta: user.id,
+          },
         });
       } catch {
         /* ignore */
@@ -194,6 +235,7 @@ export async function POST(req: Request) {
     await setSessionCookie(token);
 
     return NextResponse.json({
+      ok: true,
       user: {
         id: user.id,
         email: user.email,
@@ -203,14 +245,8 @@ export async function POST(req: Request) {
         inviteCode: user.inviteCode,
       },
     });
-  } catch (err) {
-    console.error("signup error", err);
-    return NextResponse.json(
-      {
-        error: "Imeshindikana kuunda account",
-        detail: err instanceof Error ? err.message : "unknown",
-      },
-      { status: 500 }
-    );
+  } catch (e) {
+    console.error("signup", e);
+    return NextResponse.json({ error: "Usajili umeshindwa" }, { status: 500 });
   }
 }

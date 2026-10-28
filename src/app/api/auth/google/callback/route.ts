@@ -7,7 +7,10 @@ import {
 } from "@/lib/auth";
 import { ensureUserSchema } from "@/lib/db-migrate";
 import { generateInviteCode, POINTS } from "@/lib/points";
-import { assertIpAllowed, getClientIp } from "@/lib/ip-guard";
+import {
+  assertDeviceAndIpAllowed,
+  getClientIp,
+} from "@/lib/ip-guard";
 import { randomBytes } from "crypto";
 
 const CLIENT_ID =
@@ -23,6 +26,25 @@ function siteOrigin(req: Request) {
   const proto = req.headers.get("x-forwarded-proto") || "https";
   if (host) return `${proto}://${host}`;
   return process.env.NEXT_PUBLIC_SITE_URL || "https://etuza-hub-v2.vercel.app";
+}
+
+function parseState(state: string | null): { next: string; deviceId: string } {
+  if (!state) return { next: "/", deviceId: "" };
+  try {
+    const json = decodeURIComponent(escape(atob(state)));
+    try {
+      const obj = JSON.parse(json) as { next?: string; deviceId?: string };
+      return {
+        next: obj.next || "/",
+        deviceId: String(obj.deviceId || "").slice(0, 64),
+      };
+    } catch {
+      // legacy: state was only next path
+      return { next: json || "/", deviceId: "" };
+    }
+  } catch {
+    return { next: "/", deviceId: "" };
+  }
 }
 
 async function exchangeCode(code: string, redirectUri: string) {
@@ -98,7 +120,8 @@ async function profileFromTokens(tokens: {
 
 async function loginUser(
   profile: { email: string; name?: string },
-  ip: string
+  ip: string,
+  deviceId: string
 ) {
   await ensureUserSchema();
   const email = profile.email;
@@ -147,9 +170,14 @@ async function loginUser(
       .catch(() => {});
   }
 
-  const ipCheck = await assertIpAllowed(user.id, user.role, ip);
-  if (!ipCheck.ok) {
-    throw new Error(ipCheck.error);
+  const check = await assertDeviceAndIpAllowed(
+    user.id,
+    user.role,
+    ip,
+    deviceId
+  );
+  if (!check.ok) {
+    throw new Error(check.error);
   }
 
   const token = await createSessionToken({
@@ -171,6 +199,7 @@ export async function GET(req: Request) {
   const code = url.searchParams.get("code");
   const err = url.searchParams.get("error");
   const state = url.searchParams.get("state");
+  const { next, deviceId } = parseState(state);
 
   if (err) {
     return redirectHome(req, `/login?error=${encodeURIComponent(err)}`);
@@ -188,24 +217,17 @@ export async function GET(req: Request) {
       return redirectHome(req, "/login?error=no_profile");
     }
     const ip = getClientIp(req);
-    const user = await loginUser(profile, ip);
-    let next = "/";
-    if (state) {
-      try {
-        next = decodeURIComponent(escape(atob(state)));
-      } catch {
-        next = "/";
-      }
-    }
-    if (user.role === "admin") next = next.startsWith("/admin") ? next : "/admin";
-    else if (next.startsWith("/admin")) next = "/";
-    return redirectHome(req, next || "/");
+    const user = await loginUser(profile, ip, deviceId);
+    let dest = next || "/";
+    if (user.role === "admin") dest = dest.startsWith("/admin") ? dest : "/admin";
+    else if (dest.startsWith("/admin")) dest = "/";
+    return redirectHome(req, dest || "/");
   } catch (e) {
     console.error("google callback", e);
     const msg = e instanceof Error ? e.message : "callback_failed";
     return redirectHome(
       req,
-      `/login?error=${encodeURIComponent(msg.slice(0, 180))}`
+      `/login?error=${encodeURIComponent(msg.slice(0, 200))}`
     );
   }
 }

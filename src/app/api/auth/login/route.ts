@@ -3,11 +3,15 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword, createSessionToken, setSessionCookie } from "@/lib/auth";
 import { ensureUserSchema } from "@/lib/db-migrate";
-import { assertIpAllowed, getClientIp } from "@/lib/ip-guard";
+import {
+  assertDeviceAndIpAllowed,
+  getClientIp,
+} from "@/lib/ip-guard";
 
 const schema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  deviceId: z.string().min(8).max(64).optional(),
 });
 
 export async function POST(req: Request) {
@@ -90,9 +94,14 @@ export async function POST(req: Request) {
     }
 
     const ip = getClientIp(req);
-    const ipCheck = await assertIpAllowed(user.id, user.role, ip);
-    if (!ipCheck.ok) {
-      return NextResponse.json({ error: ipCheck.error }, { status: 403 });
+    const check = await assertDeviceAndIpAllowed(
+      user.id,
+      user.role,
+      ip,
+      parsed.data.deviceId
+    );
+    if (!check.ok) {
+      return NextResponse.json({ error: check.error }, { status: 403 });
     }
 
     const token = await createSessionToken({
