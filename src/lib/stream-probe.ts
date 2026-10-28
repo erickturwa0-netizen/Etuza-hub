@@ -11,10 +11,30 @@ async function ensureColumn() {
   }
 }
 
-async function probeUrl(url: string): Promise<"ok" | "bad"> {
+function isEmbedHost(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return (
+      h.includes("vidsrc") ||
+      h.includes("2embed") ||
+      h.includes("embed.su") ||
+      h.includes("vsembed") ||
+      h.includes("multiembed") ||
+      h.includes("moviesapi") ||
+      h.includes("embed")
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function probeUrl(url: string): Promise<"ok" | "bad" | "unknown"> {
   if (!url || !/^https?:\/\//i.test(url)) return "bad";
+  // Embed players cannot be judged by Range GET — leave unknown
+  if (isEmbedHost(url)) return "unknown";
+
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 5000);
+  const t = setTimeout(() => ctrl.abort(), 4500);
   try {
     const res = await fetch(url, {
       method: "GET",
@@ -38,8 +58,7 @@ async function probeUrl(url: string): Promise<"ok" | "bad"> {
         ct.includes("video") ||
         ct.includes("audio") ||
         ct.includes("octet-stream") ||
-        ct.includes("mp4") ||
-        ct.includes("matroska")
+        ct.includes("mp4")
       ) {
         return "ok";
       }
@@ -52,10 +71,33 @@ async function probeUrl(url: string): Promise<"ok" | "bad"> {
   }
 }
 
-/** Probe unknown streams in parallel and persist ok/bad. */
+/** Reset wrongly-marked embed content back to unknown */
+export async function resetEmbedStatuses(type?: string) {
+  await ensureColumn();
+  try {
+    const typeClause = type ? `AND type = '${type.replace(/'/g, "")}'` : "";
+    await prisma.$executeRawUnsafe(`
+      UPDATE "Content"
+      SET stream_status = 'unknown'
+      WHERE status = 'published'
+        AND stream_status = 'bad'
+        AND (
+          link_url ILIKE '%vidsrc%'
+          OR link_url ILIKE '%2embed%'
+          OR link_url ILIKE '%embed.su%'
+          OR link_url ILIKE '%vsembed%'
+          OR link_url ILIKE '%multiembed%'
+        )
+        ${typeClause}
+    `);
+  } catch (e) {
+    console.error("resetEmbedStatuses", e);
+  }
+}
+
 export async function probeUnknownStreams(
   type: string,
-  limit = 24
+  limit = 12
 ): Promise<{ checked: number; ok: number; bad: number }> {
   await ensureColumn();
   let checked = 0;
@@ -76,13 +118,13 @@ export async function probeUnknownStreams(
 
     if (!rows.length) return { checked: 0, ok: 0, bad: 0 };
 
-    // Parallel batches of 6
     const batchSize = 6;
     for (let i = 0; i < rows.length; i += batchSize) {
       const batch = rows.slice(i, i + batchSize);
       const results = await Promise.all(
         batch.map(async (row) => {
           const status = await probeUrl(row.link_url);
+          if (status === "unknown") return "unknown" as const;
           try {
             await prisma.$executeRawUnsafe(
               `UPDATE "Content" SET stream_status = $1 WHERE id = $2`,
@@ -96,6 +138,7 @@ export async function probeUnknownStreams(
         })
       );
       for (const status of results) {
+        if (status === "unknown") continue;
         checked++;
         if (status === "ok") ok++;
         else bad++;

@@ -1,7 +1,7 @@
 import { Clapperboard } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensureElitePlexContent } from "@/lib/eliteplex";
-import { probeUnknownStreams } from "@/lib/stream-probe";
+import { resetEmbedStatuses } from "@/lib/stream-probe";
 import MediaPosterCard from "@/components/MediaPosterCard";
 
 export const dynamic = "force-dynamic";
@@ -20,13 +20,8 @@ export default async function DramaPage() {
   }[] = [];
 
   try {
-    // Re-import / migrate embeds (vsembed → vidsrc)
     await ensureElitePlexContent("drama");
-    try {
-      await probeUnknownStreams("drama", 16);
-    } catch {
-      /* ignore */
-    }
+    await resetEmbedStatuses("drama");
 
     const raw = await prisma.content.findMany({
       where: { type: "drama", status: "published" },
@@ -38,13 +33,13 @@ export default async function DramaPage() {
         category: true,
         createdAt: true,
       },
-      take: 200,
+      take: 300,
     });
 
     let statusMap: Record<string, string> = {};
     try {
       const rows = (await prisma.$queryRawUnsafe(
-        `SELECT id, stream_status FROM "Content" WHERE type = 'drama' AND status = 'published' LIMIT 300`
+        `SELECT id, stream_status FROM "Content" WHERE type = 'drama' AND status = 'published' LIMIT 400`
       )) as { id: string; stream_status: string | null }[];
       for (const r of rows) {
         statusMap[r.id] = (r.stream_status || "unknown").toLowerCase();
@@ -53,33 +48,23 @@ export default async function DramaPage() {
       /* ignore */
     }
 
-    const mapped = raw.map((a) => ({
-      ...a,
-      streamStatus: statusMap[a.id] || "unknown",
-    }));
-
-    const working = mapped
-      .filter((a) => a.streamStatus === "ok")
-      .sort(
-        (a, b) =>
-          (b.createdAt ? new Date(b.createdAt).getTime() : 0) -
-          (a.createdAt ? new Date(a.createdAt).getTime() : 0)
-      );
-    const unknown = mapped
-      .filter((a) => a.streamStatus !== "ok" && a.streamStatus !== "bad")
-      .sort(
-        (a, b) =>
-          (b.createdAt ? new Date(b.createdAt).getTime() : 0) -
-          (a.createdAt ? new Date(a.createdAt).getTime() : 0)
-      );
-
-    // Working first; hide pure bad from main grid
-    items = [...working, ...unknown.slice(0, 40)];
+    items = raw
+      .map((a) => ({
+        ...a,
+        streamStatus: statusMap[a.id] || "unknown",
+      }))
+      .sort((a, b) => {
+        const rank = (s?: string) => (s === "ok" ? 0 : s === "bad" ? 2 : 1);
+        const ra = rank(a.streamStatus);
+        const rb = rank(b.streamStatus);
+        if (ra !== rb) return ra - rb;
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tb - ta;
+      });
   } catch (e) {
     console.error("drama page", e);
   }
-
-  const okCount = items.filter((i) => i.streamStatus === "ok").length;
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 pb-24">
@@ -90,14 +75,16 @@ export default async function DramaPage() {
         <div>
           <h1 className="text-2xl font-bold">Tamthilia</h1>
           <p className="text-sm text-slate-500">
-            {okCount} zinazocheza juu · {items.length} zinaonekana · badilisha server kwenye player
+            {items.length} · mpya juu · badilisha server kwenye player
           </p>
         </div>
       </div>
 
       {items.length === 0 ? (
         <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center">
-          <p className="text-slate-400 text-sm">Hakuna tamthilia bado.</p>
+          <p className="text-slate-400 text-sm">
+            Hakuna tamthilia bado. Refresh baada ya sekunde chache.
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">

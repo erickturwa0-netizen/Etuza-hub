@@ -2,7 +2,7 @@ import { Film } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensureElitePlexContent } from "@/lib/eliteplex";
 import { getNewContentBanner } from "@/lib/catalog-sync";
-import { probeUnknownStreams } from "@/lib/stream-probe";
+import { resetEmbedStatuses } from "@/lib/stream-probe";
 import ContentSearch from "@/components/ContentSearch";
 import NewContentBanner from "@/components/NewContentBanner";
 import MediaPosterCard from "@/components/MediaPosterCard";
@@ -30,23 +30,18 @@ export default async function MoviesPage({
     createdAt?: Date;
   }[] = [];
   let bannerTitles: string[] = [];
-  let probeInfo = "";
 
   try {
     await ensureElitePlexContent("movie");
+    // Fix false "bad" on embed links so list is not empty
+    await resetEmbedStatuses("movie");
 
-    // Check many unknowns NOW (parallel) before listing
     try {
-      const pr = await probeUnknownStreams("movie", 24);
-      if (pr.checked > 0) {
-        probeInfo = ` · checked ${pr.checked} (${pr.ok} ok)`;
-      }
+      const banner = await getNewContentBanner();
+      if (banner?.titles) bannerTitles = banner.titles;
     } catch {
       /* ignore */
     }
-
-    const banner = await getNewContentBanner();
-    if (banner?.titles) bannerTitles = banner.titles;
 
     const raw = await prisma.content.findMany({
       where: {
@@ -84,46 +79,25 @@ export default async function MoviesPage({
       /* ignore */
     }
 
-    const mapped = raw.map((a) => ({
-      ...a,
-      streamStatus: statusMap[a.id] || "unknown",
-    }));
-
-    // Prefer ONLY working at top: ok (newest) → unknown (newest) → bad last
-    // When not searching, hide pure "bad" from the main grid so broken don't dominate
-    const working = mapped
-      .filter((a) => a.streamStatus === "ok")
-      .sort(
-        (a, b) =>
-          (b.createdAt ? new Date(b.createdAt).getTime() : 0) -
-          (a.createdAt ? new Date(a.createdAt).getTime() : 0)
-      );
-    const unknown = mapped
-      .filter((a) => a.streamStatus !== "ok" && a.streamStatus !== "bad")
-      .sort(
-        (a, b) =>
-          (b.createdAt ? new Date(b.createdAt).getTime() : 0) -
-          (a.createdAt ? new Date(a.createdAt).getTime() : 0)
-      );
-    const broken = mapped
-      .filter((a) => a.streamStatus === "bad")
-      .sort(
-        (a, b) =>
-          (b.createdAt ? new Date(b.createdAt).getTime() : 0) -
-          (a.createdAt ? new Date(a.createdAt).getTime() : 0)
-      );
-
-    // Main list: working first (new), then a few unknown; bad only if searching
-    if (q) {
-      items = [...working, ...unknown, ...broken];
-    } else {
-      items = [...working, ...unknown.slice(0, 40)];
-    }
+    // Show ALL published; sort ok → unknown → bad; newest within group
+    items = raw
+      .map((a) => ({
+        ...a,
+        streamStatus: statusMap[a.id] || "unknown",
+      }))
+      .sort((a, b) => {
+        const rank = (s?: string | null) =>
+          s === "ok" ? 0 : s === "bad" ? 2 : 1;
+        const ra = rank(a.streamStatus);
+        const rb = rank(b.streamStatus);
+        if (ra !== rb) return ra - rb;
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tb - ta;
+      });
   } catch (e) {
     console.error("movies page", e);
   }
-
-  const okCount = items.filter((i) => i.streamStatus === "ok").length;
 
   return (
     <main className="max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-28">
@@ -135,8 +109,7 @@ export default async function MoviesPage({
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-white">Movies</h1>
             <p className="text-sm text-slate-400">
-              {okCount} zinazocheza juu · {items.length} zinaonekana
-              {probeInfo}
+              {items.length} movies · mpya juu · badilisha server kwenye player
             </p>
           </div>
         </div>
@@ -149,7 +122,7 @@ export default async function MoviesPage({
 
       {items.length === 0 ? (
         <p className="text-slate-500 text-sm mt-8">
-          Hakuna movies zinazocheza bado. Fungua tena baada ya sekunde chache.
+          Hakuna movies bado. Subiri sekunde chache kisha refresh.
         </p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
