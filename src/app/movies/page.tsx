@@ -10,6 +10,7 @@ import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const maxDuration = 60;
 export const metadata = { title: "Movies – ETUZA HUB" };
 
 export default async function MoviesPage({
@@ -34,11 +35,11 @@ export default async function MoviesPage({
   try {
     await ensureElitePlexContent("movie");
 
-    // Auto-check some unknown streams each visit (fills green/red dots)
+    // Check many unknowns NOW (parallel) before listing
     try {
-      const pr = await probeUnknownStreams("movie", 10);
+      const pr = await probeUnknownStreams("movie", 24);
       if (pr.checked > 0) {
-        probeInfo = ` · checked ${pr.checked} (${pr.ok} ok / ${pr.bad} bad)`;
+        probeInfo = ` · checked ${pr.checked} (${pr.ok} ok)`;
       }
     } catch {
       /* ignore */
@@ -67,41 +68,62 @@ export default async function MoviesPage({
         category: true,
         createdAt: true,
       },
-      take: 200,
+      take: 300,
       orderBy: { createdAt: "desc" },
     });
 
     let statusMap: Record<string, string> = {};
     try {
       const rows = (await prisma.$queryRawUnsafe(
-        `SELECT id, stream_status FROM "Content" WHERE type = 'movie' AND status = 'published' LIMIT 300`
+        `SELECT id, stream_status FROM "Content" WHERE type = 'movie' AND status = 'published' LIMIT 400`
       )) as { id: string; stream_status: string | null }[];
       for (const r of rows) {
         statusMap[r.id] = (r.stream_status || "unknown").toLowerCase();
       }
     } catch {
-      /* column missing */
+      /* ignore */
     }
 
-    // Sort: green(ok) → gray(unknown) → red(bad); within group newest first
-    items = raw
-      .map((a) => ({
-        ...a,
-        streamStatus: statusMap[a.id] || "unknown",
-      }))
-      .sort((a, b) => {
-        const rank = (s?: string | null) =>
-          s === "ok" ? 0 : s === "bad" ? 2 : 1;
-        const ra = rank(a.streamStatus);
-        const rb = rank(b.streamStatus);
-        if (ra !== rb) return ra - rb;
-        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return tb - ta;
-      });
+    const mapped = raw.map((a) => ({
+      ...a,
+      streamStatus: statusMap[a.id] || "unknown",
+    }));
+
+    // Prefer ONLY working at top: ok (newest) → unknown (newest) → bad last
+    // When not searching, hide pure "bad" from the main grid so broken don't dominate
+    const working = mapped
+      .filter((a) => a.streamStatus === "ok")
+      .sort(
+        (a, b) =>
+          (b.createdAt ? new Date(b.createdAt).getTime() : 0) -
+          (a.createdAt ? new Date(a.createdAt).getTime() : 0)
+      );
+    const unknown = mapped
+      .filter((a) => a.streamStatus !== "ok" && a.streamStatus !== "bad")
+      .sort(
+        (a, b) =>
+          (b.createdAt ? new Date(b.createdAt).getTime() : 0) -
+          (a.createdAt ? new Date(a.createdAt).getTime() : 0)
+      );
+    const broken = mapped
+      .filter((a) => a.streamStatus === "bad")
+      .sort(
+        (a, b) =>
+          (b.createdAt ? new Date(b.createdAt).getTime() : 0) -
+          (a.createdAt ? new Date(a.createdAt).getTime() : 0)
+      );
+
+    // Main list: working first (new), then a few unknown; bad only if searching
+    if (q) {
+      items = [...working, ...unknown, ...broken];
+    } else {
+      items = [...working, ...unknown.slice(0, 40)];
+    }
   } catch (e) {
     console.error("movies page", e);
   }
+
+  const okCount = items.filter((i) => i.streamStatus === "ok").length;
 
   return (
     <main className="max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-28">
@@ -113,7 +135,7 @@ export default async function MoviesPage({
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-white">Movies</h1>
             <p className="text-sm text-slate-400">
-              {items.length} · kijani juu · kijivu · nyekundu chini
+              {okCount} zinazocheza juu · {items.length} zinaonekana
               {probeInfo}
             </p>
           </div>
@@ -126,7 +148,9 @@ export default async function MoviesPage({
       {bannerTitles.length > 0 && <NewContentBanner titles={bannerTitles} />}
 
       {items.length === 0 ? (
-        <p className="text-slate-500 text-sm mt-8">Hakuna movies.</p>
+        <p className="text-slate-500 text-sm mt-8">
+          Hakuna movies zinazocheza bado. Fungua tena baada ya sekunde chache.
+        </p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
           {items.map((m) => (

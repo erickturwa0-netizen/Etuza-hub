@@ -14,14 +14,14 @@ async function ensureColumn() {
 async function probeUrl(url: string): Promise<"ok" | "bad"> {
   if (!url || !/^https?:\/\//i.test(url)) return "bad";
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 4500);
+  const t = setTimeout(() => ctrl.abort(), 5000);
   try {
-    // Prefer GET with small range — many CDNs reject HEAD
     const res = await fetch(url, {
       method: "GET",
       headers: {
-        Range: "bytes=0-2048",
-        "User-Agent": "ETUZA-HUB-Probe/1.0",
+        Range: "bytes=0-4096",
+        "User-Agent":
+          "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36",
         Accept: "*/*",
       },
       signal: ctrl.signal,
@@ -38,11 +38,11 @@ async function probeUrl(url: string): Promise<"ok" | "bad"> {
         ct.includes("video") ||
         ct.includes("audio") ||
         ct.includes("octet-stream") ||
-        ct.includes("mp4")
+        ct.includes("mp4") ||
+        ct.includes("matroska")
       ) {
         return "ok";
       }
-      // 2xx with any body often still playable
       if (res.status === 200 || res.status === 206) return "ok";
     }
     return "bad";
@@ -52,10 +52,10 @@ async function probeUrl(url: string): Promise<"ok" | "bad"> {
   }
 }
 
-/** Probe a batch of unknown streams and persist ok/bad. */
+/** Probe unknown streams in parallel and persist ok/bad. */
 export async function probeUnknownStreams(
   type: string,
-  limit = 12
+  limit = 24
 ): Promise<{ checked: number; ok: number; bad: number }> {
   await ensureColumn();
   let checked = 0;
@@ -74,20 +74,32 @@ export async function probeUnknownStreams(
       limit
     )) as { id: string; link_url: string }[];
 
-    for (const row of rows) {
-      const status = await probeUrl(row.link_url);
-      try {
-        await prisma.$executeRawUnsafe(
-          `UPDATE "Content" SET stream_status = $1 WHERE id = $2`,
-          status,
-          row.id
-        );
-      } catch {
-        /* ignore */
+    if (!rows.length) return { checked: 0, ok: 0, bad: 0 };
+
+    // Parallel batches of 6
+    const batchSize = 6;
+    for (let i = 0; i < rows.length; i += batchSize) {
+      const batch = rows.slice(i, i + batchSize);
+      const results = await Promise.all(
+        batch.map(async (row) => {
+          const status = await probeUrl(row.link_url);
+          try {
+            await prisma.$executeRawUnsafe(
+              `UPDATE "Content" SET stream_status = $1 WHERE id = $2`,
+              status,
+              row.id
+            );
+          } catch {
+            /* ignore */
+          }
+          return status;
+        })
+      );
+      for (const status of results) {
+        checked++;
+        if (status === "ok") ok++;
+        else bad++;
       }
-      checked++;
-      if (status === "ok") ok++;
-      else bad++;
     }
   } catch (e) {
     console.error("probeUnknownStreams", e);
