@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { detectSocial } from "@/lib/social-embed";
-import { Play, ExternalLink, RefreshCw } from "lucide-react";
+import { Play, ExternalLink, RefreshCw, Server } from "lucide-react";
 import { usePlaybackCharge } from "@/components/PreRollGate";
 
 type Props = {
@@ -44,16 +44,15 @@ function markStream(contentId: string, status: "ok" | "bad") {
   }).catch(() => {});
 }
 
-/** Extract TMDB id + kind from common embed URLs */
 function parseEmbed(url: string): { id: string; kind: "movie" | "tv" } | null {
   try {
     const u = url.trim();
     const mMovie = u.match(
-      /(?:vidsrc\.(?:to|xyz|me|pm)|vsembed\.ru|2embed\.(?:cc|org)|embed\.su|multiembed\.mov|moviesapi\.club)\/(?:embed\/)?(?:movie|film)\/(\d+)/i
+      /(?:vidsrc\.[\w.]+|vsembed\.ru|2embed\.[\w.]+|embed\.su|multiembed\.mov|moviesapi\.club|vidlink\.pro|autoembed\.[\w.]+|player\.videasy\.net|embedsito\.[\w.]+|vidsrc\.icu|vidsrc\.nl)[\/\?](?:embed\/?)?(?:movie|film)\/?(\d+)/i
     );
     if (mMovie) return { id: mMovie[1], kind: "movie" };
     const mTv = u.match(
-      /(?:vidsrc\.(?:to|xyz|me|pm)|vsembed\.ru|2embed\.(?:cc|org)|embed\.su)\/(?:embed\/)?(?:tv|series)\/(\d+)/i
+      /(?:vidsrc\.[\w.]+|vsembed\.ru|2embed\.[\w.]+|embed\.su|vidlink\.pro|autoembed\.[\w.]+)[\/\?](?:embed\/?)?(?:tv|series)\/?(\d+)/i
     );
     if (mTv) return { id: mTv[1], kind: "tv" };
     const bare = u.match(/\/(?:movie|tv)\/(\d{2,7})(?:\/|$|\?)/i);
@@ -63,28 +62,108 @@ function parseEmbed(url: string): { id: string; kind: "movie" | "tv" } | null {
         kind: /\/tv\//i.test(u) ? "tv" : "movie",
       };
     }
+    // multiembed style
+    const q = u.match(/[?&](?:video_id|tmdb|id)=(\d{2,7})/i);
+    if (q) {
+      return { id: q[1], kind: /tv|series/i.test(u) ? "tv" : "movie" };
+    }
   } catch {
     /* ignore */
   }
   return null;
 }
 
+/** Many alternate embed hosts — user can cycle until one plays */
 function buildProviders(id: string, kind: "movie" | "tv"): string[] {
+  const list: string[] = [];
+
   if (kind === "tv") {
-    return [
+    const hosts = [
       `https://vidsrc.to/embed/tv/${id}`,
       `https://vidsrc.xyz/embed/tv/${id}`,
+      `https://vidsrc.me/embed/tv/${id}`,
+      `https://vidsrc.pm/embed/tv/${id}`,
+      `https://vidsrc.pro/embed/tv/${id}`,
+      `https://vidsrc.icu/embed/tv/${id}`,
+      `https://vidsrc.nl/embed/tv/${id}`,
+      `https://vidsrc.in/embed/tv/${id}`,
       `https://www.2embed.cc/embedtv/${id}`,
+      `https://www.2embed.cc/embedtvfull/${id}`,
+      `https://www.2embed.to/embed/tv/${id}`,
+      `https://2embed.org/embed/tv/${id}`,
       `https://embed.su/embed/tv/${id}`,
+      `https://vidlink.pro/tv/${id}`,
+      `https://player.videasy.net/tv/${id}`,
+      `https://autoembed.co/tv/tmdb/${id}`,
+      `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1&s=1&e=1`,
+      `https://www.nontongo.win/embed/tv/${id}`,
+      `https://vidsrc.vip/embed/tv/${id}`,
+      `https://embed.smashystream.com/playere.php?tmdb=${id}&type=tv`,
+      `https://moviesapi.club/tv/${id}`,
+      `https://vidsrc.cc/v2/embed/tv/${id}`,
+      `https://www.primewire.tf/embed/tv?tmdb=${id}`,
+      `https://flicky.host/embed/tv/?id=${id}`,
+      `https://embed.warezcdn.com/serie/${id}`,
+      // season1 ep1 variants
+      `https://vidsrc.to/embed/tv/${id}/1/1`,
+      `https://vidsrc.xyz/embed/tv/${id}/1/1`,
+      `https://vidsrc.me/embed/tv/${id}/1/1`,
+      `https://vidsrc.pm/embed/tv/${id}/1/1`,
+      `https://embed.su/embed/tv/${id}/1/1`,
+      `https://vidlink.pro/tv/${id}/1/1`,
+      `https://player.videasy.net/tv/${id}/1/1`,
+      `https://autoembed.co/tv/tmdb/${id}-1-1`,
+      `https://www.2embed.cc/embedtv/${id}&s=1&e=1`,
+      `https://multiembed.mov/?video_id=${id}&tmdb=1&s=1&e=1`,
     ];
+    list.push(...hosts);
+  } else {
+    const hosts = [
+      `https://vidsrc.to/embed/movie/${id}`,
+      `https://vidsrc.xyz/embed/movie/${id}`,
+      `https://vidsrc.me/embed/movie/${id}`,
+      `https://vidsrc.pm/embed/movie/${id}`,
+      `https://vidsrc.pro/embed/movie/${id}`,
+      `https://vidsrc.icu/embed/movie/${id}`,
+      `https://vidsrc.nl/embed/movie/${id}`,
+      `https://vidsrc.in/embed/movie/${id}`,
+      `https://vidsrc.vip/embed/movie/${id}`,
+      `https://vidsrc.cc/v2/embed/movie/${id}`,
+      `https://www.2embed.cc/embed/${id}`,
+      `https://www.2embed.cc/embedfull/${id}`,
+      `https://www.2embed.to/embed/movie/${id}`,
+      `https://2embed.org/embed/movie/${id}`,
+      `https://embed.su/embed/movie/${id}`,
+      `https://vidlink.pro/movie/${id}`,
+      `https://player.videasy.net/movie/${id}`,
+      `https://autoembed.co/movie/tmdb/${id}`,
+      `https://multiembed.mov/?video_id=${id}&tmdb=1`,
+      `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1`,
+      `https://moviesapi.club/movie/${id}`,
+      `https://www.nontongo.win/embed/movie/${id}`,
+      `https://embed.smashystream.com/playere.php?tmdb=${id}`,
+      `https://flicky.host/embed/movie/?id=${id}`,
+      `https://embed.warezcdn.com/filme/${id}`,
+      `https://www.primewire.tf/embed/movie?tmdb=${id}`,
+      `https://vidsrc-embed.ru/embed/movie/${id}`,
+      `https://vsembed.ru/embed/movie/${id}`,
+      // extra mirrors / patterns
+      `https://vidsrc.to/embed/film/${id}`,
+      `https://vidsrc.xyz/embed/film/${id}`,
+      `https://www.2embed.stream/embed/${id}`,
+      `https://streamsrc.top/embed/movie/${id}`,
+      `https://gomo.to/movie/${id}`,
+      `https://databasegdriveplayer.co/player.php?tmdb=${id}`,
+      `https://vidjoy.pro/embed/movie/${id}`,
+      `https://vidify.top/embed/movie/${id}`,
+      `https://player.superembed.stream/movie/${id}`,
+      `https://api.remotestream.cc/e/movie/${id}`,
+    ];
+    list.push(...hosts);
   }
-  return [
-    `https://vidsrc.to/embed/movie/${id}`,
-    `https://vidsrc.xyz/embed/movie/${id}`,
-    `https://www.2embed.cc/embed/${id}`,
-    `https://embed.su/embed/movie/${id}`,
-    `https://multiembed.mov/?video_id=${id}&tmdb=1`,
-  ];
+
+  // de-dupe
+  return [...new Set(list)];
 }
 
 export default function StreamPlayer({
@@ -109,13 +188,12 @@ export default function StreamPlayer({
   const [error, setError] = useState("");
   const [needsTap, setNeedsTap] = useState(false);
 
-  // Prefer working providers; rewrite vsembed → vidsrc first
   const activeEmbed = useMemo(() => {
     if (social.embedUrl) return social.embedUrl;
     if (providers.length) {
       return providers[Math.min(providerIdx, providers.length - 1)];
     }
-    if (/vsembed\.ru/i.test(raw) && parsed) {
+    if (/vsembed\.ru|vidsrc\./i.test(raw) && parsed) {
       return buildProviders(parsed.id, parsed.kind)[0];
     }
     const external = /^https?:\/\//i.test(raw) && blocksIframe(raw);
@@ -147,10 +225,9 @@ export default function StreamPlayer({
   const fail = useCallback(
     (msg: string) => {
       setError(msg);
-      // Try next provider before marking bad
       if (providers.length && providerIdx < providers.length - 1) {
         setProviderIdx((i) => i + 1);
-        setError("Inajaribu server nyingine…");
+        setError(`Inajaribu server ${providerIdx + 2}/${providers.length}…`);
         return;
       }
       mark("bad");
@@ -251,36 +328,64 @@ export default function StreamPlayer({
             onError={() => fail("Embed imeshindwa.")}
           />
         </div>
+
         {providers.length > 1 && (
-          <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-[11px] text-slate-500">Server:</span>
-            {providers.map((p, i) => (
+          <div className="rounded-xl border border-slate-700 bg-slate-900/90 p-2.5 space-y-2">
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <Server className="w-3.5 h-3.5 text-violet-400" />
+              <span>
+                Server {providerIdx + 1} / {providers.length}
+              </span>
               <button
-                key={p}
                 type="button"
                 onClick={() => {
-                  setProviderIdx(i);
+                  setProviderIdx((i) => (i + 1) % providers.length);
                   setError("");
                 }}
-                className={`text-[11px] px-2 py-1 rounded-lg border ${
-                  i === providerIdx
-                    ? "border-violet-500 bg-violet-600/30 text-violet-200"
-                    : "border-slate-700 text-slate-400"
-                }`}
+                className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-600 text-white text-[11px] font-semibold"
               >
-                {i + 1}
+                <RefreshCw className="w-3 h-3" /> Badilisha server
               </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => {
-                setProviderIdx((i) => (i + 1) % providers.length);
+            </div>
+            <select
+              value={providerIdx}
+              onChange={(e) => {
+                setProviderIdx(Number(e.target.value));
                 setError("");
               }}
-              className="text-[11px] px-2 py-1 rounded-lg border border-slate-700 text-slate-300 inline-flex items-center gap-1"
+              className="w-full text-xs rounded-lg bg-slate-950 border border-slate-600 text-slate-200 px-2 py-2"
             >
-              <RefreshCw className="w-3 h-3" /> Badilisha
-            </button>
+              {providers.map((_, i) => (
+                <option key={i} value={i}>
+                  Server {i + 1}
+                  {i === 0 ? " (vidsrc)" : ""}
+                </option>
+              ))}
+            </select>
+            <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+              {providers.slice(0, 24).map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    setProviderIdx(i);
+                    setError("");
+                  }}
+                  className={`text-[10px] min-w-[1.75rem] px-1.5 py-1 rounded border ${
+                    i === providerIdx
+                      ? "border-violet-500 bg-violet-600/40 text-violet-100"
+                      : "border-slate-700 text-slate-400"
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+              {providers.length > 24 && (
+                <span className="text-[10px] text-slate-500 self-center px-1">
+                  +{providers.length - 24} (chagua kwenye orodha)
+                </span>
+              )}
+            </div>
           </div>
         )}
         {error && <p className="text-sm text-amber-300">{error}</p>}
