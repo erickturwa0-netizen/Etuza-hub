@@ -2,13 +2,12 @@ import { prisma } from "@/lib/prisma";
 import { fetchMusicCatalog } from "@/lib/public-apis";
 import { contentCover } from "@/lib/covers";
 
-const TAG = "music-auto-scrape-v1";
-const MIN_SONGS = 30;
+const TAG = "music-auto-scrape-v2";
+const MIN_SONGS = 40;
 
 /**
- * Auto-scrape iTunes (Bongo + Dini + 2026) when music catalog is thin.
- * Safe to call on every /music page load — only fetches if count is low
- * or last scrape was long ago.
+ * Auto-scrape when music catalog is thin.
+ * Sources: iTunes + ytm.vrma.dev videos + freetouse MP3.
  */
 export async function ensureMusicCatalog(): Promise<{
   added: number;
@@ -33,8 +32,8 @@ export async function ensureMusicCatalog(): Promise<{
   }
 
   const ageMs = Date.now() - lastAt;
-  const stale = ageMs > 6 * 60 * 60 * 1000; // 6h
-  const need = total < MIN_SONGS || (stale && total < 200);
+  const stale = ageMs > 6 * 60 * 60 * 1000;
+  const need = total < MIN_SONGS || (stale && total < 300);
 
   if (!need) {
     return { added: 0, total };
@@ -43,7 +42,7 @@ export async function ensureMusicCatalog(): Promise<{
   return syncNewMusic();
 }
 
-/** Full music scrape from iTunes multi-query — insert new only */
+/** Full music scrape — iTunes + Video Music + FreeToUse */
 export async function syncNewMusic(): Promise<{ added: number; total: number }> {
   const seeds = await fetchMusicCatalog();
   if (!seeds.length) {
@@ -58,7 +57,9 @@ export async function syncNewMusic(): Promise<{ added: number; total: number }> 
     select: { linkUrl: true },
   });
   const have = new Set(
-    existing.map((e) => (e.linkUrl || "").split("?")[0].toLowerCase()).filter(Boolean)
+    existing
+      .map((e) => (e.linkUrl || "").split("?")[0].toLowerCase())
+      .filter(Boolean)
   );
 
   let added = 0;
@@ -78,8 +79,7 @@ export async function syncNewMusic(): Promise<{ added: number; total: number }> 
         title: item.title.slice(0, 200),
         description: item.description,
         linkUrl: item.linkUrl,
-        coverUrl:
-          item.coverUrl || contentCover("music", item.title, null),
+        coverUrl: item.coverUrl || contentCover("music", item.title, null),
         linkType: "stream",
         category: item.category?.slice(0, 100) || "Music",
         status: "published",
@@ -94,23 +94,23 @@ export async function syncNewMusic(): Promise<{ added: number; total: number }> 
     create: {
       category: "music-scrape",
       name: "Music auto-scrape",
-      url: "itunes-multi",
+      url: "itunes+ytm+freetouse",
       notes: JSON.stringify({ at: new Date().toISOString(), tag: TAG, added }),
       enabled: true,
     },
     update: {
       notes: JSON.stringify({ at: new Date().toISOString(), tag: TAG, added }),
       enabled: true,
+      url: "itunes+ytm+freetouse",
     },
   });
 
-  // Keep main music source URL for Import All
   await prisma.apiSource.upsert({
     where: { category: "music" },
     create: {
       category: "music",
-      name: "iTunes Music",
-      url: "https://itunes.apple.com/search?term=bongo+flava&media=music&entity=song&country=TZ&limit=50",
+      name: "Music multi-source",
+      url: "https://ytm.vrma.dev/search?q=Diamond+Platnumz&type=videos",
       notes: TAG,
       enabled: true,
     },

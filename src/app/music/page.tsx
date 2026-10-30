@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { getPublishedContent } from "@/lib/content";
 import { Music } from "lucide-react";
 import { ensureMusicVideos } from "@/lib/music-videos";
@@ -17,7 +16,7 @@ export default async function MusicPage() {
     console.error("music cleanup", e);
   }
 
-  // Auto-scrape: kama catalog ni ndogo, vuta iTunes (Bongo + Dini + 2026)
+  // Auto-scrape: iTunes + ytm videos + freetouse
   try {
     await ensureMusicCatalog();
   } catch (e) {
@@ -25,11 +24,17 @@ export default async function MusicPage() {
   }
 
   const items = await getPublishedContent("music");
-  const songs = items.filter(
-    (c) =>
-      !/youtube\.com|youtu\.be|youtube-nocookie/i.test(c.link_url || "") &&
-      !/music video/i.test(c.category || "")
-  );
+  // Keep Video Music (youtube-nocookie / category Video); drop other random YT junk
+  const songs = items.filter((c) => {
+    const cat = (c.category || "").toLowerCase();
+    const url = (c.link_url || "").toLowerCase();
+    const isVideoCat = /video/.test(cat);
+    const isYt =
+      /youtube\.com|youtu\.be|youtube-nocookie/.test(url);
+    if (isYt && !isVideoCat) return false;
+    if (/music video/i.test(c.category || "") && !isVideoCat) return false;
+    return true;
+  });
 
   return (
     <main className="max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-28">
@@ -42,15 +47,14 @@ export default async function MusicPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-white">Miziki</h1>
           <p className="text-sm text-slate-400">
-            {songs.length} nyimbo · Bongo · Dini · 2026
+            {songs.length} · Video · Bongo · Dini · 2026 · Free MP3
           </p>
         </div>
       </div>
 
       {songs.length === 0 ? (
         <p className="text-slate-500 text-sm">
-          Hakuna nyimbo bado. Subiri auto-scrape au Admin → Sync Music / Import
-          All.
+          Hakuna nyimbo bado. Subiri auto-scrape au Admin → Sync Music.
         </p>
       ) : (
         <MusicCategoryTabs songs={songs} />
