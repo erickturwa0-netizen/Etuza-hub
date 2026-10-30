@@ -1,6 +1,5 @@
 /** Public APIs used to auto-fill catalog when DB is empty */
 
-// TMDB key from Movian Media Center APK (fallback)
 const TMDB_KEY =
   process.env.TMDB_API_KEY || "a0d71cffe2d6693d462af9e4f336bc06";
 
@@ -13,15 +12,15 @@ export const PUBLIC_API: Record<
     linkType: "stream",
     notes: "TMDB Popular (Movian key)",
   },
-  // TV — Modobo (from Modobo_TV APK sniff)
   tv: {
     url: "https://cdn.apisfast.top/api/v1/channels",
     linkType: "stream",
     notes: "Modobo TV channels (cdn.apisfast.top)",
   },
   music: {
-    url: "https://itunes.apple.com/search?term=bongo&media=music&entity=song&country=TZ&limit=40",
+    url: "https://itunes.apple.com/search?term=bongo+flava&media=music&entity=song&country=TZ&limit=50",
     linkType: "stream",
+    notes: "iTunes Bongo + multi-query in fetchMusicCatalog",
   },
   radio: {
     url: "https://de1.api.radio-browser.info/json/stations/search?countrycode=TZ&hidebroken=true&order=clickcount&reverse=true&limit=40",
@@ -36,6 +35,27 @@ export const PUBLIC_API: Record<
     linkType: "download",
   },
 };
+
+/** Multiple iTunes queries: Bongo, Dini (gospel), 2026 */
+export const MUSIC_ITUNES_QUERIES: { term: string; category: string; country?: string }[] = [
+  { term: "bongo flava", category: "Bongo", country: "TZ" },
+  { term: "bongo flava 2026", category: "Bongo · 2026", country: "TZ" },
+  { term: "Diamond Platnumz", category: "Bongo", country: "TZ" },
+  { term: "Harmonize", category: "Bongo", country: "TZ" },
+  { term: "Wasafi", category: "Bongo", country: "TZ" },
+  { term: "Ali Kiba", category: "Bongo", country: "TZ" },
+  { term: "Rayvanny", category: "Bongo", country: "TZ" },
+  { term: "Jux Tanzania", category: "Bongo", country: "TZ" },
+  { term: "gospel tanzania", category: "Dini", country: "TZ" },
+  { term: "injili", category: "Dini", country: "TZ" },
+  { term: "yesu swahili", category: "Dini", country: "TZ" },
+  { term: "christian worship swahili", category: "Dini" },
+  { term: "gospel music africa", category: "Dini" },
+  { term: "afrobeats 2026", category: "Afrobeats · 2026" },
+  { term: "amapiano 2026", category: "Amapiano · 2026" },
+  { term: "bongo 2025", category: "Bongo", country: "TZ" },
+  { term: "singeli", category: "Bongo", country: "TZ" },
+];
 
 export const EXTRA_APIS = {
   movie: {
@@ -59,6 +79,9 @@ export const EXTRA_APIS = {
     eliteplex: "https://eliteplex-api.vercel.app/api/series",
     tvmaze: "https://api.tvmaze.com/search/shows?q=drama",
   },
+  music: {
+    itunesSearch: "https://itunes.apple.com/search",
+  },
 };
 
 export type SeedItem = {
@@ -69,8 +92,82 @@ export type SeedItem = {
   description: string | null;
 };
 
+function mapItunesResults(
+  results: Record<string, unknown>[],
+  forcedCategory?: string
+): SeedItem[] {
+  return results.map((m) => {
+    const art = String(m.artworkUrl100 || "");
+    const year = String(m.releaseDate || "").slice(0, 4);
+    const genre = String(m.primaryGenreName || "");
+    let category = forcedCategory || genre || "Music";
+    // Auto-tag Dini from genre/name
+    const blob = `${m.trackName || ""} ${m.artistName || ""} ${genre}`.toLowerCase();
+    if (
+      /gospel|worship|christian|injili|yesu|praise|choir|religious|dini/.test(
+        blob
+      )
+    ) {
+      category = forcedCategory?.includes("Dini") ? forcedCategory : "Dini";
+    }
+    if (year === "2026" && !category.includes("2026")) {
+      category = `${category} · 2026`;
+    }
+    return {
+      title: String(m.trackName || m.collectionName || "Untitled"),
+      linkUrl: String(m.previewUrl || m.trackViewUrl || ""),
+      coverUrl: art ? art.replace("100x100", "600x600") : null,
+      category,
+      description: m.artistName
+        ? `${m.artistName}${year ? ` · ${year}` : ""}`
+        : null,
+    };
+  });
+}
+
+/** Fetch many music tracks from iTunes (Bongo + Dini + 2026) — no hard small limit */
+export async function fetchMusicCatalog(): Promise<SeedItem[]> {
+  const collected: SeedItem[] = [];
+  const seen = new Set<string>();
+
+  await Promise.all(
+    MUSIC_ITUNES_QUERIES.map(async (q) => {
+      try {
+        const params = new URLSearchParams({
+          term: q.term,
+          media: "music",
+          entity: "song",
+          limit: "50",
+        });
+        if (q.country) params.set("country", q.country);
+        const url = `https://itunes.apple.com/search?${params}`;
+        const res = await fetch(url, {
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "ETUZA-HUB/1.0",
+          },
+          next: { revalidate: 3600 },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const results = (data?.results || []) as Record<string, unknown>[];
+        for (const item of mapItunesResults(results, q.category)) {
+          if (!item.linkUrl || !item.title) continue;
+          const key = item.linkUrl.split("?")[0].toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          collected.push(item);
+        }
+      } catch (e) {
+        console.error("fetchMusicCatalog", q.term, e);
+      }
+    })
+  );
+
+  return collected;
+}
+
 export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
-  // TMDB movie list
   if (
     type === "movie" &&
     data &&
@@ -98,7 +195,6 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
     );
   }
 
-  // Modobo channels list
   if (
     type === "tv" &&
     data &&
@@ -107,7 +203,6 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
   ) {
     return ((data as { data: Record<string, unknown>[] }).data || [])
       .filter((c) => c.free === 1 && c.has_source)
-      .slice(0, 80)
       .map((c) => ({
         title: String(c.title || "Channel"),
         linkUrl: "",
@@ -121,7 +216,6 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
       }));
   }
 
-  // Radio Browser
   if (
     Array.isArray(data) &&
     data[0] &&
@@ -143,22 +237,11 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
     }));
   }
 
-  // iTunes
   const results = (data as { results?: Record<string, unknown>[] })?.results;
   if (Array.isArray(results) && results[0] && "trackId" in results[0]) {
-    return results.map((m) => {
-      const art = String(m.artworkUrl100 || "");
-      return {
-        title: String(m.trackName || m.collectionName || "Untitled"),
-        linkUrl: String(m.previewUrl || m.trackViewUrl || ""),
-        coverUrl: art ? art.replace("100x100", "600x600") : null,
-        category: String(m.primaryGenreName || type),
-        description: null,
-      };
-    });
+    return mapItunesResults(results);
   }
 
-  // TVmaze
   if (
     Array.isArray(data) &&
     data[0] &&
@@ -185,7 +268,6 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
     }));
   }
 
-  // FreeToGame
   if (
     Array.isArray(data) &&
     data[0] &&
@@ -208,7 +290,7 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
   }
 
   if (Array.isArray(data)) {
-    return (data as Record<string, unknown>[]).slice(0, 50).map((row, i) => ({
+    return (data as Record<string, unknown>[]).map((row, i) => ({
       title: String(row.title || row.name || `Item ${i + 1}`),
       linkUrl: String(
         row.linkUrl ||
@@ -234,6 +316,10 @@ export function normalizePublicApi(data: unknown, type: string): SeedItem[] {
 }
 
 export async function fetchPublicSeed(type: string): Promise<SeedItem[]> {
+  if (type === "music") {
+    return fetchMusicCatalog();
+  }
+
   const cfg = PUBLIC_API[type];
   if (!cfg?.url) return [];
   try {
@@ -246,9 +332,9 @@ export async function fetchPublicSeed(type: string): Promise<SeedItem[]> {
     });
     if (!res.ok) return [];
     const data = await res.json();
-    return normalizePublicApi(data, type)
-      .filter((i) => i.title && (i.linkUrl || type === "tv"))
-      .slice(0, 40);
+    return normalizePublicApi(data, type).filter(
+      (i) => i.title && (i.linkUrl || type === "tv")
+    );
   } catch (e) {
     console.error("fetchPublicSeed", type, e);
     return [];

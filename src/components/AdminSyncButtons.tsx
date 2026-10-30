@@ -1,14 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { RefreshCw, Film, Clapperboard, Layers, Download } from "lucide-react";
+import {
+  RefreshCw,
+  Film,
+  Clapperboard,
+  Layers,
+  Download,
+  Music,
+} from "lucide-react";
 
 export default function AdminSyncButtons() {
   const [loading, setLoading] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
 
-  async function runSync(scope: "movies" | "drama" | "all") {
+  async function runSync(scope: "movies" | "drama" | "music" | "all") {
     setLoading(scope);
     setMsg("");
     setError("");
@@ -22,20 +29,22 @@ export default function AdminSyncButtons() {
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Sync imeshindikana");
+      } else if (scope === "movies") {
+        setMsg(
+          `Movies ✓ +${data.added ?? data.moviesAdded ?? 0} mpya (jumla ${data.total ?? data.moviesTotal ?? "?"})`
+        );
+      } else if (scope === "drama") {
+        setMsg(
+          `Drama ✓ +${data.added ?? data.dramaAdded ?? 0} mpya (jumla ${data.total ?? data.dramaTotal ?? "?"})`
+        );
+      } else if (scope === "music") {
+        setMsg(
+          `Miziki ✓ +${data.added ?? 0} mpya (jumla ${data.total ?? "?"}) · Bongo/Dini/2026`
+        );
       } else {
-        if (scope === "movies") {
-          setMsg(
-            `Movies ✓ +${data.added ?? data.moviesAdded ?? 0} mpya (jumla ${data.total ?? data.moviesTotal ?? "?"})`
-          );
-        } else if (scope === "drama") {
-          setMsg(
-            `Drama ✓ +${data.added ?? data.dramaAdded ?? 0} mpya (jumla ${data.total ?? data.dramaTotal ?? "?"})`
-          );
-        } else {
-          setMsg(
-            `All ✓ Movies +${data.moviesAdded ?? 0}, Drama +${data.dramaAdded ?? 0}, TV live ${data.tvLive ?? 0}`
-          );
-        }
+        setMsg(
+          `All ✓ Movies +${data.moviesAdded ?? 0}, Drama +${data.dramaAdded ?? 0}, Music +${data.musicAdded ?? 0}, TV live ${data.tvLive ?? 0}`
+        );
       }
     } catch {
       setError("Tatizo la mtandao");
@@ -80,10 +89,8 @@ export default function AdminSyncButtons() {
         <h2 className="font-semibold">Sync / Scrape Content</h2>
       </div>
       <p className="text-sm text-slate-500 mb-4">
-        <strong>Sync Movies/Drama</strong> — TMDB + Elite (mpya).{" "}
-        <strong>Import All APIs</strong> — scrape API sources zote (movie,
-        drama, music, radio, game…) <em>bila kikomo</em>. Inaweza kuchukua dakika
-        1–3.
+        <strong>Sync Music</strong> — iTunes Bongo + Dini + 2026 (auto).{" "}
+        <strong>Import All APIs</strong> — sources zote bila kikomo.
       </p>
 
       <div className="flex flex-wrap gap-2">
@@ -109,19 +116,29 @@ export default function AdminSyncButtons() {
 
         <button
           type="button"
+          onClick={() => runSync("music")}
+          disabled={!!loading}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm font-semibold disabled:opacity-60 transition"
+        >
+          <Music className="w-4 h-4" />
+          {loading === "music" ? "Inapakia Miziki…" : "Sync Music"}
+        </button>
+
+        <button
+          type="button"
           onClick={() => runSync("all")}
           disabled={!!loading}
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold disabled:opacity-60 transition"
         >
           <Layers className="w-4 h-4" />
-          {loading === "all" ? "Inapakia All…" : "Sync All (TMDB)"}
+          {loading === "all" ? "Inapakia All…" : "Sync All"}
         </button>
 
         <button
           type="button"
           onClick={() => runImportAll()}
           disabled={!!loading}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm font-semibold disabled:opacity-60 transition"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-600 hover:bg-slate-500 text-white text-sm font-semibold disabled:opacity-60 transition"
         >
           <Download className="w-4 h-4" />
           {loading === "import-all"
