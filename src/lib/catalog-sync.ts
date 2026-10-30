@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { PINNED_CHANNELS, type IptvChannel } from "@/lib/iptv";
+import { syncNewMusic } from "@/lib/music-sync";
 
 const ELITE = "https://eliteplex-api.vercel.app";
-// Include current year content
 const MAX_PLAYABLE_YEAR = 2026;
 const TMDB_KEY =
   process.env.TMDB_API_KEY || "a0d71cffe2d6693d462af9e4f336bc06";
@@ -32,6 +32,8 @@ export type SyncReport = {
   moviesTotal: number;
   dramaAdded: number;
   dramaTotal: number;
+  musicAdded: number;
+  musicTotal: number;
   tvLive: number;
   tvDead: string[];
   newTitles: string[];
@@ -58,7 +60,6 @@ async function fetchElitePages(path: string, pages: number[]): Promise<EliteItem
   return out;
 }
 
-/** Fetch many movies from TMDB — more pages, no artificial small cap */
 async function fetchTmdbMovies(pages = 20): Promise<TmdbMovie[]> {
   const out: TmdbMovie[] = [];
   const endpoints = [
@@ -433,6 +434,7 @@ export async function getCachedLiveTvIds(): Promise<string[] | null> {
 export async function runCatalogSync(): Promise<SyncReport> {
   const movies = await syncNewMovies();
   const drama = await syncNewDrama();
+  const music = await syncNewMusic();
   const tv = await healthCheckTv();
   const newTitles = [...movies.titles, ...drama.titles].slice(0, 12);
   if (newTitles.length) await saveNewContentBanner(newTitles);
@@ -441,6 +443,8 @@ export async function runCatalogSync(): Promise<SyncReport> {
     moviesTotal: movies.total,
     dramaAdded: drama.added,
     dramaTotal: drama.total,
+    musicAdded: music.added,
+    musicTotal: music.total,
     tvLive: tv.live.length,
     tvDead: tv.dead,
     newTitles,

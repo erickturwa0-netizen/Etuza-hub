@@ -5,6 +5,7 @@ import {
   syncNewDrama,
   healthCheckTv,
 } from "@/lib/catalog-sync";
+import { syncNewMusic } from "@/lib/music-sync";
 import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export const maxDuration = 300;
 
 /**
  * POST /api/admin/sync
- * Body optional: { "scope": "all" | "movies" | "drama" | "tv" }
+ * Body optional: { "scope": "all" | "movies" | "drama" | "music" | "tv" }
  */
 export async function POST(req: NextRequest) {
   const secret = process.env.CRON_SECRET || process.env.ADMIN_SECRET || "";
@@ -62,6 +63,10 @@ export async function POST(req: NextRequest) {
       const r = await syncNewDrama();
       return NextResponse.json({ ok: true, scope, ...r });
     }
+    if (scope === "music") {
+      const r = await syncNewMusic();
+      return NextResponse.json({ ok: true, scope, ...r });
+    }
     if (scope === "tv") {
       const r = await healthCheckTv();
       return NextResponse.json({
@@ -85,7 +90,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET() {
   return NextResponse.json({
-    usage: "POST /api/admin/sync with { scope: all|movies|drama|tv }",
+    usage: "POST /api/admin/sync with { scope: all|movies|drama|music|tv }",
     auth: "admin session OR x-admin-secret / Bearer <CRON_SECRET>",
   });
 }
