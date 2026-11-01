@@ -12,9 +12,12 @@ import {
   Users,
   Clock,
   Clapperboard,
+  Bot,
+  MessageSquare,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import AdminSyncButtons from "@/components/AdminSyncButtons";
+import { ensureUserSchema } from "@/lib/db-migrate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -31,7 +34,6 @@ export default async function AdminDashboard() {
     viewsCount: number;
   }[] = [];
 
-  // Real DB counts (not capped at 200)
   let totalContent = 0;
   let publishedCount = 0;
   let draftCount = 0;
@@ -60,6 +62,11 @@ export default async function AdminDashboard() {
     title: string | null;
     minutesAgo: number;
   }[] = [];
+
+  let aiTotal = 0;
+  let aiUnique = 0;
+  let aiToday = 0;
+  let aiUsersLogged = 0;
 
   try {
     const [total, published, drafts, viewsAgg, typeGroups, recentRows] =
@@ -123,6 +130,33 @@ export default async function AdminDashboard() {
     console.error("admin presence", e);
   }
 
+  try {
+    await ensureUserSchema();
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const [total, today, sessions, logged] = await Promise.all([
+      prisma.aiUsage.count(),
+      prisma.aiUsage.count({ where: { createdAt: { gte: startOfDay } } }),
+      prisma.aiUsage.groupBy({
+        by: ["sessionId"],
+        _count: { _all: true },
+      }),
+      prisma.aiUsage.groupBy({
+        by: ["userId"],
+        where: { userId: { not: null } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    aiTotal = total;
+    aiToday = today;
+    aiUnique = sessions.length;
+    aiUsersLogged = logged.length;
+  } catch (e) {
+    console.error("admin ai stats", e);
+  }
+
   const stats = [
     { label: "Jumla ya Content", value: totalContent, icon: FileText },
     { label: "Published", value: publishedCount, icon: Eye },
@@ -168,6 +202,40 @@ export default async function AdminDashboard() {
       </div>
 
       <AdminSyncButtons />
+
+      {/* ETUZA AI usage */}
+      <div className="glass-card p-5 mb-6 border border-violet-500/20">
+        <div className="flex items-center gap-2 mb-4">
+          <Bot className="w-5 h-5 text-violet-400" />
+          <h2 className="font-semibold">ETUZA AI — matumizi</h2>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+            <MessageSquare className="w-4 h-4 mb-1 text-violet-400" />
+            <p className="text-xl font-bold">{aiTotal}</p>
+            <p className="text-[11px] text-slate-500">Jumla ya maswali</p>
+          </div>
+          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+            <Users className="w-4 h-4 mb-1 text-sky-400" />
+            <p className="text-xl font-bold">{aiUnique}</p>
+            <p className="text-[11px] text-slate-500">Watu (sessions)</p>
+          </div>
+          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+            <Users className="w-4 h-4 mb-1 text-emerald-400" />
+            <p className="text-xl font-bold">{aiUsersLogged}</p>
+            <p className="text-[11px] text-slate-500">Users walioingia</p>
+          </div>
+          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+            <Clock className="w-4 h-4 mb-1 text-amber-400" />
+            <p className="text-xl font-bold">{aiToday}</p>
+            <p className="text-[11px] text-slate-500">Leo</p>
+          </div>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-3">
+          Kila ujumbe unaorekodiwa (bila kuhifadhi maandishi ya swali) · session +
+          user aliyelogin
+        </p>
+      </div>
 
       {/* Catalog counts by type */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">

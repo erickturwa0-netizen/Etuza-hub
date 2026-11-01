@@ -3,7 +3,7 @@ import { ensureIpColumns } from "@/lib/ip-guard";
 
 let migrated = false;
 
-/** Ensure User points columns + PointLog exist (idempotent). */
+/** Ensure User points columns + PointLog + AiUsage exist (idempotent). */
 export async function ensureUserSchema() {
   if (migrated) return;
   try {
@@ -51,6 +51,40 @@ export async function ensureUserSchema() {
   try {
     await prisma.$executeRawUnsafe(
       `CREATE INDEX IF NOT EXISTS "PointLog_user_id_idx" ON "PointLog"(user_id)`
+    );
+  } catch {
+    /* ignore */
+  }
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "AiUsage" (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        user_id TEXT,
+        kind TEXT NOT NULL DEFAULT 'chat',
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+  } catch {
+    /* ignore */
+  }
+  try {
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "AiUsage_session_id_idx" ON "AiUsage"(session_id)`
+    );
+  } catch {
+    /* ignore */
+  }
+  try {
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "AiUsage_user_id_idx" ON "AiUsage"(user_id)`
+    );
+  } catch {
+    /* ignore */
+  }
+  try {
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "AiUsage_created_at_idx" ON "AiUsage"(created_at)`
     );
   } catch {
     /* ignore */

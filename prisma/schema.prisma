@@ -25,6 +25,7 @@ model User {
   paymentRequests  PaymentRequest[]
   accesses         UserAccess[]
   playbackReports  PlaybackReport[]
+  aiUsages         AiUsage[]
 
   @@map("User")
 }
@@ -41,6 +42,22 @@ model PointLog {
 
   @@index([userId])
   @@map("PointLog")
+}
+
+/** Every ETUZA AI message — for admin stats */
+model AiUsage {
+  id        String   @id @default(cuid())
+  sessionId String   @map("session_id")
+  userId    String?  @map("user_id")
+  kind      String   @default("chat") // chat | greeting | fallback
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("AiUsage")
 }
 
 model Content {

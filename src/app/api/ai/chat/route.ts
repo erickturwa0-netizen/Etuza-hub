@@ -1,34 +1,33 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { ensureUserSchema } from "@/lib/db-migrate";
+import { randomUUID } from "crypto";
 
 const ENDPOINT = "https://api.inceptionlabs.ai/v1/chat/completions";
 const MODEL = "mercury-3";
 
 const SYSTEM_BASE = `Wewe ni msaidizi rasmi wa ETUZA HUB (https://etuza-hub-v2.vercel.app) — Tanzania.
-Jibu kwa Kiswahili rahisi na SAHIHI. Kiingereza tu mteja akitaka.
+Jibu kwa Kiswahili rahisi, rafiki, na SAHIHI. Kiingereza tu mteja akitaka.
 
-=== SALAMU (LAZIMA) ===
-Ukipokea salamu (habari, hujambo, mambo, hi, hello, vipi, za asubuhi, n.k.) JIBU kwa urafiki.
-USIKATAE salamu. Usiseme "siwezi". Jibu mfano:
+=== SHERIA KUU (LAZIMA) ===
+1. JIBU kila swali kwa uwezo wako — USIKATAE bila sababu nzito.
+2. USISEME "Samahani, siwezi" au "I can't help" kwa maswali ya kawaida (movies, TV, radio, point, VPN, jinsi ya kutumia site).
+3. Kama huna data kamili, bado TOA msaada: elekeza kurasa (/movies, /tv, /music, /radio, /account) au ufafanuzi wa jinsi site inavyofanya kazi.
+4. Usizushe content isiyopo kwenye database — lakini unaweza kutoa msaada wa jumla.
 
-# HABARI!
+=== SALAMU ===
+Salamu (habari, hujambo, mambo, hi, hello…) → jibu kwa urafiki. Usikatae.
 
-Karibu *ETUZA HUB*. Unaweza kuniuliza kuhusu **movies**, **TV**, **radio**, **point** au **VPN**.
-
-=== MTINDO WA KUANDIKA (LAZIMA) ===
-Andika kwa UREMBO na MPANGO — usibana maneno pamoja.
-1. Weka **nafasi** kati ya sentensi na aya.
-2. Tumia Markdown: **bold**, *italic*, # titles, orodha -, links.
-3. Usibana maneno. Aya fupi + line breaks.
-
-=== CONTENT KUTOKA DATABASE ===
-Ukipata orodha hapa chini, tumia hiyo tu. Usizusha.
+=== MTINDO ===
+- Nafasi kati ya sentensi; Markdown: **bold**, *italic*, # titles, orodha -, links.
+- Aya fupi, wazi.
 
 === POINT ===
 Zinakatwa TU baada ya video kuanza. Ads: zima VPN kisha jaribu tena.
 
-=== SHERIA ===
-Usitoe cracking/secrets. Kama hujui, sema wazi.`;
+=== USALAMA ===
+Usitoe cracking, passwords za watu, au maelekezo ya uhalifu. Kwa mengine yote ya site — jibu.`;
 
 function isGreeting(message: string): boolean {
   const m = message.trim().toLowerCase().replace(/[!?.]+$/g, "");
@@ -63,10 +62,70 @@ Karibu **ETUZA HUB** 👋
 Naweza kukusaidia kuhusu:
 - **Movies** na **Tamthilia**
 - **TV channels** na **Radio**
+- **Miziki** na **Games**
 - **Point**, ads na **VPN**
 - Jinsi ya kutumia site
 
 *Uliza chochote* — niko hapa.`;
+
+/** Local helpful replies when API key missing or upstream fails */
+function localHelpReply(message: string): string {
+  const m = message.toLowerCase();
+  if (/point|poin|pointi/.test(m)) {
+    return `**Kuhusu Point**
+
+- Unapata point wakati wa **signup**, **invite**, na **ads**.
+- Point zinakatwa **baada ya video kuanza** (si kabla).
+- Ads hazifunguki? **Zima VPN** kisha jaribu tena.
+- Angalia akaunti yako: [/account](https://etuza-hub-v2.vercel.app/account)`;
+  }
+  if (/vpn/.test(m)) {
+    return `**VPN**
+
+Fungua sehemu ya VPN kwenye site au angalia content aina ya VPN kwenye Admin catalog.
+Kama unatafuta config, nenda kwenye kurasa za VPN zilizochapishwa kwenye hub.`;
+  }
+  if (/movie|filamu|sinema/.test(m)) {
+    return `**Movies**
+
+Tembelea: [/movies](https://etuza-hub-v2.vercel.app/movies)
+Unaweza kutafuta jina la filamu kwenye chat — nitatafuta kwenye database yetu.`;
+  }
+  if (/tv|channel|chanel/.test(m)) {
+    return `**TV Channels**
+
+Tembelea: [/tv](https://etuza-hub-v2.vercel.app/tv)
+Kuna maelfu ya channels — chagua group kisha play.`;
+  }
+  if (/radio/.test(m)) {
+    return `**Radio**
+
+Tembelea: [/radio](https://etuza-hub-v2.vercel.app/radio)`;
+  }
+  if (/music|miziki|nyimbo/.test(m)) {
+    return `**Miziki**
+
+Tembelea: [/music](https://etuza-hub-v2.vercel.app/music)
+Kuna tabs: Video, Bongo, Dini, 2026, Free MP3.`;
+  }
+  if (/tamthilia|drama|series/.test(m)) {
+    return `**Tamthilia / Drama**
+
+Tembelea: [/drama](https://etuza-hub-v2.vercel.app/drama) au sehemu ya drama kwenye site.`;
+  }
+  return `**Karibu ETUZA HUB**
+
+Naweza kukusaidia kuhusu movies, TV, radio, miziki, point na VPN.
+
+Jaribu:
+- [/movies](https://etuza-hub-v2.vercel.app/movies)
+- [/tv](https://etuza-hub-v2.vercel.app/tv)
+- [/music](https://etuza-hub-v2.vercel.app/music)
+- [/radio](https://etuza-hub-v2.vercel.app/radio)
+- [/account](https://etuza-hub-v2.vercel.app/account)
+
+Uliza swali tena kwa undani zaidi.`;
+}
 
 function extractSearchQuery(message: string): string | null {
   const m = message.trim();
@@ -137,12 +196,34 @@ async function searchContent(q: string) {
   }
 }
 
+async function logAiUsage(opts: {
+  sessionId: string;
+  userId?: string | null;
+  kind: string;
+}) {
+  try {
+    await ensureUserSchema();
+    await prisma.aiUsage.create({
+      data: {
+        sessionId: opts.sessionId.slice(0, 80),
+        userId: opts.userId || null,
+        kind: opts.kind,
+      },
+    });
+  } catch (e) {
+    // table may not exist yet on first deploy — ignore
+    console.error("ai usage log", e);
+  }
+}
+
 export async function POST(req: Request) {
   let message = "";
   let history: { role: string; content: string }[] = [];
+  let sessionId = "";
   try {
     const body = await req.json();
     message = String(body?.message || "").trim().slice(0, 2000);
+    sessionId = String(body?.sessionId || "").trim().slice(0, 80);
     if (Array.isArray(body?.history)) {
       history = body.history
         .filter(
@@ -164,18 +245,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Andika ujumbe" }, { status: 400 });
   }
 
+  if (!sessionId) sessionId = randomUUID();
+
+  let userId: string | null = null;
+  try {
+    const session = await getSession();
+    userId = session?.userId || null;
+  } catch {
+    /* ignore */
+  }
+
   // Always answer greetings even without API key
   if (isGreeting(message)) {
+    void logAiUsage({ sessionId, userId, kind: "greeting" });
     return NextResponse.json({ reply: GREETING_REPLY, searched: null });
   }
 
   const key = process.env.INCEPTION_API_KEY;
   if (!key) {
+    void logAiUsage({ sessionId, userId, kind: "fallback" });
     return NextResponse.json(
-      {
-        reply:
-          "**Samahani**\n\nAI haijasetiwa kikamilifu sasa (*INCEPTION_API_KEY*).\n\nBado naweza kukusaidia kwa mambo ya msingi ya site: **/movies**, **/tv**, **/radio**, point na VPN.",
-      },
+      { reply: localHelpReply(message), searched: null },
       { status: 200 }
     );
   }
@@ -193,9 +283,9 @@ export async function POST(req: Request) {
               `${i + 1}. **${h.title}** (${h.type})\n   https://etuza-hub-v2.vercel.app/watch/${h.id}`
           )
           .join("\n") +
-        "\n=== MWISHO ===\n";
+        "\n=== MWISHO ===\nTumia hii orodha. Usizushe vingine.";
     } else {
-      researchBlock = `\n\n=== DATABASE ===\nHakuna matokeo kwa "${q}". Usizusha.\n`;
+      researchBlock = `\n\n=== DATABASE ===\nHakuna matokeo kwa "${q}". Usizushe jina. Saidia kwa kurasa za site na jinsi ya kutafuta.\n`;
     }
   }
 
@@ -215,35 +305,48 @@ export async function POST(req: Request) {
           ...history,
           { role: "user", content: message },
         ],
-        temperature: 0.5,
-        max_tokens: 1200,
+        temperature: 0.55,
+        max_tokens: 1400,
       }),
     });
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       console.error("inception", res.status, data);
-      // Friendly fallback instead of hard error
+      void logAiUsage({ sessionId, userId, kind: "fallback" });
       return NextResponse.json({
-        reply:
-          "**Samahani**, sijaweza kufikia AI sasa.\n\nJaribu tena baadaye, au tembelea:\n- [Movies](https://etuza-hub-v2.vercel.app/movies)\n- [TV](https://etuza-hub-v2.vercel.app/tv)\n- [Radio](https://etuza-hub-v2.vercel.app/radio)",
+        reply: localHelpReply(message),
+        searched: q || null,
       });
     }
 
-    const reply =
+    let reply =
       data?.choices?.[0]?.message?.content ||
       data?.choices?.[0]?.text ||
-      "Samahani, sijapata jibu.";
+      "";
+    reply = String(reply).trim();
+
+    // If model still refuses with empty/samahani-only, use local help
+    const refuse =
+      !reply ||
+      /^(samahani[,.]?\s*)+$/i.test(reply) ||
+      /siwezi (kujibu|kusaidia|kutoa)/i.test(reply.slice(0, 120));
+    if (refuse) {
+      reply = localHelpReply(message);
+      void logAiUsage({ sessionId, userId, kind: "fallback" });
+    } else {
+      void logAiUsage({ sessionId, userId, kind: "chat" });
+    }
 
     return NextResponse.json({
-      reply: String(reply).trim(),
+      reply,
       searched: q || null,
     });
   } catch (e) {
     console.error("ai chat", e);
+    void logAiUsage({ sessionId, userId, kind: "fallback" });
     return NextResponse.json({
-      reply:
-        "**Tatizo la mtandao.**\n\nJaribu tena baada ya sekunde chache.",
+      reply: localHelpReply(message),
     });
   }
 }

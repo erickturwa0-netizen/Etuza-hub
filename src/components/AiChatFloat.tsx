@@ -5,10 +5,27 @@ import { MessageCircle, X, Send, Bot, Loader2 } from "lucide-react";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
+function getAiSessionId(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const k = "etuza_ai_sid";
+    let id = localStorage.getItem(k);
+    if (!id) {
+      id =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `s_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(k, id);
+    }
+    return id;
+  } catch {
+    return `s_${Date.now()}`;
+  }
+}
+
 /** Lightweight markdown → React (bold, italic, titles, lists, links, breaks) */
 function formatInline(text: string): ReactNode[] {
   const parts: ReactNode[] = [];
-  // **bold**, *italic*, `code`, [text](url)
   const re =
     /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)]+\))/g;
   let last = 0;
@@ -94,7 +111,6 @@ function FormattedMessage({ content }: { content: string }) {
       continue;
     }
 
-    // # Title / ## Subtitle
     if (/^#{1,3}\s+/.test(t)) {
       flushList();
       const level = (t.match(/^#+/) || ["#"])[0].length;
@@ -113,7 +129,6 @@ function FormattedMessage({ content }: { content: string }) {
       continue;
     }
 
-    // ALL CAPS short line as title
     if (
       t.length >= 3 &&
       t.length <= 48 &&
@@ -133,7 +148,6 @@ function FormattedMessage({ content }: { content: string }) {
       continue;
     }
 
-    // bullet list
     if (/^([-*•]|\d+[.)])\s+/.test(t)) {
       listBuf.push(t.replace(/^([-*•]|\d+[.)])\s+/, ""));
       continue;
@@ -159,11 +173,16 @@ export default function AiChatFloat() {
     {
       role: "assistant",
       content:
-        "**HABARI!**\n\nMimi ni msaidizi wa *ETUZA HUB*.\n\nUnaweza kuniuliza kuhusu:\n- Movies & Tamthilia\n- Radio & TV\n- VPN & Point\n- Jinsi ya kutumia site",
+        "**HABARI!**\n\nMimi ni msaidizi wa *ETUZA HUB*.\n\nUnaweza kuniuliza kuhusu:\n- Movies & Tamthilia\n- Radio & TV\n- Miziki & Games\n- VPN & Point\n- Jinsi ya kutumia site",
     },
   ]);
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const sessionIdRef = useRef("");
+
+  useEffect(() => {
+    sessionIdRef.current = getAiSessionId();
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -184,10 +203,16 @@ export default function AiChatFloat() {
         .filter((m) => m.role === "user" || m.role === "assistant")
         .slice(0, -1)
         .slice(-10);
+      if (!sessionIdRef.current) sessionIdRef.current = getAiSessionId();
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history }),
+        credentials: "include",
+        body: JSON.stringify({
+          message: text,
+          history,
+          sessionId: sessionIdRef.current,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -195,7 +220,7 @@ export default function AiChatFloat() {
           ...m,
           {
             role: "assistant",
-            content: data.error || "Samahani, sijaweza kujibu sasa.",
+            content: data.error || "Samahani, sijaweza kujibu sasa. Jaribu tena.",
           },
         ]);
       } else {
@@ -207,7 +232,11 @@ export default function AiChatFloat() {
     } catch {
       setMsgs((m) => [
         ...m,
-        { role: "assistant", content: "Tatizo la mtandao. Jaribu tena." },
+        {
+          role: "assistant",
+          content:
+            "Tatizo la mtandao. Jaribu tena.\n\nUnaweza pia tembelea /movies, /tv, /music, /radio.",
+        },
       ]);
     }
     setBusy(false);
