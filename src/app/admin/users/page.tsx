@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Users, Coins } from "lucide-react";
+import { Users, Coins, Calendar } from "lucide-react";
 
 type User = {
   id: string;
@@ -12,6 +12,46 @@ type User = {
   inviteCode: string | null;
   createdAt: string;
 };
+
+const MONTHS_SW = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "Mei",
+  "Jun",
+  "Jul",
+  "Ago",
+  "Sep",
+  "Okt",
+  "Nov",
+  "Des",
+];
+
+/** Tarehe kamili: siku, mwezi, mwaka (e.g. 15 Nov 2026) */
+function formatJoined(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const day = d.getDate();
+  const month = MONTHS_SW[d.getMonth()] ?? String(d.getMonth() + 1);
+  const year = d.getFullYear();
+  return `${day} ${month} ${year}`;
+}
+
+function formatJoinedFull(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  // tooltip: full local datetime
+  return d.toLocaleString("sw-TZ", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -133,7 +173,7 @@ export default function AdminUsersPage() {
             Hakuna users au huna ruhusa ya admin.
           </p>
         ) : (
-          <table className="w-full text-sm min-w-[720px]">
+          <table className="w-full text-sm min-w-[820px]">
             <thead>
               <tr className="border-b border-slate-800 text-left text-slate-500">
                 <th className="px-4 py-3 font-medium">Email</th>
@@ -144,6 +184,12 @@ export default function AdminUsersPage() {
                   </span>
                 </th>
                 <th className="px-4 py-3 font-medium">Invite</th>
+                <th className="px-4 py-3 font-medium">
+                  <span className="inline-flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-sky-400" />
+                    Alijiunga
+                  </span>
+                </th>
                 <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
@@ -204,6 +250,14 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-400 font-mono">
                     {u.inviteCode || "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className="text-xs text-sky-300/90 whitespace-nowrap"
+                      title={formatJoinedFull(u.createdAt)}
+                    >
+                      {formatJoined(u.createdAt)}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
