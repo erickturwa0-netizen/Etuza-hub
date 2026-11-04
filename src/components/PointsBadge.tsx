@@ -8,8 +8,8 @@ export default function PointsBadge() {
   const [points, setPoints] = useState<number | null>(null);
   const [logged, setLogged] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/auth/me")
+  function load() {
+    fetch("/api/auth/me", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d?.user) {
@@ -18,6 +18,27 @@ export default function PointsBadge() {
         }
       })
       .catch(() => {});
+  }
+
+  useEffect(() => {
+    load();
+
+    function onPoints(e: Event) {
+      const ce = e as CustomEvent<{ points?: number }>;
+      if (typeof ce.detail?.points === "number") {
+        setLogged(true);
+        setPoints(ce.detail.points);
+      } else {
+        load();
+      }
+    }
+
+    window.addEventListener("etuza-points", onPoints as EventListener);
+    window.addEventListener("focus", load);
+    return () => {
+      window.removeEventListener("etuza-points", onPoints as EventListener);
+      window.removeEventListener("focus", load);
+    };
   }, []);
 
   if (!logged) {

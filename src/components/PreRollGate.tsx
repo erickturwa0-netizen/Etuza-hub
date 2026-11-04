@@ -52,7 +52,17 @@ export function usePlaybackCharge() {
   return useContext(PlaybackChargeContext);
 }
 
-const AD_WAIT_SECONDS = Math.max(PRE_ROLL_SECONDS, 12);
+const AD_WAIT_SECONDS = Math.max(Number(PRE_ROLL_SECONDS) || 12, 12);
+
+function notifyPointsUpdated(points: number) {
+  try {
+    window.dispatchEvent(
+      new CustomEvent("etuza-points", { detail: { points } })
+    );
+  } catch {
+    /* ignore */
+  }
+}
 
 export default function PreRollGate({
   contentKey,
@@ -77,11 +87,20 @@ export default function PreRollGate({
   const [payOpen, setPayOpen] = useState(false);
   const [hasPaidAccess, setHasPaidAccess] = useState(false);
   const [charged, setCharged] = useState(false);
+  const [rewardDone, setRewardDone] = useState(false);
+
   const claimedRef = useRef(false);
+  const claimingRef = useRef(false);
+  const adEndAtRef = useRef(0);
+  const userRef = useRef<MeUser | null>(null);
 
   const contentId = contentKey.includes(":")
     ? contentKey.split(":").slice(1).join(":")
     : contentKey;
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   useEffect(() => {
     if (!enabled) {
@@ -174,82 +193,131 @@ export default function PreRollGate({
     if (ready && !adsOn && !payEnabled) setUnlocked(true);
   }, [ready, adsOn, payEnabled]);
 
-  const claimAdReward = useCallback(async () => {
-    if (claimedRef.current || busy) return;
-    if (!user) {
+  /** Award points automatically — no extra button */
+  const awardPointsAuto = useCallback(async () => {
+    if (claimedRef.current || claimingRef.current) return;
+    if (!userRef.current) {
       setMsg("Ingia kwanza ili upate point");
       return;
     }
-    claimedRef.current = true;
+
+    claimingRef.current = true;
     setBusy(true);
-    setMsg("Inaongeza point…");
+    setMsg("Inaongeza point kiotomatiki…");
+
     try {
       const res = await fetch("/api/points/reward-ad", {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
       });
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
+
       if (res.ok && typeof d.points === "number") {
         setPoints(d.points);
+        notifyPointsUpdated(d.points);
+
         if (d.awarded > 0) {
-          setMsg(`+${d.awarded} point zimeongezwa ✓`);
+          claimedRef.current = true;
+          setRewardDone(true);
+          setMsg(`+${d.awarded} point zimeongezwa kiotomatiki ✓`);
         } else if (d.cooldown) {
-          setMsg(d.message || `Subiri ${d.waitSec || 45}s kisha jaribu tena`);
-          claimedRef.current = false;
-        } else if (d.guest) {
-          setMsg("Ingia kwanza ili upate point");
-          claimedRef.current = false;
+          setMsg(
+            d.message ||
+              `Point zimeshalipwa hivi karibuni — subiri ${d.waitSec || 20}s`
+          );
+          // still mark done so we don't spam
+          claimedRef.current = true;
+          setRewardDone(true);
         } else {
-          setMsg(d.message || "Tayari");
+          setMsg(d.message || d.error || "Hakuna point zilizoongezwa");
+          claimedRef.current = false;
         }
+      } else if (res.status === 401 || d.guest) {
+        setMsg("Ingia kwanza ili upate point");
+        claimedRef.current = false;
       } else {
-        setMsg(d.error || "Imeshindikana");
+        setMsg(d.error || "Imeshindikana kuongeza point — jaribu tena");
         claimedRef.current = false;
       }
     } catch {
-      setMsg("Tatizo la mtandao — jaribu tena");
+      setMsg("Tatizo la mtandao — fungua tena tangazo");
       claimedRef.current = false;
     }
+
+    claimingRef.current = false;
     setBusy(false);
-  }, [busy, user]);
+  }, []);
 
+  // Reliable wall-clock countdown (works better across tab throttle)
   useEffect(() => {
-    if (!adOpened || adLeft <= 0) return;
-    const t = setTimeout(() => setAdLeft((n) => n - 1), 1000);
-    return () => clearTimeout(t);
-  }, [adOpened, adLeft]);
+    if (!adOpened || rewardDone) return;
+    if (!adEndAtRef.current) return;
 
-  useEffect(() => {
-    if (adOpened && adLeft === 0 && user && !claimedRef.current) {
-      void claimAdReward();
-    }
-  }, [adOpened, adLeft, user, claimAdReward]);
+    const tick = () => {
+      const remain = Math.max(
+        0,
+        Math.ceil((adEndAtRef.current - Date.now()) / 1000)
+      );
+      setAdLeft(remain);
+      if (remain <= 0) {
+        void awardPointsAuto();
+      }
+    };
 
+    tick();
+    const id = window.setInterval(tick, 250);
+    return () => window.clearInterval(id);
+  }, [adOpened, rewardDone, awardPointsAuto]);
+
+  // When user returns to this tab, if time is up — claim immediately
   useEffect(() => {
     if (!adOpened) return;
     function onVis() {
-      if (document.visibilityState === "visible" && adLeft > 3) {
-        setAdLeft(3);
-      }
+      if (document.visibilityState !== "visible") return;
+      if (!adEndAtRef.current) return;
+      const remain = Math.max(
+        0,
+        Math.ceil((adEndAtRef.current - Date.now()) / 1000)
+      );
+      setAdLeft(remain);
+      if (remain <= 0) void awardPointsAuto();
     }
     document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, [adOpened, adLeft]);
+    window.addEventListener("focus", onVis);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onVis);
+    };
+  }, [adOpened, awardPointsAuto]);
 
   function openAd() {
     if (!user) {
       setMsg("Ingia / jisajili kwanza ili upate point kutoka tangazo");
       return;
     }
+
     claimedRef.current = false;
+    claimingRef.current = false;
+    setRewardDone(false);
+
     const secs = AD_WAIT_SECONDS;
     setAdTotal(secs);
-    setAdOpened(true);
     setAdLeft(secs);
+    adEndAtRef.current = Date.now() + secs * 1000;
+    setAdOpened(true);
     setMsg(
-      `Tangazo limefunguka — subiri ${secs} sekunde, point zitaongezwa kiotomatiki`
+      `Tangazo limefunguka. Subiri ${secs} sekunde — point +${POINTS.AD_REWARD} zitaingia kiotomatiki.`
     );
-    window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
+
+    try {
+      window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
+    } catch {
+      // popup blocked — still run timer so points can award
+      setMsg(
+        `Ruhusu popup au fungua tangazo. Countdown ${secs}s inaendelea — point zitaingia kiotomatiki.`
+      );
+    }
   }
 
   function openPlayer() {
@@ -280,7 +348,10 @@ export default function PreRollGate({
       const d = await res.json();
       if (res.ok) {
         setCharged(true);
-        if (typeof d.points === "number") setPoints(d.points);
+        if (typeof d.points === "number") {
+          setPoints(d.points);
+          notifyPointsUpdated(d.points);
+        }
         if (typeof d.packagePoints === "number") setPkgPoints(d.packagePoints);
       }
     } catch {
@@ -361,12 +432,11 @@ export default function PreRollGate({
           </p>
         </div>
 
-        {/* Big countdown so users know remaining seconds */}
-        {adOpened && adLeft > 0 && (
+        {adOpened && !rewardDone && adLeft > 0 && (
           <div className="rounded-2xl border border-amber-500/50 bg-amber-500/10 p-4 text-center space-y-2">
             <div className="flex items-center justify-center gap-2 text-amber-200 text-xs font-medium uppercase tracking-wide">
               <Timer className="w-4 h-4" />
-              Subiri tangazo
+              Subiri — point zitaingia kiotomatiki
             </div>
             <p className="text-5xl font-black tabular-nums text-amber-300 leading-none">
               {adLeft}
@@ -376,12 +446,20 @@ export default function PreRollGate({
             </p>
             <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-amber-500 to-emerald-500 transition-all duration-1000 ease-linear"
+                className="h-full bg-gradient-to-r from-amber-500 to-emerald-500 transition-all duration-200 ease-linear"
                 style={{ width: `${adProgress}%` }}
               />
             </div>
             <p className="text-[11px] text-slate-400">
-              Rudi hapa baada ya tangazo — countdown inaendelea
+              Unaweza kurudi hapa — countdown inaendelea peke yake
+            </p>
+          </div>
+        )}
+
+        {rewardDone && (
+          <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-center">
+            <p className="text-sm font-semibold text-emerald-300">
+              Point zimeongezwa kiotomatiki ✓ · sasa una {points}
             </p>
           </div>
         )}
@@ -417,28 +495,16 @@ export default function PreRollGate({
           {adsOn && (
             <button
               type="button"
-              disabled={busy || (adOpened && adLeft > 0)}
+              disabled={busy || (adOpened && !rewardDone && adLeft > 0)}
               onClick={openAd}
               className="w-full py-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-100 text-sm font-medium inline-flex items-center justify-center gap-2 disabled:opacity-60"
             >
               <ExternalLink className="w-4 h-4" />
-              {adOpened && adLeft > 0
-                ? `Subiri ${adLeft} sekunde…`
-                : `Tazama tangazo (+${POINTS.AD_REWARD} point · ${AD_WAIT_SECONDS}s)`}
-            </button>
-          )}
-
-          {adOpened && user && adsOn && adLeft === 0 && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                claimedRef.current = false;
-                void claimAdReward();
-              }}
-              className="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold"
-            >
-              {busy ? "Inaongeza…" : `Pata +${POINTS.AD_REWARD} point sasa`}
+              {adOpened && !rewardDone && adLeft > 0
+                ? `Subiri ${adLeft} sekunde… (auto +${POINTS.AD_REWARD})`
+                : rewardDone
+                  ? `Tazama tangazo tena (+${POINTS.AD_REWARD})`
+                  : `Tazama tangazo (+${POINTS.AD_REWARD} point · ${AD_WAIT_SECONDS}s auto)`}
             </button>
           )}
 
