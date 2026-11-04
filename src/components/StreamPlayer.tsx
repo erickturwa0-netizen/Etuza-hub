@@ -211,7 +211,6 @@ export default function StreamPlayer({
 
   const onRealPlay = useCallback(() => {
     mark("ok");
-    // PreRollGate dedupes spend per contentKey (sessionStorage)
     void charge?.chargeOnPlay();
   }, [charge, mark]);
 
@@ -324,6 +323,11 @@ export default function StreamPlayer({
 
         {providers.length > 1 && (
           <div className="rounded-xl border border-slate-700 bg-slate-900/90 p-2.5 space-y-2">
+            <p className="text-[11px] sm:text-xs text-amber-200/95 leading-relaxed bg-amber-500/10 border border-amber-500/25 rounded-lg px-2.5 py-2">
+              <b className="text-amber-100">Video haichezi?</b> Bonyeza{" "}
+              <b className="text-white">Badilisha server</b> au chagua namba
+              nyingine hapa chini hadi ipate kucheza.
+            </p>
             <div className="flex items-center gap-2 text-xs text-slate-400">
               <Server className="w-3.5 h-3.5 text-violet-400" />
               <span>
@@ -381,7 +385,12 @@ export default function StreamPlayer({
             </div>
           </div>
         )}
-        {error && <p className="text-sm text-amber-300">{error}</p>}
+        {error && (
+          <p className="text-sm text-amber-300">
+            {error}
+            {providers.length > 1 ? " — jaribu Badilisha server." : ""}
+          </p>
+        )}
       </div>
     );
   }
@@ -422,7 +431,12 @@ export default function StreamPlayer({
             </button>
           )}
         </div>
-        {error && <p className="text-sm text-amber-300">{error}</p>}
+        {error && (
+          <p className="text-sm text-amber-300">
+            {error}
+            {providers.length > 1 ? " — jaribu Badilisha server." : ""}
+          </p>
+        )}
       </div>
     );
   }
