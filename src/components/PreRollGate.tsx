@@ -17,6 +17,9 @@ import {
   CreditCard,
   Gift,
   Timer,
+  RefreshCw,
+  Coins,
+  X,
 } from "lucide-react";
 import {
   PRE_ROLL_AD_URL,
@@ -88,6 +91,8 @@ export default function PreRollGate({
   const [hasPaidAccess, setHasPaidAccess] = useState(false);
   const [charged, setCharged] = useState(false);
   const [rewardDone, setRewardDone] = useState(false);
+  const [reloadPopup, setReloadPopup] = useState(false);
+  const [awardedAmt, setAwardedAmt] = useState(0);
 
   const claimedRef = useRef(false);
   const claimingRef = useRef(false);
@@ -193,7 +198,6 @@ export default function PreRollGate({
     if (ready && !adsOn && !payEnabled) setUnlocked(true);
   }, [ready, adsOn, payEnabled]);
 
-  /** Award points automatically — no extra button */
   const awardPointsAuto = useCallback(async () => {
     if (claimedRef.current || claimingRef.current) return;
     if (!userRef.current) {
@@ -220,15 +224,18 @@ export default function PreRollGate({
         if (d.awarded > 0) {
           claimedRef.current = true;
           setRewardDone(true);
+          setAwardedAmt(d.awarded);
           setMsg(`+${d.awarded} point zimeongezwa kiotomatiki ✓`);
+          setReloadPopup(true);
         } else if (d.cooldown) {
           setMsg(
             d.message ||
               `Point zimeshalipwa hivi karibuni — subiri ${d.waitSec || 20}s`
           );
-          // still mark done so we don't spam
           claimedRef.current = true;
           setRewardDone(true);
+          setAwardedAmt(0);
+          setReloadPopup(true);
         } else {
           setMsg(d.message || d.error || "Hakuna point zilizoongezwa");
           claimedRef.current = false;
@@ -249,7 +256,6 @@ export default function PreRollGate({
     setBusy(false);
   }, []);
 
-  // Reliable wall-clock countdown (works better across tab throttle)
   useEffect(() => {
     if (!adOpened || rewardDone) return;
     if (!adEndAtRef.current) return;
@@ -270,7 +276,6 @@ export default function PreRollGate({
     return () => window.clearInterval(id);
   }, [adOpened, rewardDone, awardPointsAuto]);
 
-  // When user returns to this tab, if time is up — claim immediately
   useEffect(() => {
     if (!adOpened) return;
     function onVis() {
@@ -300,6 +305,8 @@ export default function PreRollGate({
     claimedRef.current = false;
     claimingRef.current = false;
     setRewardDone(false);
+    setReloadPopup(false);
+    setAwardedAmt(0);
 
     const secs = AD_WAIT_SECONDS;
     setAdTotal(secs);
@@ -313,7 +320,6 @@ export default function PreRollGate({
     try {
       window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
     } catch {
-      // popup blocked — still run timer so points can award
       setMsg(
         `Ruhusu popup au fungua tangazo. Countdown ${secs}s inaendelea — point zitaingia kiotomatiki.`
       );
@@ -372,6 +378,14 @@ export default function PreRollGate({
         );
       });
     } else setMsg(`Code: ${code}`);
+  }
+
+  function reloadPage() {
+    try {
+      window.location.reload();
+    } catch {
+      window.location.href = window.location.href;
+    }
   }
 
   if (!ready) {
@@ -450,17 +464,22 @@ export default function PreRollGate({
                 style={{ width: `${adProgress}%` }}
               />
             </div>
-            <p className="text-[11px] text-slate-400">
-              Unaweza kurudi hapa — countdown inaendelea peke yake
-            </p>
           </div>
         )}
 
         {rewardDone && (
-          <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-center">
+          <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-center space-y-2">
             <p className="text-sm font-semibold text-emerald-300">
-              Point zimeongezwa kiotomatiki ✓ · sasa una {points}
+              Point zimeongezwa ✓ · sasa una {points}
             </p>
+            <button
+              type="button"
+              onClick={reloadPage}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh page
+            </button>
           </div>
         )}
 
@@ -541,6 +560,69 @@ export default function PreRollGate({
           )}
         </div>
       </div>
+
+      {/* Popup: refresh page to see new points */}
+      {reloadPopup && (
+        <div
+          className="fixed inset-0 z-[100050] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setReloadPopup(false)}
+            aria-label="Funga"
+          />
+          <div className="relative w-full max-w-sm rounded-3xl border border-emerald-500/40 bg-gradient-to-b from-slate-900 to-black p-6 shadow-2xl shadow-emerald-900/40 text-center space-y-4">
+            <button
+              type="button"
+              onClick={() => setReloadPopup(false)}
+              className="absolute top-3 right-3 p-1.5 rounded-full bg-slate-800 text-slate-400"
+              aria-label="Funga"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-emerald-600 flex items-center justify-center shadow-lg">
+              <Coins className="w-8 h-8 text-white" />
+            </div>
+
+            <div>
+              <h2 className="text-xl font-black text-white">
+                {awardedAmt > 0
+                  ? `+${awardedAmt} Point!`
+                  : "Point zimesasishwa"}
+              </h2>
+              <p className="text-sm text-slate-300 mt-2 leading-relaxed">
+                Point zako mpya:{" "}
+                <span className="text-amber-300 font-bold text-lg">{points}</span>
+              </p>
+              <p className="text-sm text-slate-400 mt-2">
+                <b className="text-white">Refresh / Reload</b> page ili uone
+                point zako mpya kwenye badge na account.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={reloadPage}
+              className="w-full inline-flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-900/40"
+            >
+              <RefreshCw className="w-5 h-5" />
+              Refresh page sasa
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setReloadPopup(false)}
+              className="w-full py-2 text-xs text-slate-500"
+            >
+              Baadaye
+            </button>
+          </div>
+        </div>
+      )}
 
       <PaywallDialog
         contentId={contentId}
