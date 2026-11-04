@@ -2,23 +2,29 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { POINTS } from "@/lib/points";
+import { ensureUserSchema } from "@/lib/db-migrate";
 
 /** Spend points — package bonus first, then normal points */
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Login required", code: "AUTH" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Login required", code: "AUTH" },
+      { status: 401 }
+    );
   }
 
   let contentKey = "";
   try {
     const body = await req.json();
-    contentKey = String(body?.contentKey || "").slice(0, 80);
+    contentKey = String(body?.contentKey || "").slice(0, 120);
   } catch {
     /* ignore */
   }
 
   try {
+    await ensureUserSchema();
+
     const user = await prisma.user.findUnique({
       where: { id: session.userId },
       select: {
@@ -51,16 +57,19 @@ export async function POST(req: Request) {
         ? user.packagePoints
         : 0;
 
-    // Expired package points → clear
     if (
       (user.packagePoints || 0) > 0 &&
       user.packagePointsExpiresAt &&
       user.packagePointsExpiresAt <= now
     ) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { packagePoints: 0, packagePointsExpiresAt: null },
-      });
+      try {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { packagePoints: 0, packagePointsExpiresAt: null },
+        });
+      } catch {
+        /* ignore */
+      }
       pkg = 0;
     }
 
@@ -84,14 +93,18 @@ export async function POST(req: Request) {
         data: { packagePoints: { decrement: POINTS.WATCH_COST } },
         select: { points: true, packagePoints: true },
       });
-      await prisma.pointLog.create({
-        data: {
-          userId: user.id,
-          amount: -POINTS.WATCH_COST,
-          reason: "watch_spend_package",
-          meta: contentKey || null,
-        },
-      });
+      try {
+        await prisma.pointLog.create({
+          data: {
+            userId: user.id,
+            amount: -POINTS.WATCH_COST,
+            reason: "watch_spend_package",
+            meta: contentKey || null,
+          },
+        });
+      } catch (e) {
+        console.error("spend log package", e);
+      }
       return NextResponse.json({
         ok: true,
         points: updated.points,
@@ -106,14 +119,18 @@ export async function POST(req: Request) {
       select: { points: true, packagePoints: true },
     });
 
-    await prisma.pointLog.create({
-      data: {
-        userId: user.id,
-        amount: -POINTS.WATCH_COST,
-        reason: "watch_spend",
-        meta: contentKey || null,
-      },
-    });
+    try {
+      await prisma.pointLog.create({
+        data: {
+          userId: user.id,
+          amount: -POINTS.WATCH_COST,
+          reason: "watch_spend",
+          meta: contentKey || null,
+        },
+      });
+    } catch (e) {
+      console.error("spend log", e);
+    }
 
     return NextResponse.json({
       ok: true,

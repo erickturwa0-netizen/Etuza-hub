@@ -57,6 +57,10 @@ export function usePlaybackCharge() {
 
 const AD_WAIT_SECONDS = Math.max(Number(PRE_ROLL_SECONDS) || 12, 12);
 
+function spentKey(contentKey: string) {
+  return `etuza_spent_${contentKey}`;
+}
+
 function notifyPointsUpdated(points: number) {
   try {
     window.dispatchEvent(
@@ -98,6 +102,7 @@ export default function PreRollGate({
   const claimingRef = useRef(false);
   const adEndAtRef = useRef(0);
   const userRef = useRef<MeUser | null>(null);
+  const chargingRef = useRef(false);
 
   const contentId = contentKey.includes(":")
     ? contentKey.split(":").slice(1).join(":")
@@ -150,6 +155,9 @@ export default function PreRollGate({
           if (sessionStorage.getItem(preRollStorageKey(contentKey)) === "1") {
             if (!cancelled) setUnlocked(true);
           }
+          if (sessionStorage.getItem(spentKey(contentKey)) === "1") {
+            if (!cancelled) setCharged(true);
+          }
         } catch {
           /* ignore */
         }
@@ -188,6 +196,8 @@ export default function PreRollGate({
       } catch {
         /* ignore */
       }
+      // Deduct as soon as player unlocks
+      void chargeOnPlayRef.current?.();
       return;
     }
     const t = setTimeout(() => setLeft((n) => n - 1), 1000);
@@ -197,6 +207,77 @@ export default function PreRollGate({
   useEffect(() => {
     if (ready && !adsOn && !payEnabled) setUnlocked(true);
   }, [ready, adsOn, payEnabled]);
+
+  const chargeOnPlay = useCallback(async () => {
+    if (hasPaidAccess) return;
+    if (userRef.current?.role === "admin") return;
+
+    try {
+      if (sessionStorage.getItem(spentKey(contentKey)) === "1") {
+        setCharged(true);
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    if (charged || chargingRef.current) return;
+    chargingRef.current = true;
+
+    try {
+      const res = await fetch("/api/points/spend", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contentKey }),
+      });
+      const d = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        setCharged(true);
+        try {
+          sessionStorage.setItem(spentKey(contentKey), "1");
+        } catch {
+          /* ignore */
+        }
+        if (typeof d.points === "number") {
+          setPoints(d.points);
+          notifyPointsUpdated(d.points);
+        }
+        if (typeof d.packagePoints === "number") {
+          setPkgPoints(d.packagePoints);
+        }
+        if (d.spent > 0) {
+          setMsg(`−${d.spent} point (umetazama)`);
+        }
+      } else if (d.code === "NO_POINTS") {
+        setMsg("Point zimeisha — tazama tangazo");
+        setUnlocked(false);
+        try {
+          sessionStorage.removeItem(preRollStorageKey(contentKey));
+        } catch {
+          /* ignore */
+        }
+      } else if (res.status === 401) {
+        setMsg("Ingia kwanza");
+      }
+    } catch {
+      /* network — allow retry */
+    } finally {
+      chargingRef.current = false;
+    }
+  }, [charged, hasPaidAccess, contentKey]);
+
+  const chargeOnPlayRef = useRef(chargeOnPlay);
+  useEffect(() => {
+    chargeOnPlayRef.current = chargeOnPlay;
+  }, [chargeOnPlay]);
+
+  // When already unlocked on load, charge once player mounts
+  useEffect(() => {
+    if (!ready || !unlocked || hasPaidAccess) return;
+    void chargeOnPlay();
+  }, [ready, unlocked, hasPaidAccess, chargeOnPlay]);
 
   const awardPointsAuto = useCallback(async () => {
     if (claimedRef.current || claimingRef.current) return;
@@ -266,9 +347,7 @@ export default function PreRollGate({
         Math.ceil((adEndAtRef.current - Date.now()) / 1000)
       );
       setAdLeft(remain);
-      if (remain <= 0) {
-        void awardPointsAuto();
-      }
+      if (remain <= 0) void awardPointsAuto();
     };
 
     tick();
@@ -321,7 +400,7 @@ export default function PreRollGate({
       window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
     } catch {
       setMsg(
-        `Ruhusu popup au fungua tangazo. Countdown ${secs}s inaendelea — point zitaingia kiotomatiki.`
+        `Ruhusu popup. Countdown ${secs}s inaendelea — point zitaingia kiotomatiki.`
       );
     }
   }
@@ -332,6 +411,10 @@ export default function PreRollGate({
       setUnlocked(true);
       return;
     }
+    if (!user) {
+      setMsg("Ingia kwanza");
+      return;
+    }
     const total = points + pkgPoints;
     if (total < POINTS.WATCH_COST) {
       setMsg("Point hazitoshi — tazama tangazo, alika au lipia");
@@ -340,30 +423,6 @@ export default function PreRollGate({
     setCounting(true);
     setLeft(Math.min(PRE_ROLL_SECONDS, 2));
   }
-
-  const chargeOnPlay = useCallback(async () => {
-    if (charged || hasPaidAccess) return;
-    if (user?.role === "admin") return;
-    try {
-      const res = await fetch("/api/points/spend", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contentKey }),
-      });
-      const d = await res.json();
-      if (res.ok) {
-        setCharged(true);
-        if (typeof d.points === "number") {
-          setPoints(d.points);
-          notifyPointsUpdated(d.points);
-        }
-        if (typeof d.packagePoints === "number") setPkgPoints(d.packagePoints);
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [charged, hasPaidAccess, user?.role, contentKey]);
 
   function copyInvite() {
     const code = user?.inviteCode || "";
@@ -442,7 +501,7 @@ export default function PreRollGate({
             </p>
           )}
           <p className="text-[11px] text-slate-500">
-            Point zitakatwa tu baada ya video/audio kuanza kucheza
+            Point −{POINTS.WATCH_COST} zitakatwa unapoanza kutazama
           </p>
         </div>
 
@@ -507,7 +566,7 @@ export default function PreRollGate({
               <Play className="w-4 h-4" />
               {counting
                 ? `Subiri ${left} sekunde…`
-                : `Tazama (point −${POINTS.WATCH_COST} ikicheza)`}
+                : `Tazama (−${POINTS.WATCH_COST} point)`}
             </button>
           )}
 
@@ -561,7 +620,6 @@ export default function PreRollGate({
         </div>
       </div>
 
-      {/* Popup: refresh page to see new points */}
       {reloadPopup && (
         <div
           className="fixed inset-0 z-[100050] flex items-center justify-center p-4"
@@ -600,14 +658,14 @@ export default function PreRollGate({
               </p>
               <p className="text-sm text-slate-400 mt-2">
                 <b className="text-white">Refresh / Reload</b> page ili uone
-                point zako mpya kwenye badge na account.
+                point zako mpya.
               </p>
             </div>
 
             <button
               type="button"
               onClick={reloadPage}
-              className="w-full inline-flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-900/40"
+              className="w-full inline-flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm"
             >
               <RefreshCw className="w-5 h-5" />
               Refresh page sasa
