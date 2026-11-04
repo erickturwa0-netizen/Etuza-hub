@@ -78,8 +78,6 @@ export default function PreRollGate({
   enabled = true,
 }: Props) {
   const [unlocked, setUnlocked] = useState(!enabled);
-  const [counting, setCounting] = useState(false);
-  const [left, setLeft] = useState(PRE_ROLL_SECONDS);
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<MeUser | null>(null);
   const [points, setPoints] = useState(0);
@@ -152,11 +150,11 @@ export default function PreRollGate({
         }
 
         try {
-          if (sessionStorage.getItem(preRollStorageKey(contentKey)) === "1") {
-            if (!cancelled) setUnlocked(true);
-          }
           if (sessionStorage.getItem(spentKey(contentKey)) === "1") {
-            if (!cancelled) setCharged(true);
+            if (!cancelled) {
+              setCharged(true);
+              setUnlocked(true);
+            }
           }
         } catch {
           /* ignore */
@@ -187,42 +185,28 @@ export default function PreRollGate({
   }, [contentKey, contentId, enabled]);
 
   useEffect(() => {
-    if (!counting) return;
-    if (left <= 0) {
-      setCounting(false);
-      setUnlocked(true);
-      try {
-        sessionStorage.setItem(preRollStorageKey(contentKey), "1");
-      } catch {
-        /* ignore */
-      }
-      // Deduct as soon as player unlocks
-      void chargeOnPlayRef.current?.();
-      return;
-    }
-    const t = setTimeout(() => setLeft((n) => n - 1), 1000);
-    return () => clearTimeout(t);
-  }, [counting, left, contentKey]);
-
-  useEffect(() => {
     if (ready && !adsOn && !payEnabled) setUnlocked(true);
   }, [ready, adsOn, payEnabled]);
 
-  const chargeOnPlay = useCallback(async () => {
-    if (hasPaidAccess) return;
-    if (userRef.current?.role === "admin") return;
+  /** Deduct points — only once per contentKey per browser session */
+  const doSpend = useCallback(async (): Promise<boolean> => {
+    if (hasPaidAccess) return true;
 
     try {
       if (sessionStorage.getItem(spentKey(contentKey)) === "1") {
         setCharged(true);
-        return;
+        return true;
       }
     } catch {
       /* ignore */
     }
 
-    if (charged || chargingRef.current) return;
+    if (charged) return true;
+    if (chargingRef.current) return false;
+
     chargingRef.current = true;
+    setBusy(true);
+    setMsg("Inakatwa point…");
 
     try {
       const res = await fetch("/api/points/spend", {
@@ -233,51 +217,49 @@ export default function PreRollGate({
       });
       const d = await res.json().catch(() => ({}));
 
-      if (res.ok) {
+      if (res.ok && typeof d.points === "number") {
         setCharged(true);
+        setPoints(d.points);
+        notifyPointsUpdated(d.points);
+        if (typeof d.packagePoints === "number") setPkgPoints(d.packagePoints);
         try {
           sessionStorage.setItem(spentKey(contentKey), "1");
+          sessionStorage.setItem(preRollStorageKey(contentKey), "1");
         } catch {
           /* ignore */
-        }
-        if (typeof d.points === "number") {
-          setPoints(d.points);
-          notifyPointsUpdated(d.points);
-        }
-        if (typeof d.packagePoints === "number") {
-          setPkgPoints(d.packagePoints);
         }
         if (d.spent > 0) {
-          setMsg(`−${d.spent} point (umetazama)`);
+          setMsg(`−${d.spent} point zimekatwa · baki ${d.points}`);
+        } else {
+          setMsg(`Point: ${d.points}`);
         }
-      } else if (d.code === "NO_POINTS") {
+        chargingRef.current = false;
+        setBusy(false);
+        return true;
+      }
+
+      if (d.code === "NO_POINTS") {
         setMsg("Point zimeisha — tazama tangazo");
-        setUnlocked(false);
-        try {
-          sessionStorage.removeItem(preRollStorageKey(contentKey));
-        } catch {
-          /* ignore */
-        }
+        setPoints(typeof d.points === "number" ? d.points : points);
       } else if (res.status === 401) {
         setMsg("Ingia kwanza");
+      } else {
+        setMsg(d.error || "Imeshindikana kukata point");
       }
-    } catch {
-      /* network — allow retry */
-    } finally {
       chargingRef.current = false;
+      setBusy(false);
+      return false;
+    } catch {
+      setMsg("Tatizo la mtandao — jaribu tena");
+      chargingRef.current = false;
+      setBusy(false);
+      return false;
     }
-  }, [charged, hasPaidAccess, contentKey]);
+  }, [hasPaidAccess, charged, contentKey, points]);
 
-  const chargeOnPlayRef = useRef(chargeOnPlay);
-  useEffect(() => {
-    chargeOnPlayRef.current = chargeOnPlay;
-  }, [chargeOnPlay]);
-
-  // When already unlocked on load, charge once player mounts
-  useEffect(() => {
-    if (!ready || !unlocked || hasPaidAccess) return;
-    void chargeOnPlay();
-  }, [ready, unlocked, hasPaidAccess, chargeOnPlay]);
+  const chargeOnPlay = useCallback(async () => {
+    await doSpend();
+  }, [doSpend]);
 
   const awardPointsAuto = useCallback(async () => {
     if (claimedRef.current || claimingRef.current) return;
@@ -306,7 +288,7 @@ export default function PreRollGate({
           claimedRef.current = true;
           setRewardDone(true);
           setAwardedAmt(d.awarded);
-          setMsg(`+${d.awarded} point zimeongezwa kiotomatiki ✓`);
+          setMsg(`+${d.awarded} point zimeongezwa ✓`);
           setReloadPopup(true);
         } else if (d.cooldown) {
           setMsg(
@@ -325,11 +307,11 @@ export default function PreRollGate({
         setMsg("Ingia kwanza ili upate point");
         claimedRef.current = false;
       } else {
-        setMsg(d.error || "Imeshindikana kuongeza point — jaribu tena");
+        setMsg(d.error || "Imeshindikana kuongeza point");
         claimedRef.current = false;
       }
     } catch {
-      setMsg("Tatizo la mtandao — fungua tena tangazo");
+      setMsg("Tatizo la mtandao");
       claimedRef.current = false;
     }
 
@@ -393,21 +375,20 @@ export default function PreRollGate({
     adEndAtRef.current = Date.now() + secs * 1000;
     setAdOpened(true);
     setMsg(
-      `Tangazo limefunguka. Subiri ${secs} sekunde — point +${POINTS.AD_REWARD} zitaingia kiotomatiki.`
+      `Tangazo limefunguka. Subiri ${secs}s — +${POINTS.AD_REWARD} point auto.`
     );
 
     try {
       window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
     } catch {
-      setMsg(
-        `Ruhusu popup. Countdown ${secs}s inaendelea — point zitaingia kiotomatiki.`
-      );
+      setMsg(`Ruhusu popup. Countdown ${secs}s inaendelea.`);
     }
   }
 
-  function openPlayer() {
+  /** CRITICAL: spend FIRST, only then unlock player */
+  async function openPlayer() {
     setMsg("");
-    if (hasPaidAccess || user?.role === "admin") {
+    if (hasPaidAccess) {
       setUnlocked(true);
       return;
     }
@@ -420,8 +401,11 @@ export default function PreRollGate({
       setMsg("Point hazitoshi — tazama tangazo, alika au lipia");
       return;
     }
-    setCounting(true);
-    setLeft(Math.min(PRE_ROLL_SECONDS, 2));
+
+    const ok = await doSpend();
+    if (ok) {
+      setUnlocked(true);
+    }
   }
 
   function copyInvite() {
@@ -501,7 +485,7 @@ export default function PreRollGate({
             </p>
           )}
           <p className="text-[11px] text-slate-500">
-            Point −{POINTS.WATCH_COST} zitakatwa unapoanza kutazama
+            Point −{POINTS.WATCH_COST} zitakatwa mara moja unapobonyeza Tazama
           </p>
         </div>
 
@@ -515,7 +499,7 @@ export default function PreRollGate({
               {adLeft}
             </p>
             <p className="text-sm text-amber-100/90">
-              sekunde zimebaki · kisha +{POINTS.AD_REWARD} point
+              sekunde · kisha +{POINTS.AD_REWARD} point
             </p>
             <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
               <div
@@ -542,30 +526,21 @@ export default function PreRollGate({
           </div>
         )}
 
-        {counting && left > 0 && (
-          <div className="rounded-2xl border border-violet-500/40 bg-violet-500/10 p-3 text-center">
-            <p className="text-3xl font-black tabular-nums text-violet-200">
-              {left}
-            </p>
-            <p className="text-xs text-slate-400">sekunde kabla ya kucheza…</p>
-          </div>
-        )}
-
         {msg && (
           <p className="text-xs text-center text-emerald-400 font-medium">{msg}</p>
         )}
 
         <div className="grid gap-2">
-          {user && adsOn && (
+          {user && (
             <button
               type="button"
-              disabled={busy || counting || totalSpendable < POINTS.WATCH_COST}
-              onClick={openPlayer}
+              disabled={busy || totalSpendable < POINTS.WATCH_COST}
+              onClick={() => void openPlayer()}
               className="w-full py-3 rounded-xl bg-violet-600 text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2"
             >
               <Play className="w-4 h-4" />
-              {counting
-                ? `Subiri ${left} sekunde…`
+              {busy
+                ? "Inakatwa point…"
                 : `Tazama (−${POINTS.WATCH_COST} point)`}
             </button>
           )}
@@ -579,10 +554,10 @@ export default function PreRollGate({
             >
               <ExternalLink className="w-4 h-4" />
               {adOpened && !rewardDone && adLeft > 0
-                ? `Subiri ${adLeft} sekunde… (auto +${POINTS.AD_REWARD})`
+                ? `Subiri ${adLeft}s… (auto +${POINTS.AD_REWARD})`
                 : rewardDone
                   ? `Tazama tangazo tena (+${POINTS.AD_REWARD})`
-                  : `Tazama tangazo (+${POINTS.AD_REWARD} point · ${AD_WAIT_SECONDS}s auto)`}
+                  : `Tazama tangazo (+${POINTS.AD_REWARD} point · ${AD_WAIT_SECONDS}s)`}
             </button>
           )}
 
@@ -632,51 +607,38 @@ export default function PreRollGate({
             onClick={() => setReloadPopup(false)}
             aria-label="Funga"
           />
-          <div className="relative w-full max-w-sm rounded-3xl border border-emerald-500/40 bg-gradient-to-b from-slate-900 to-black p-6 shadow-2xl shadow-emerald-900/40 text-center space-y-4">
+          <div className="relative w-full max-w-sm rounded-3xl border border-emerald-500/40 bg-gradient-to-b from-slate-900 to-black p-6 shadow-2xl text-center space-y-4">
             <button
               type="button"
               onClick={() => setReloadPopup(false)}
               className="absolute top-3 right-3 p-1.5 rounded-full bg-slate-800 text-slate-400"
-              aria-label="Funga"
             >
               <X className="w-4 h-4" />
             </button>
-
-            <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-emerald-600 flex items-center justify-center shadow-lg">
+            <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-emerald-600 flex items-center justify-center">
               <Coins className="w-8 h-8 text-white" />
             </div>
-
             <div>
               <h2 className="text-xl font-black text-white">
                 {awardedAmt > 0
                   ? `+${awardedAmt} Point!`
                   : "Point zimesasishwa"}
               </h2>
-              <p className="text-sm text-slate-300 mt-2 leading-relaxed">
-                Point zako mpya:{" "}
+              <p className="text-sm text-slate-300 mt-2">
+                Point zako:{" "}
                 <span className="text-amber-300 font-bold text-lg">{points}</span>
               </p>
               <p className="text-sm text-slate-400 mt-2">
-                <b className="text-white">Refresh / Reload</b> page ili uone
-                point zako mpya.
+                <b className="text-white">Refresh</b> page ili uone point mpya.
               </p>
             </div>
-
             <button
               type="button"
               onClick={reloadPage}
-              className="w-full inline-flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm"
+              className="w-full inline-flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-emerald-600 text-white font-bold text-sm"
             >
               <RefreshCw className="w-5 h-5" />
               Refresh page sasa
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setReloadPopup(false)}
-              className="w-full py-2 text-xs text-slate-500"
-            >
-              Baadaye
             </button>
           </div>
         </div>

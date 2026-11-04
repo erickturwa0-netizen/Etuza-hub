@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { POINTS } from "@/lib/points";
 import { ensureUserSchema } from "@/lib/db-migrate";
 
-/** Spend points — package bonus first, then normal points */
+/** Spend points for watching — always deduct (including admin for testing honesty) */
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session) {
@@ -30,23 +30,12 @@ export async function POST(req: Request) {
       select: {
         id: true,
         points: true,
-        role: true,
         packagePoints: true,
         packagePointsExpiresAt: true,
       },
     });
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    if (user.role === "admin") {
-      return NextResponse.json({
-        ok: true,
-        points: user.points,
-        packagePoints: user.packagePoints || 0,
-        spent: 0,
-        free: true,
-      });
     }
 
     const now = new Date();
@@ -86,7 +75,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Spend from package first
     if (pkg >= POINTS.WATCH_COST) {
       const updated = await prisma.user.update({
         where: { id: user.id },
