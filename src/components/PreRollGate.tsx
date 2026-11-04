@@ -6,6 +6,7 @@ import {
   createContext,
   useContext,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import Link from "next/link";
@@ -66,11 +67,13 @@ export default function PreRollGate({
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [adOpened, setAdOpened] = useState(false);
+  const [adLeft, setAdLeft] = useState(0);
   const [adsOn, setAdsOn] = useState(true);
   const [payEnabled, setPayEnabled] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [hasPaidAccess, setHasPaidAccess] = useState(false);
   const [charged, setCharged] = useState(false);
+  const claimedRef = useRef(false);
 
   const contentId = contentKey.includes(":")
     ? contentKey.split(":").slice(1).join(":")
@@ -167,9 +170,15 @@ export default function PreRollGate({
     if (ready && !adsOn && !payEnabled) setUnlocked(true);
   }, [ready, adsOn, payEnabled]);
 
-  async function claimAdReward() {
+  const claimAdReward = useCallback(async () => {
+    if (claimedRef.current || busy) return;
+    if (!user) {
+      setMsg("Ingia kwanza ili upate point");
+      return;
+    }
+    claimedRef.current = true;
     setBusy(true);
-    setMsg("");
+    setMsg("Inaongeza point…");
     try {
       const res = await fetch("/api/points/reward-ad", {
         method: "POST",
@@ -178,16 +187,62 @@ export default function PreRollGate({
       const d = await res.json();
       if (res.ok && typeof d.points === "number") {
         setPoints(d.points);
-        setMsg(`+${d.awarded ?? POINTS.AD_REWARD} point ✓`);
-      } else setMsg(d.error || "Imeshindikana");
+        if (d.awarded > 0) {
+          setMsg(`+${d.awarded} point zimeongezwa ✓`);
+        } else if (d.cooldown) {
+          setMsg(d.message || `Subiri ${d.waitSec || 45}s kisha jaribu tena`);
+          claimedRef.current = false;
+        } else if (d.guest) {
+          setMsg("Ingia kwanza ili upate point");
+          claimedRef.current = false;
+        } else {
+          setMsg(d.message || "Tayari");
+        }
+      } else {
+        setMsg(d.error || "Imeshindikana");
+        claimedRef.current = false;
+      }
     } catch {
-      setMsg("Tatizo la mtandao");
+      setMsg("Tatizo la mtandao — jaribu tena");
+      claimedRef.current = false;
     }
     setBusy(false);
-  }
+  }, [busy, user]);
+
+  // Countdown while ad is "watching" then auto-claim
+  useEffect(() => {
+    if (!adOpened || adLeft <= 0) return;
+    const t = setTimeout(() => setAdLeft((n) => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [adOpened, adLeft]);
+
+  useEffect(() => {
+    if (adOpened && adLeft === 0 && user && !claimedRef.current) {
+      void claimAdReward();
+    }
+  }, [adOpened, adLeft, user, claimAdReward]);
+
+  // When user returns to tab after ad, finish countdown faster / claim
+  useEffect(() => {
+    if (!adOpened) return;
+    function onVis() {
+      if (document.visibilityState === "visible" && adLeft > 2) {
+        setAdLeft(2);
+      }
+    }
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [adOpened, adLeft]);
 
   function openAd() {
+    if (!user) {
+      setMsg("Ingia / jisajili kwanza ili upate point kutoka tangazo");
+      return;
+    }
+    claimedRef.current = false;
     setAdOpened(true);
+    setAdLeft(Math.max(PRE_ROLL_SECONDS, 8));
+    setMsg(`Fungua tangazo — point zitaongezwa baada ya sekunde chache…`);
     window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
   }
 
@@ -235,7 +290,9 @@ export default function PreRollGate({
         : code;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(url).then(() => {
-        setMsg(`Invite link imenakiliwa (+${POINTS.INVITE_REWARD} rafiki akisajili)`);
+        setMsg(
+          `Invite link imenakiliwa (+${POINTS.INVITE_REWARD} rafiki akisajili)`
+        );
       });
     } else setMsg(`Code: ${code}`);
   }
@@ -274,14 +331,19 @@ export default function PreRollGate({
     <>
       <div className="rounded-2xl border border-violet-500/30 bg-gradient-to-b from-slate-900 to-slate-950 p-5 space-y-4 shadow-xl shadow-violet-900/20">
         <div className="text-center space-y-1">
-          <h3 className="font-bold text-base text-white">Chagua njia ya kutazama</h3>
-          {title && <p className="text-xs text-slate-400 line-clamp-1">{title}</p>}
+          <h3 className="font-bold text-base text-white">
+            Chagua njia ya kutazama
+          </h3>
+          {title && (
+            <p className="text-xs text-slate-400 line-clamp-1">{title}</p>
+          )}
           {user && (
             <p className="text-xs text-slate-300 pt-1">
               Point: <b className="text-white">{points}</b>
               {pkgPoints > 0 && (
                 <>
-                  {" · "}Kifurushi: <b className="text-amber-300">{pkgPoints}</b>
+                  {" · "}Kifurushi:{" "}
+                  <b className="text-amber-300">{pkgPoints}</b>
                 </>
               )}
             </p>
@@ -291,7 +353,9 @@ export default function PreRollGate({
           </p>
         </div>
 
-        {msg && <p className="text-xs text-center text-emerald-400">{msg}</p>}
+        {msg && (
+          <p className="text-xs text-center text-emerald-400 font-medium">{msg}</p>
+        )}
 
         <div className="grid gap-2">
           {user && adsOn && (
@@ -311,23 +375,28 @@ export default function PreRollGate({
           {adsOn && (
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || (adOpened && adLeft > 0)}
               onClick={openAd}
-              className="w-full py-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-100 text-sm font-medium inline-flex items-center justify-center gap-2"
+              className="w-full py-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-100 text-sm font-medium inline-flex items-center justify-center gap-2 disabled:opacity-60"
             >
               <ExternalLink className="w-4 h-4" />
-              Tazama tangazo (+{POINTS.AD_REWARD} point)
+              {adOpened && adLeft > 0
+                ? `Inasubiri tangazo… ${adLeft}s`
+                : `Tazama tangazo (+${POINTS.AD_REWARD} point)`}
             </button>
           )}
 
-          {adOpened && user && adsOn && (
+          {adOpened && user && adsOn && adLeft === 0 && (
             <button
               type="button"
               disabled={busy}
-              onClick={claimAdReward}
+              onClick={() => {
+                claimedRef.current = false;
+                void claimAdReward();
+              }}
               className="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold"
             >
-              Nimetazama — Pata +{POINTS.AD_REWARD}
+              {busy ? "Inaongeza…" : `Pata +${POINTS.AD_REWARD} point sasa`}
             </button>
           )}
 
@@ -359,7 +428,7 @@ export default function PreRollGate({
               className="w-full py-3 rounded-xl bg-slate-100 text-slate-900 text-sm font-semibold text-center inline-flex items-center justify-center gap-2"
             >
               <UserPlus className="w-4 h-4" />
-              Ingia kwanza
+              Ingia kwanza (point + tangazo)
             </Link>
           )}
         </div>
