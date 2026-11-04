@@ -16,6 +16,7 @@ import {
   Play,
   CreditCard,
   Gift,
+  Timer,
 } from "lucide-react";
 import {
   PRE_ROLL_AD_URL,
@@ -51,6 +52,8 @@ export function usePlaybackCharge() {
   return useContext(PlaybackChargeContext);
 }
 
+const AD_WAIT_SECONDS = Math.max(PRE_ROLL_SECONDS, 12);
+
 export default function PreRollGate({
   contentKey,
   title,
@@ -68,6 +71,7 @@ export default function PreRollGate({
   const [busy, setBusy] = useState(false);
   const [adOpened, setAdOpened] = useState(false);
   const [adLeft, setAdLeft] = useState(0);
+  const [adTotal, setAdTotal] = useState(AD_WAIT_SECONDS);
   const [adsOn, setAdsOn] = useState(true);
   const [payEnabled, setPayEnabled] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
@@ -209,7 +213,6 @@ export default function PreRollGate({
     setBusy(false);
   }, [busy, user]);
 
-  // Countdown while ad is "watching" then auto-claim
   useEffect(() => {
     if (!adOpened || adLeft <= 0) return;
     const t = setTimeout(() => setAdLeft((n) => n - 1), 1000);
@@ -222,12 +225,11 @@ export default function PreRollGate({
     }
   }, [adOpened, adLeft, user, claimAdReward]);
 
-  // When user returns to tab after ad, finish countdown faster / claim
   useEffect(() => {
     if (!adOpened) return;
     function onVis() {
-      if (document.visibilityState === "visible" && adLeft > 2) {
-        setAdLeft(2);
+      if (document.visibilityState === "visible" && adLeft > 3) {
+        setAdLeft(3);
       }
     }
     document.addEventListener("visibilitychange", onVis);
@@ -240,9 +242,13 @@ export default function PreRollGate({
       return;
     }
     claimedRef.current = false;
+    const secs = AD_WAIT_SECONDS;
+    setAdTotal(secs);
     setAdOpened(true);
-    setAdLeft(Math.max(PRE_ROLL_SECONDS, 8));
-    setMsg(`Fungua tangazo — point zitaongezwa baada ya sekunde chache…`);
+    setAdLeft(secs);
+    setMsg(
+      `Tangazo limefunguka — subiri ${secs} sekunde, point zitaongezwa kiotomatiki`
+    );
     window.open(PRE_ROLL_AD_URL, "_blank", "noopener,noreferrer");
   }
 
@@ -326,6 +332,8 @@ export default function PreRollGate({
   }
 
   const totalSpendable = points + pkgPoints;
+  const adProgress =
+    adTotal > 0 ? Math.min(100, ((adTotal - adLeft) / adTotal) * 100) : 0;
 
   return (
     <>
@@ -353,6 +361,40 @@ export default function PreRollGate({
           </p>
         </div>
 
+        {/* Big countdown so users know remaining seconds */}
+        {adOpened && adLeft > 0 && (
+          <div className="rounded-2xl border border-amber-500/50 bg-amber-500/10 p-4 text-center space-y-2">
+            <div className="flex items-center justify-center gap-2 text-amber-200 text-xs font-medium uppercase tracking-wide">
+              <Timer className="w-4 h-4" />
+              Subiri tangazo
+            </div>
+            <p className="text-5xl font-black tabular-nums text-amber-300 leading-none">
+              {adLeft}
+            </p>
+            <p className="text-sm text-amber-100/90">
+              sekunde zimebaki · kisha +{POINTS.AD_REWARD} point
+            </p>
+            <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-amber-500 to-emerald-500 transition-all duration-1000 ease-linear"
+                style={{ width: `${adProgress}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Rudi hapa baada ya tangazo — countdown inaendelea
+            </p>
+          </div>
+        )}
+
+        {counting && left > 0 && (
+          <div className="rounded-2xl border border-violet-500/40 bg-violet-500/10 p-3 text-center">
+            <p className="text-3xl font-black tabular-nums text-violet-200">
+              {left}
+            </p>
+            <p className="text-xs text-slate-400">sekunde kabla ya kucheza…</p>
+          </div>
+        )}
+
         {msg && (
           <p className="text-xs text-center text-emerald-400 font-medium">{msg}</p>
         )}
@@ -367,7 +409,7 @@ export default function PreRollGate({
             >
               <Play className="w-4 h-4" />
               {counting
-                ? `Subiri ${left}s…`
+                ? `Subiri ${left} sekunde…`
                 : `Tazama (point −${POINTS.WATCH_COST} ikicheza)`}
             </button>
           )}
@@ -381,8 +423,8 @@ export default function PreRollGate({
             >
               <ExternalLink className="w-4 h-4" />
               {adOpened && adLeft > 0
-                ? `Inasubiri tangazo… ${adLeft}s`
-                : `Tazama tangazo (+${POINTS.AD_REWARD} point)`}
+                ? `Subiri ${adLeft} sekunde…`
+                : `Tazama tangazo (+${POINTS.AD_REWARD} point · ${AD_WAIT_SECONDS}s)`}
             </button>
           )}
 
