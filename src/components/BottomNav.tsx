@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home } from "lucide-react";
+import { Home, Bot } from "lucide-react";
 import { CATEGORY_ICONS } from "@/lib/category-icons";
 
 const tabs: {
@@ -14,8 +14,8 @@ const tabs: {
   { href: "/", label: "Home", lucide: Home },
   { href: "/movies", label: "Movies", iconUrl: CATEGORY_ICONS.movie },
   { href: "/tv", label: "TV", iconUrl: CATEGORY_ICONS.tv },
+  { href: "/ai", label: "AI", lucide: Bot },
   { href: "/music", label: "Miziki", iconUrl: CATEGORY_ICONS.music },
-  { href: "/radio", label: "Radio", iconUrl: CATEGORY_ICONS.radio },
 ];
 
 export default function BottomNav() {

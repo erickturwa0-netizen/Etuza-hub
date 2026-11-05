@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Clapperboard, Search, User } from "lucide-react";
+import { Clapperboard, Search, User, Bot } from "lucide-react";
 import LogoutButton from "./LogoutButton";
 import PointsBadge from "./PointsBadge";
 
@@ -13,7 +13,7 @@ const links = [
   { href: "/drama", label: "Tamthilia" },
   { href: "/music", label: "Miziki" },
   { href: "/radio", label: "Radio" },
-  { href: "/games", label: "Games" },
+  { href: "/ai", label: "AI Agent" },
 ];
 
 export default function Navbar() {
@@ -66,6 +66,13 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <Link
+            href="/ai"
+            className="p-2 rounded-full text-violet-300 hover:text-white hover:bg-violet-500/20 transition"
+            aria-label="AI Agent"
+          >
+            <Bot className="w-5 h-5" />
+          </Link>
           <Link
             href="/movies"
             className="p-2 rounded-full text-slate-300 hover:text-white hover:bg-white/10 transition"
