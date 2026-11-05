@@ -5,7 +5,7 @@ import { ensureUserSchema } from "@/lib/db-migrate";
 import { runAiToolsForMessage } from "@/lib/ai-tools";
 import { randomUUID } from "crypto";
 
- cons ENDPOINT = "https://api.inceptionlabs.ai/v1/chat/completions";
+const ENDPOINT = "https://api.inceptionlabs.ai/v1/chat/completions";
 const MODEL = "mercury-3";
 
 const SYSTEM_BASE = `Wewe ni msaidizi rasmi wa ETUZA HUB (https://etuza-hub-v2.vercel.app) — Tanzania.
@@ -98,8 +98,7 @@ function localHelpReply(message: string): string {
   if (/http|scrape|browse|link|web/.test(m)) {
     return `**Browser / scrape**
 
-Tuma **link kamili** (https://...) nikusomee ukurasa au API.
-Mfano: *Fungua https://example.com*`;
+Tuma **link kamili** (https://...) nikusomee ukurasa au API.\nMfano: *Fungua https://example.com*`;
   }
   return `**Karibu ETUZA HUB**
 
@@ -242,7 +241,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ reply: GREETING_REPLY, searched: null, tools: [] });
   }
 
-  // --- Tools: browser + http scrape ---
   let toolBlock = "";
   let toolMeta: { tool: string; ok: boolean; summary: string }[] = [];
   try {
@@ -260,7 +258,6 @@ export async function POST(req: Request) {
   const key = process.env.INCEPTION_API_KEY;
   if (!key) {
     void logAiUsage({ sessionId, userId, kind: "fallback" });
-    // Still return tool results if any
     if (toolBlock) {
       return NextResponse.json({
         reply:
