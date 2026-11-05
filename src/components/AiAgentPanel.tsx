@@ -102,7 +102,6 @@ function FormattedMessage({ content }: { content: string }) {
   const blocks: ReactNode[] = [];
   let listBuf: string[] = [];
   let k = 0;
-
   function flushList() {
     if (!listBuf.length) return;
     blocks.push(
@@ -116,10 +115,8 @@ function FormattedMessage({ content }: { content: string }) {
     );
     listBuf = [];
   }
-
   for (const raw of lines) {
-    const line = raw.trimEnd();
-    const t = line.trim();
+    const t = raw.trim();
     if (!t) {
       flushList();
       blocks.push(<div key={k++} className="h-2" />);
@@ -127,15 +124,9 @@ function FormattedMessage({ content }: { content: string }) {
     }
     if (/^#{1,3}\s+/.test(t)) {
       flushList();
-      const level = (t.match(/^#+/) || ["#"])[0].length;
-      const text = t.replace(/^#{1,3}\s+/, "");
-      const cls =
-        level === 1
-          ? "text-base font-extrabold text-violet-200 mt-1 mb-1"
-          : "text-sm font-bold text-white mt-1 mb-0.5";
       blocks.push(
-        <p key={k++} className={cls}>
-          {formatInline(text)}
+        <p key={k++} className="text-sm font-bold text-white mt-1 mb-0.5">
+          {formatInline(t.replace(/^#{1,3}\s+/, ""))}
         </p>
       );
       continue;
@@ -158,23 +149,18 @@ function FormattedMessage({ content }: { content: string }) {
 async function fileToAttachment(file: File): Promise<AttachmentPayload | null> {
   const name = file.name.slice(0, 120);
   const type = file.type || "application/octet-stream";
-  const maxText = 80_000;
-  const maxImage = 1_200_000; // ~1.2MB data url
-
   if (
     type.startsWith("text/") ||
     /\.(txt|md|csv|json|log|xml|html|js|ts|tsx|css)$/i.test(name)
   ) {
-    const text = (await file.text()).slice(0, maxText);
-    return { name, type: type || "text/plain", text };
+    return { name, type: type || "text/plain", text: (await file.text()).slice(0, 80000) };
   }
-
   if (type.startsWith("image/")) {
-    if (file.size > 900_000) {
+    if (file.size > 900000) {
       return {
         name,
         type,
-        text: `[Image: ${name}, ${Math.round(file.size / 1024)}KB — kubwa sana, imepunguzwa metadata tu]`,
+        text: `[Image: ${name}, ${Math.round(file.size / 1024)}KB]`,
       };
     }
     const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -183,21 +169,12 @@ async function fileToAttachment(file: File): Promise<AttachmentPayload | null> {
       r.onerror = () => reject(new Error("read fail"));
       r.readAsDataURL(file);
     });
-    if (dataUrl.length > maxImage) {
-      return {
-        name,
-        type,
-        text: `[Image: ${name} — too large to embed]`,
-      };
-    }
     return { name, type, dataUrl };
   }
-
-  // other binary — name only
   return {
     name,
     type,
-    text: `[File: ${name} (${type}, ${Math.round(file.size / 1024)}KB) — binary, content not inlined]`,
+    text: `[File: ${name} (${type})]`,
   };
 }
 
@@ -215,7 +192,7 @@ export default function AiAgentPanel({
     {
       role: "assistant",
       content:
-        "**ETUZA AI Agent** 🤖\n\nNina **browser + HTTP scrape** tools na napokea **attachments**.\n\nJaribu:\n- *Fungua https://…*\n- Pakia faili (.txt, .json, picha)\n- Uliza kuhusu movies, TV, miziki, point" +
+        "**ETUZA AI Agent** 🤖\n\nNinaweza kujibu **swali lolote** — si mambo ya site tu.\n\nPia nina **browser + scrape**, na napokea **attachments**.\n\nJaribu kuuliza chochote au: *Fungua https://…*" +
         (contextLabel ? `\n\nContext: **${contextLabel}**` : ""),
     },
   ]);
@@ -253,11 +230,9 @@ export default function AiAgentPanel({
     setInput("");
     const atts = pending;
     setPending([]);
-
     const userContent =
       text ||
       (atts.length ? `(Attachment: ${atts.map((a) => a.name).join(", ")})` : "");
-
     const next: Msg[] = [
       ...msgs,
       {
@@ -268,16 +243,13 @@ export default function AiAgentPanel({
     ];
     setMsgs(next);
     setBusy(true);
-
     try {
       const history = next
         .filter((m) => m.role === "user" || m.role === "assistant")
         .slice(0, -1)
         .slice(-10)
         .map((m) => ({ role: m.role, content: m.content }));
-
       if (!sessionIdRef.current) sessionIdRef.current = getAiSessionId();
-
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -288,6 +260,7 @@ export default function AiAgentPanel({
           sessionId: sessionIdRef.current,
           attachments: atts,
           context: contextLabel || undefined,
+          mode: "agent",
         }),
       });
       const data = await res.json();
@@ -295,20 +268,14 @@ export default function AiAgentPanel({
         ...m,
         {
           role: "assistant",
-          content:
-            data.reply ||
-            data.error ||
-            "Samahani, sijaweza kujibu sasa.",
+          content: data.reply || data.error || "Samahani, sijaweza kujibu sasa.",
           tools: Array.isArray(data.tools) ? data.tools : undefined,
         },
       ]);
     } catch {
       setMsgs((m) => [
         ...m,
-        {
-          role: "assistant",
-          content: "Tatizo la mtandao. Jaribu tena.",
-        },
+        { role: "assistant", content: "Tatizo la mtandao. Jaribu tena." },
       ]);
     }
     setBusy(false);
@@ -326,8 +293,8 @@ export default function AiAgentPanel({
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold leading-tight">ETUZA AI Agent</p>
-          <p className="text-[10px] text-white/80 flex items-center gap-1.5 flex-wrap">
-            <Globe className="w-3 h-3" /> Browser · Scrape · Inception mercury-3
+          <p className="text-[10px] text-white/80 flex items-center gap-1.5">
+            <Globe className="w-3 h-3" /> Swali lolote · Browser · Scrape
           </p>
         </div>
       </div>
@@ -402,9 +369,7 @@ export default function AiAgentPanel({
               <button
                 type="button"
                 className="ml-0.5 p-0.5 rounded hover:bg-white/10"
-                onClick={() =>
-                  setPending((p) => p.filter((_, j) => j !== i))
-                }
+                onClick={() => setPending((p) => p.filter((_, j) => j !== i))}
               >
                 <X className="w-3 h-3" />
               </button>
@@ -435,14 +400,13 @@ export default function AiAgentPanel({
             disabled={busy}
             className="h-11 w-11 shrink-0 rounded-xl border border-slate-600 bg-slate-950 text-slate-300 flex items-center justify-center hover:border-violet-500 hover:text-white disabled:opacity-40"
             aria-label="Pakia attachment"
-            title="Pakia faili"
           >
             <Paperclip className="w-4 h-4" />
           </button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Uliza, paste link, au pakia faili…"
+            placeholder="Uliza chochote, paste link, au pakia faili…"
             rows={1}
             className="flex-1 min-w-0 min-h-[44px] max-h-28 px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-600 text-sm text-white placeholder:text-slate-500 outline-none focus:border-violet-500 resize-y"
             disabled={busy}
@@ -463,7 +427,7 @@ export default function AiAgentPanel({
           </button>
         </form>
         <p className="text-[10px] text-slate-500 mt-1.5 px-1">
-          Tools: visit_web · http_request · attachments (txt/json/picha)
+          Mode: agent (swali lolote) · tools · attachments
         </p>
       </div>
     </div>
