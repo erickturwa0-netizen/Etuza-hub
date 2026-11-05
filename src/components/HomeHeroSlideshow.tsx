@@ -2,7 +2,16 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Film, Clapperboard, Music, Radio, Tv } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Film,
+  Clapperboard,
+  Music,
+  Radio,
+  Tv,
+  Play,
+} from "lucide-react";
 
 export type HeroSlide = {
   id: string;
@@ -17,11 +26,11 @@ const KIND_META: Record<
   HeroSlide["kind"],
   { label: string; icon: typeof Film; color: string }
 > = {
-  movie: { label: "Movie", icon: Film, color: "bg-violet-600" },
+  movie: { label: "Movie", icon: Film, color: "bg-red-600" },
   drama: { label: "Tamthilia", icon: Clapperboard, color: "bg-orange-600" },
   music: { label: "Miziki", icon: Music, color: "bg-fuchsia-600" },
   radio: { label: "Radio", icon: Radio, color: "bg-rose-600" },
-  tv: { label: "TV", icon: Tv, color: "bg-red-600" },
+  tv: { label: "Live TV", icon: Tv, color: "bg-sky-600" },
 };
 
 export default function HomeHeroSlideshow({ slides }: { slides: HeroSlide[] }) {
@@ -32,7 +41,7 @@ export default function HomeHeroSlideshow({ slides }: { slides: HeroSlide[] }) {
     if (list.length < 2) return;
     const t = setInterval(() => {
       setI((x) => (x + 1) % list.length);
-    }, 4500);
+    }, 5500);
     return () => clearInterval(t);
   }, [list.length]);
 
@@ -50,47 +59,61 @@ export default function HomeHeroSlideshow({ slides }: { slides: HeroSlide[] }) {
   }
 
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-slate-900">
-      {/* Standard 16:9 hero */}
-      <div className="relative w-full aspect-[16/9] sm:aspect-[21/9] max-h-[280px] sm:max-h-[320px]">
+    <div className="relative w-full overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-slate-800/80 bg-black">
+      {/* Netflix-style tall hero */}
+      <div className="relative w-full aspect-[4/5] sm:aspect-[16/9] md:aspect-[21/9] min-h-[340px] max-h-[520px] sm:max-h-[480px]">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           key={s.id + s.cover}
           src={s.cover}
           alt={s.title}
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full object-cover scale-105"
           onError={(e) => {
             (e.target as HTMLImageElement).src =
               "https://ui-avatars.com/api/?name=" +
               encodeURIComponent(s.title.slice(0, 20)) +
-              "&background=1e1b4b&color=c4b5fd&size=512&bold=true";
+              "&background=0f0f14&color=f87171&size=800&bold=true";
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/10" />
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-5 flex items-end gap-3">
-          <div className="flex-1 min-w-0">
-            <span
-              className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-white px-2 py-0.5 rounded-md ${meta.color} mb-2`}
-            >
-              <Icon className="w-3 h-3" />
-              {meta.label}
-            </span>
-            <Link href={s.href}>
-              <h2 className="text-lg sm:text-xl font-bold text-white line-clamp-2 hover:text-violet-200 transition">
-                {s.title}
-              </h2>
-            </Link>
-            {s.category && (
-              <p className="text-xs text-slate-300 mt-1 truncate">{s.category}</p>
-            )}
-          </div>
-          <Link
-            href={s.href}
-            className="shrink-0 px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-xs font-semibold text-white backdrop-blur-sm"
+        {/* Cinematic gradients */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/55 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0f]/90 via-[#0a0a0f]/35 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-transparent" />
+
+        {/* Content */}
+        <div className="absolute inset-0 flex flex-col justify-end p-5 sm:p-8 md:p-12 max-w-3xl">
+          <span
+            className={`inline-flex w-fit items-center gap-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider text-white px-2.5 py-1 rounded-md ${meta.color} mb-3 shadow-lg`}
           >
-            Tazama
-          </Link>
+            <Icon className="w-3.5 h-3.5" />
+            {meta.label}
+            {s.category ? ` · ${s.category}` : ""}
+          </span>
+
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white leading-[1.05] tracking-tight drop-shadow-2xl line-clamp-3">
+            {s.title}
+          </h2>
+
+          <p className="mt-3 text-sm sm:text-base text-slate-200/90 max-w-md line-clamp-2 drop-shadow">
+            Stream the best movies anytime, anywhere on ETUZA HUB.
+          </p>
+
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Link
+              href={s.href}
+              className="inline-flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 rounded-full bg-white text-black text-sm font-bold hover:bg-red-50 transition shadow-xl shadow-black/40"
+            >
+              <Play className="w-4 h-4 fill-current" />
+              Watch Now
+            </Link>
+            <Link
+              href={s.href}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/25 text-white text-sm font-semibold backdrop-blur-md transition"
+            >
+              Info
+            </Link>
+          </div>
         </div>
 
         {list.length > 1 && (
@@ -98,47 +121,39 @@ export default function HomeHeroSlideshow({ slides }: { slides: HeroSlide[] }) {
             <button
               type="button"
               onClick={prev}
-              className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 border border-white/10 flex items-center justify-center text-white"
+              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/45 hover:bg-black/70 border border-white/15 flex items-center justify-center text-white backdrop-blur-sm transition"
               aria-label="Previous"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-5 h-5" />
             </button>
             <button
               type="button"
               onClick={next}
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 border border-white/10 flex items-center justify-center text-white"
+              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/45 hover:bg-black/70 border border-white/15 flex items-center justify-center text-white backdrop-blur-sm transition"
               aria-label="Next"
             >
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-5 h-5" />
             </button>
+
+            {/* Dots */}
+            <div className="absolute bottom-3 right-4 sm:right-8 flex gap-1.5">
+              {list.map((_, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setI(idx)}
+                  className={`h-1.5 rounded-full transition-all ${
+                    idx === i
+                      ? "w-6 bg-white"
+                      : "w-1.5 bg-white/40 hover:bg-white/70"
+                  }`}
+                  aria-label={`Slide ${idx + 1}`}
+                />
+              ))}
+            </div>
           </>
         )}
       </div>
-
-      {/* Dots + strip of thumbs */}
-      {list.length > 1 && (
-        <div className="px-3 py-2.5 flex items-center gap-2 overflow-x-auto bg-slate-950/80">
-          {list.map((slide, idx) => (
-            <button
-              key={slide.id + idx}
-              type="button"
-              onClick={() => setI(idx)}
-              className={`relative shrink-0 w-12 h-16 sm:w-14 sm:h-[4.5rem] rounded-lg overflow-hidden border-2 transition ${
-                idx === i
-                  ? "border-violet-400 opacity-100"
-                  : "border-transparent opacity-60 hover:opacity-90"
-              }`}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={slide.cover}
-                alt=""
-                className="w-full h-full object-cover"
-              />
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

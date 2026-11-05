@@ -40,27 +40,24 @@ export default function ContentCard({
   const [src, setSrc] = useState(initial);
 
   return (
-    <Link href={link} className="block">
-      <div className="relative aspect-[2/3] rounded-2xl overflow-hidden border border-slate-800 bg-slate-900">
+    <Link href={link} className="block group">
+      <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-900 ring-1 ring-white/5 shadow-lg shadow-black/40 transition duration-300 group-hover:scale-[1.04] group-hover:ring-red-500/40 group-hover:z-10 group-hover:shadow-red-900/20">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
           alt={title}
-          className="absolute inset-0 w-full h-full object-cover"
+          className="absolute inset-0 w-full h-full object-cover transition duration-500 group-hover:scale-105"
           onError={() => {
-            // Final fallback: colored avatar with title
             setSrc(contentCover(type, title, null));
           }}
         />
-        <div
-          className="absolute bottom-0 left-0 right-0 p-3"
-          style={{ background: "rgba(0,0,0,0.75)" }}
-        >
-          <p className="font-semibold text-[13px] leading-snug line-clamp-2 text-white">
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-80 group-hover:opacity-95 transition" />
+        <div className="absolute bottom-0 left-0 right-0 p-2.5 sm:p-3">
+          <p className="font-semibold text-[12px] sm:text-[13px] leading-snug line-clamp-2 text-white drop-shadow">
             {title}
           </p>
           {category && (
-            <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wide">
+            <p className="text-[9px] sm:text-[10px] text-slate-300/90 mt-0.5 uppercase tracking-wide truncate">
               {category}
             </p>
           )}
