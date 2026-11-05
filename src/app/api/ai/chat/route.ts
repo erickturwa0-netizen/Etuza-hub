@@ -8,44 +8,25 @@ import { randomUUID } from "crypto";
 const ENDPOINT = "https://api.inceptionlabs.ai/v1/chat/completions";
 const MODEL = "mercury-3";
 
-/** Full AI Agent — answers ANY general question + tools */
 const SYSTEM_AGENT = `Wewe ni **ETUZA AI Agent** — msaidizi mwenye akili pana.
 Jibu kwa Kiswahili rahisi na rafiki (Kiingereza mteja akitaka).
 
 === UWEZO ===
-1. Jibu **swali lolote** la maarifa: sayansi, historia, teknolojia, elimu, maisha, hesabu, lugha, n.k.
-2. Una **browser/scrape tools**: visit_web, http_request — tumia TOOL RESULTS ukipewa.
-3. Unaweza kusoma **ATTACHMENTS** (faili/picha) zilizotumwa.
-4. Unaweza pia kusaidia kuhusu ETUZA HUB (movies, TV, miziki, point) ukiulizwa.
+1. Jibu **swali lolote** la maarifa.
+2. Una **tools za mtandao**: web_search, visit_web, http_request — TOOL RESULTS zinakuja automatic. LAZIMA utumie data hiyo.
+3. Unaweza kusoma **ATTACHMENTS**.
+4. Unaweza pia kusaidia kuhusu ETUZA HUB ukiulizwa.
 
 === SHERIA ===
-- USIKATAE maswali ya kawaida. Jibu kwa uwezo wako.
-- Usitoe cracking, malware, au maelekezo ya uhalifu.
+- USIKATAE maswali ya kawaida.
+- Usitoe cracking au maelekezo ya uhalifu.
 - Usizushe ukweli: kama huna uhakika, sema wazi.
-- Markdown: **bold**, orodha, links.
+- Markdown: **bold**, orodha, links.`;
 
-=== MTINDO ===
-Aya fupi, wazi, za msaada.`;
-
-/** Float helper — ETUZA HUB site only */
 const SYSTEM_HUB = `Wewe ni msaidizi wa **ETUZA HUB** tu (https://etuza-hub-v2.vercel.app).
-Jibu kwa Kiswahili rahisi.
-
-=== UPEKEE WAKE ===
-Jibu **MASWALI YA ETUZA HUB PEKEE**:
-- Movies, Tamthilia, TV channels, Radio, Miziki, Games, VPN
-- Point, ads, account, jinsi ya kutumia site
-- Link za /movies, /tv, /music, /radio, /account, /ai
-
-=== NINI USIFANYE ===
-- Usijibu maswali ya nje ya site (sayansi, siasa, kazi za nyumbani, n.k.).
-- Kama swali SI la ETUZA HUB, sema kwa ufupi:
-  "Mimi ni msaada wa **ETUZA HUB** tu. Kwa maswali yoyote mengine fungua **AI Agent**: [/ai](https://etuza-hub-v2.vercel.app/ai)"
-
-=== POINT ===
-Zinakatwa baada ya video kuanza. Ads: zima VPN kisha jaribu tena.
-
-Markdown fupi. Usizushe content isiyopo kwenye database.`;
+Jibu **MASWALI YA ETUZA HUB PEKEE** (movies, TV, radio, miziki, point, VPN).
+Kama swali SI la site: elekeza [/ai](https://etuza-hub-v2.vercel.app/ai).
+Point zinakatwa baada ya video kuanza.`;
 
 function isGreeting(message: string): boolean {
   const m = message.trim().toLowerCase().replace(/[!?.]+$/g, "");
@@ -60,48 +41,27 @@ function isGreeting(message: string): boolean {
   );
 }
 
-const GREETING_HUB = `# HABARI!
-
-Karibu **ETUZA HUB** 👋
-
-Naweza kukusaidia kuhusu **movies, TV, radio, miziki, point, VPN** na jinsi ya kutumia site.
-
-Kwa maswali yoyote mengine → [/ai](https://etuza-hub-v2.vercel.app/ai) (AI Agent).`;
-
-const GREETING_AGENT = `# HABARI!
-
-Mimi ni **ETUZA AI Agent** 🤖
-
-Naweza kujibu **swali lolote**, kufungua link, scrape web, na kusoma attachments.
-
-Uliza chochote.`;
+const GREETING_HUB = `# HABARI!\n\nKaribu **ETUZA HUB**. Kwa maswali yoyote mengine → [/ai](https://etuza-hub-v2.vercel.app/ai).`;
+const GREETING_AGENT = `# HABARI!\n\nMimi ni **ETUZA AI Agent**. Naweza kutafuta mtandaoni na kujibu swali lolote.`;
 
 function localHelpHub(message: string): string {
   const m = message.toLowerCase();
-  if (/point|poin/.test(m)) {
-    return `**Point** — signup/invite/ads. Zinakatwa baada ya video. [/account](https://etuza-hub-v2.vercel.app/account)`;
-  }
+  if (/point|poin/.test(m))
+    return `**Point** — signup/invite/ads. [/account](https://etuza-hub-v2.vercel.app/account)`;
   if (/movie|filamu/.test(m))
     return `**Movies** → [/movies](https://etuza-hub-v2.vercel.app/movies)`;
   if (/tv|channel/.test(m))
     return `**TV** → [/tv](https://etuza-hub-v2.vercel.app/tv)`;
   if (/music|miziki/.test(m))
     return `**Miziki** → [/music](https://etuza-hub-v2.vercel.app/music)`;
-  if (/radio/.test(m))
-    return `**Radio** → [/radio](https://etuza-hub-v2.vercel.app/radio)`;
-  if (/vpn/.test(m)) return `**VPN** — angalia sehemu ya VPN kwenye hub.`;
-  // Off-topic for hub mode
   if (
-    !/etuza|movie|filamu|tv|radio|miziki|music|point|vpn|game|tamthilia|drama|account|login|ads|tangazo/.test(
+    !/etuza|movie|filamu|tv|radio|miziki|music|point|vpn|game|tamthilia|drama|account|ads/.test(
       m
     )
   ) {
-    return `Mimi ni msaada wa **ETUZA HUB** tu (movies, TV, miziki, point…).
-
-Kwa swali lolote lingine fungua **AI Agent**:
-[/ai](https://etuza-hub-v2.vercel.app/ai)`;
+    return `Mimi ni msaada wa **ETUZA HUB** tu.\n\nKwa swali lingine: [/ai](https://etuza-hub-v2.vercel.app/ai)`;
   }
-  return `**ETUZA HUB** — [/movies](https://etuza-hub-v2.vercel.app/movies) · [/tv](https://etuza-hub-v2.vercel.app/tv) · [/music](https://etuza-hub-v2.vercel.app/music) · [/ai](https://etuza-hub-v2.vercel.app/ai)`;
+  return `**ETUZA HUB** — [/movies](https://etuza-hub-v2.vercel.app/movies) · [/ai](https://etuza-hub-v2.vercel.app/ai)`;
 }
 
 function extractSearchQuery(message: string): string | null {
@@ -178,7 +138,6 @@ export async function POST(req: Request) {
   let message = "";
   let history: { role: string; content: string }[] = [];
   let sessionId = "";
-  /** hub = float (site only); agent = full AI */
   let mode: "hub" | "agent" = "hub";
 
   try {
@@ -262,19 +221,16 @@ export async function POST(req: Request) {
     });
   }
 
-  // Tools: agent always; hub only if clearly a URL/scrape for site help
   let toolBlock = "";
   let toolMeta: { tool: string; ok: boolean; summary: string }[] = [];
   try {
-    if (mode === "agent" || /https?:\/\//i.test(message)) {
-      const ran = await runAiToolsForMessage(message);
-      toolBlock = ran.block;
-      toolMeta = ran.results.map((r) => ({
-        tool: r.tool,
-        ok: r.ok,
-        summary: r.summary,
-      }));
-    }
+    const ran = await runAiToolsForMessage(message, { mode });
+    toolBlock = ran.block;
+    toolMeta = ran.results.map((r) => ({
+      tool: r.tool,
+      ok: r.ok,
+      summary: r.summary,
+    }));
   } catch (e) {
     console.error("ai tools", e);
   }
@@ -285,7 +241,7 @@ export async function POST(req: Request) {
     if (toolBlock && mode === "agent") {
       return NextResponse.json({
         reply:
-          `**Nimesoma link / data:**\n\n` +
+          `**Data kutoka mtandao:**\n\n` +
           toolMeta.map((t) => `- ${t.tool}: ${t.summary}`).join("\n"),
         tools: toolMeta,
         mode,
@@ -294,7 +250,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       reply:
         mode === "agent"
-          ? "AI Agent inahitaji INCEPTION_API_KEY. Weka kwenye Vercel env."
+          ? "AI Agent inahitaji INCEPTION_API_KEY kwenye Vercel."
           : localHelpHub(message),
       searched: null,
       tools: [],
@@ -303,7 +259,6 @@ export async function POST(req: Request) {
   }
 
   let researchBlock = "";
-  // Catalog search mainly for hub mode (and agent if about content)
   const q =
     mode === "hub" ||
     /movie|filamu|tv|radio|miziki|music|tamthilia|drama|etuza/i.test(message)
@@ -343,7 +298,7 @@ export async function POST(req: Request) {
           ...history,
           { role: "user", content: message },
         ],
-        temperature: mode === "agent" ? 0.6 : 0.45,
+        temperature: mode === "agent" ? 0.55 : 0.45,
         max_tokens: mode === "agent" ? 2000 : 1200,
       }),
     });
@@ -355,19 +310,17 @@ export async function POST(req: Request) {
       if (toolBlock) {
         return NextResponse.json({
           reply:
-            `**Data kutoka web:**\n` +
+            `**Data kutoka mtandao:**\n` +
             toolMeta.map((t) => `- **${t.tool}**: ${t.summary}`).join("\n"),
           tools: toolMeta,
-          searched: q || null,
           mode,
         });
       }
       return NextResponse.json({
         reply:
           mode === "agent"
-            ? "Samahani, model haikujibu. Jaribu tena."
+            ? "Model haikujibu. Jaribu tena."
             : localHelpHub(message),
-        searched: q || null,
         tools: toolMeta,
         mode,
       });
@@ -385,10 +338,10 @@ export async function POST(req: Request) {
       /siwezi (kujibu|kusaidia|kutoa)/i.test(reply.slice(0, 120));
     if (refuse) {
       reply = toolBlock
-        ? `Nimefungua / kusoma data:\n` +
+        ? `Nimetafuta mtandaoni:\n` +
           toolMeta.map((t) => `- ${t.summary}`).join("\n")
         : mode === "agent"
-          ? "Jaribu kuuliza tena kwa undani zaidi."
+          ? "Jaribu kuuliza tena."
           : localHelpHub(message);
       void logAiUsage({
         sessionId,
