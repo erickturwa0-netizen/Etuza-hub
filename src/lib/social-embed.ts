@@ -15,7 +15,7 @@ function ytId(u: string): string | null {
   const patterns = [
     /(?:youtube\.com\/watch\?(?:.*&)?v=)([\w-]{11})/i,
     /youtu\.be\/([\w-]{11})/i,
-    /youtube\.com\/embed\/([\w-]{11})/i,
+    /youtube(?:-nocookie)?\.com\/embed\/([\w-]{11})/i,
     /youtube\.com\/shorts\/([\w-]{11})/i,
     /youtube\.com\/live\/([\w-]{11})/i,
     /youtube\.com\/v\/([\w-]{11})/i,
@@ -26,7 +26,6 @@ function ytId(u: string): string | null {
     const m = s.match(p);
     if (m) return m[1];
   }
-  // query param anywhere
   try {
     const url = new URL(s.startsWith("http") ? s : `https://${s}`);
     const v = url.searchParams.get("v");
@@ -103,4 +102,18 @@ export function detectSocial(url: string): {
   }
 
   return { kind: null, embedUrl: null, id: null };
+}
+
+/** Music item should use video player (YouTube etc.) not audio-only */
+export function isVideoMusicLink(
+  link: string,
+  category?: string | null
+): boolean {
+  const l = (link || "").toLowerCase();
+  const c = (category || "").toLowerCase();
+  if (/video/.test(c)) return true;
+  if (/youtube|youtu\.be|youtube-nocookie|vimeo|dailymotion|tiktok/.test(l))
+    return true;
+  if (ytId(link)) return true;
+  return false;
 }

@@ -10,6 +10,7 @@ import PresenceTracker from "@/components/PresenceTracker";
 import WebGamePlayer from "@/components/WebGamePlayer";
 import WatchPaywallGate from "@/components/WatchPaywallGate";
 import PlaybackReportForm from "@/components/PlaybackReportForm";
+import { isVideoMusicLink } from "@/lib/social-embed";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -161,7 +162,12 @@ export default async function WatchPage({
         </div>
       );
     }
-    if (item.type === "radio" || item.type === "music") {
+
+    // Video Music (YouTube etc.) → StreamPlayer, not audio-only
+    const musicIsVideo =
+      item.type === "music" && isVideoMusicLink(link, item.category);
+
+    if (item.type === "radio" || (item.type === "music" && !musicIsVideo)) {
       return (
         <PreRollGate
           contentKey={contentKey}
@@ -178,6 +184,7 @@ export default async function WatchPage({
         </PreRollGate>
       );
     }
+
     return (
       <PreRollGate
         contentKey={contentKey}
