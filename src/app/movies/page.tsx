@@ -6,6 +6,7 @@ import { resetEmbedStatuses } from "@/lib/stream-probe";
 import ContentSearch from "@/components/ContentSearch";
 import NewContentBanner from "@/components/NewContentBanner";
 import MediaPosterCard from "@/components/MediaPosterCard";
+import AiAgentCard from "@/components/AiAgentCard";
 import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
@@ -78,7 +79,6 @@ export default async function MoviesPage({
       /* ignore */
     }
 
-    // Working (ok) first, then unknown, then bad; newest within each
     items = raw
       .map((a) => ({
         ...a,
@@ -98,10 +98,9 @@ export default async function MoviesPage({
     console.error("movies page", e);
   }
 
-  const okCount = items.filter((i) => i.streamStatus === "ok").length;
-
   return (
     <main className="max-w-6xl mx-auto px-3 sm:px-4 py-8 pb-28">
+      <AiAgentCard context="movie" />
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-11 h-11 rounded-xl bg-violet-500/20 flex items-center justify-center text-violet-400 shrink-0">
@@ -109,38 +108,33 @@ export default async function MoviesPage({
           </div>
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-white">Movies</h1>
-            <p className="text-sm text-slate-400">
-              {items.length} movies
-              {okCount ? ` · ${okCount} zinazocheza juu` : ""} · badilisha server
-            </p>
+            <p className="text-xs text-slate-500">{items.length} titles</p>
           </div>
         </div>
-        <Suspense fallback={null}>
-          <ContentSearch placeholder="Tafuta movie…" />
-        </Suspense>
+        <div className="sm:ml-auto w-full sm:w-72">
+          <Suspense fallback={null}>
+            <ContentSearch placeholder="Tafuta movie…" />
+          </Suspense>
+        </div>
       </div>
 
-      {bannerTitles.length > 0 && <NewContentBanner titles={bannerTitles} />}
-
-      {items.length === 0 ? (
-        <p className="text-slate-500 text-sm mt-8">
-          Inapakia movies… refresh baada ya sekunde chache.
-        </p>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
-          {items.map((m) => (
-            <MediaPosterCard
-              key={m.id}
-              id={m.id}
-              title={m.title}
-              coverUrl={m.coverUrl}
-              category={m.category}
-              kind="movie"
-              streamStatus={m.streamStatus}
-            />
-          ))}
-        </div>
+      {bannerTitles.length > 0 && (
+        <NewContentBanner titles={bannerTitles} />
       )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+        {items.map((item) => (
+          <MediaPosterCard
+            key={item.id}
+            id={item.id}
+            title={item.title}
+            coverUrl={item.coverUrl}
+            category={item.category}
+            type="movie"
+            streamStatus={item.streamStatus}
+          />
+        ))}
+      </div>
     </main>
   );
 }
