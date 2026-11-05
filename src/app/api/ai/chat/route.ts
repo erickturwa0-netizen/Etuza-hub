@@ -8,20 +8,18 @@ import { randomUUID } from "crypto";
 const ENDPOINT = "https://api.inceptionlabs.ai/v1/chat/completions";
 const MODEL = "mercury-3";
 
-const SYSTEM_AGENT = `Wewe ni **ETUZA AI Agent** — msaidizi mwenye akili pana.
-Jibu kwa Kiswahili rahisi na rafiki (Kiingereza mteja akitaka).
+const SYSTEM_AGENT = `Wewe ni **ETUZA AI Agent** — msaidizi wa jumla (si database ya movies pekee).
+Jibu kwa Kiswahili rahisi.
 
-=== UWEZO ===
-1. Jibu **swali lolote** la maarifa.
-2. Una **tools za mtandao**: web_search, visit_web, http_request — TOOL RESULTS zinakuja automatic. LAZIMA utumie data hiyo.
-3. Unaweza kusoma **ATTACHMENTS**.
-4. Unaweza pia kusaidia kuhusu ETUZA HUB ukiulizwa.
+=== MUHIMU SANA ===
+1. Swali lolote la maarifa (nani, nini, wapi, historia, sayansi…) — JIBU.
+2. TOOL RESULTS (web_search/visit_web) zinakuja automatic — tumia kila wakati zipo.
+3. USISEME "database yangu haina matokeo" kwa maswali yasiyo ya movies/TV ya ETUZA.
+4. USIULIZE "ungependa nitafute mtandaoni?" — tayari umetafuta; toa jibu.
+5. Kama tools hazikupata, bado jibu kwa maarifa yako (usikatae).
+6. Attachments: soma na utumie.
 
-=== SHERIA ===
-- USIKATAE maswali ya kawaida.
-- Usitoe cracking au maelekezo ya uhalifu.
-- Usizushe ukweli: kama huna uhakika, sema wazi.
-- Markdown: **bold**, orodha, links.`;
+Markdown: **bold**, orodha, links.`;
 
 const SYSTEM_HUB = `Wewe ni msaidizi wa **ETUZA HUB** tu (https://etuza-hub-v2.vercel.app).
 Jibu **MASWALI YA ETUZA HUB PEKEE** (movies, TV, radio, miziki, point, VPN).
@@ -84,7 +82,6 @@ function extractSearchQuery(message: string): string | null {
       if (q.length >= 2 && q.length <= 80) return q;
     }
   }
-  if (m.length <= 48 && m.split(/\s+/).length <= 6) return m;
   return null;
 }
 
@@ -259,9 +256,12 @@ export async function POST(req: Request) {
   }
 
   let researchBlock = "";
+  // ONLY search movie DB for hub mode or explicit media keywords — never for general Qs
   const q =
     mode === "hub" ||
-    /movie|filamu|tv|radio|miziki|music|tamthilia|drama|etuza/i.test(message)
+    /\b(movie|filamu|tv\s*channel|radio|miziki|music|tamthilia|drama|etuza)\b/i.test(
+      message
+    )
       ? extractSearchQuery(message)
       : null;
   if (q) {
@@ -298,7 +298,7 @@ export async function POST(req: Request) {
           ...history,
           { role: "user", content: message },
         ],
-        temperature: mode === "agent" ? 0.55 : 0.45,
+        temperature: mode === "agent" ? 0.5 : 0.45,
         max_tokens: mode === "agent" ? 2000 : 1200,
       }),
     });
@@ -335,13 +335,15 @@ export async function POST(req: Request) {
     const refuse =
       !reply ||
       /^(samahani[,.]?\s*)+$/i.test(reply) ||
-      /siwezi (kujibu|kusaidia|kutoa)/i.test(reply.slice(0, 120));
+      /siwezi (kujibu|kusaidia|kutoa)/i.test(reply.slice(0, 120)) ||
+      /database yangu/i.test(reply.slice(0, 200));
     if (refuse) {
       reply = toolBlock
         ? `Nimetafuta mtandaoni:\n` +
-          toolMeta.map((t) => `- ${t.summary}`).join("\n")
+          toolMeta.map((t) => `- ${t.summary}`).join("\n") +
+          `\n\nUliza tena kwa undani kama unahitaji zaidi.`
         : mode === "agent"
-          ? "Jaribu kuuliza tena."
+          ? "Jaribu kuuliza tena kwa maneno mengine."
           : localHelpHub(message);
       void logAiUsage({
         sessionId,
