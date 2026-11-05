@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Play } from "lucide-react";
 import ContentCard from "@/components/ContentCard";
 import HomeHeroSlideshow, { type HeroSlide } from "@/components/HomeHeroSlideshow";
+import AiAgentCard from "@/components/AiAgentCard";
 import { getPublishedContent } from "@/lib/content";
 import { contentCover } from "@/lib/covers";
 import { PINNED_CHANNELS } from "@/lib/iptv";
@@ -30,7 +31,6 @@ export default async function HomePage() {
   ]);
 
   const slides: HeroSlide[] = [];
-
   for (const m of movies.slice(0, 6)) {
     slides.push({
       id: m.id,
@@ -62,19 +62,14 @@ export default async function HomePage() {
     });
   }
 
-  const trending = [
-    ...movies.slice(0, 8),
-    ...dramas.slice(0, 4),
-  ].slice(0, 12);
+  const trending = [...movies.slice(0, 8), ...dramas.slice(0, 4)].slice(0, 12);
 
   return (
     <main className="flex-1 pb-10 bg-[#0a0a0f]">
-      {/* Full-bleed hero */}
       <section className="w-full">
         <HomeHeroSlideshow slides={slides} />
       </section>
 
-      {/* Quick categories — compact pills under hero */}
       <section className="max-w-7xl mx-auto px-3 sm:px-5 -mt-2 sm:mt-4 relative z-10">
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
           {CATS.map((c) => (
@@ -84,48 +79,31 @@ export default async function HomePage() {
               className="shrink-0 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 px-3.5 py-2 transition"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={c.iconUrl}
-                alt=""
-                className="w-5 h-5 object-contain"
-              />
+              <img src={c.iconUrl} alt="" className="w-5 h-5 object-contain" />
               <span className="text-xs font-semibold text-white">{c.title}</span>
             </Link>
           ))}
         </div>
       </section>
 
-      {/* Trending Now */}
-      {trending.length > 0 && (
-        <MediaRow
-          title="Trending Now"
-          href="/movies"
-          items={trending}
-        />
-      )}
+      <div className="max-w-7xl mx-auto px-3 sm:px-5 mt-5">
+        <AiAgentCard />
+      </div>
 
+      {trending.length > 0 && (
+        <MediaRow title="Trending Now" href="/movies" items={trending} />
+      )}
       {movies.length > 0 && (
         <MediaRow title="Movies" href="/movies" items={movies.slice(0, 14)} />
       )}
-
       {dramas.length > 0 && (
-        <MediaRow
-          title="Popular Tamthilia"
-          href="/drama"
-          items={dramas.slice(0, 14)}
-        />
+        <MediaRow title="Popular Tamthilia" href="/drama" items={dramas.slice(0, 14)} />
       )}
 
-      {/* TV row */}
       <section className="max-w-7xl mx-auto px-3 sm:px-5 pt-6 pb-2">
         <div className="flex items-end justify-between mb-3 gap-2">
-          <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
-            Live TV
-          </h2>
-          <Link
-            href="/tv"
-            className="text-xs sm:text-sm text-red-400 hover:text-red-300 inline-flex items-center gap-1 font-medium"
-          >
+          <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">Live TV</h2>
+          <Link href="/tv" className="text-xs sm:text-sm text-red-400 hover:text-red-300 inline-flex items-center gap-1 font-medium">
             See All <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -144,9 +122,7 @@ export default async function HomePage() {
                   className="w-full h-full object-contain"
                 />
               </div>
-              <p className="text-[11px] text-slate-200 mt-1.5 truncate text-center font-medium">
-                {ch.title}
-              </p>
+              <p className="text-[11px] text-slate-200 mt-1.5 truncate text-center font-medium">{ch.title}</p>
             </Link>
           ))}
         </div>
@@ -165,7 +141,6 @@ export default async function HomePage() {
         <MediaRow title="VPN" href="/vpn" items={vpns.slice(0, 6)} />
       )}
 
-      {/* CTA strip */}
       <section className="max-w-7xl mx-auto px-3 sm:px-5 py-10">
         <div className="rounded-2xl border border-white/10 bg-gradient-to-r from-red-950/40 via-slate-900 to-violet-950/30 p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
@@ -199,22 +174,14 @@ function MediaRow({
   return (
     <section className="max-w-7xl mx-auto px-3 sm:px-5 pt-6 pb-1">
       <div className="flex items-end justify-between mb-3 gap-2">
-        <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
-          {title}
-        </h2>
-        <Link
-          href={href}
-          className="text-xs sm:text-sm text-red-400 hover:text-red-300 inline-flex items-center gap-1 font-medium shrink-0"
-        >
+        <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">{title}</h2>
+        <Link href={href} className="text-xs sm:text-sm text-red-400 hover:text-red-300 inline-flex items-center gap-1 font-medium shrink-0">
           See All <ArrowRight className="w-3.5 h-3.5" />
         </Link>
       </div>
       <div className="flex gap-3 sm:gap-3.5 overflow-x-auto pb-2 -mx-1 px-1 snap-x scrollbar-none">
         {items.map((c) => (
-          <div
-            key={c.id}
-            className="snap-start shrink-0 w-[118px] sm:w-[140px] md:w-[152px]"
-          >
+          <div key={c.id} className="snap-start shrink-0 w-[118px] sm:w-[140px] md:w-[152px]">
             <ContentCard
               id={c.id}
               title={c.title}
