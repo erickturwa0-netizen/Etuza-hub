@@ -23,7 +23,6 @@ function getAiSessionId(): string {
   }
 }
 
-/** Lightweight markdown → React (bold, italic, titles, lists, links, breaks) */
 function formatInline(text: string): ReactNode[] {
   const parts: ReactNode[] = [];
   const re =
@@ -32,9 +31,7 @@ function formatInline(text: string): ReactNode[] {
   let m: RegExpExecArray | null;
   let k = 0;
   while ((m = re.exec(text))) {
-    if (m.index > last) {
-      parts.push(text.slice(last, m.index));
-    }
+    if (m.index > last) parts.push(text.slice(last, m.index));
     const token = m[0];
     if (token.startsWith("**")) {
       parts.push(
@@ -71,9 +68,7 @@ function formatInline(text: string): ReactNode[] {
             {lm[1]}
           </a>
         );
-      } else {
-        parts.push(token);
-      }
+      } else parts.push(token);
     }
     last = m.index + token.length;
   }
@@ -86,7 +81,6 @@ function FormattedMessage({ content }: { content: string }) {
   const blocks: ReactNode[] = [];
   let listBuf: string[] = [];
   let k = 0;
-
   function flushList() {
     if (!listBuf.length) return;
     blocks.push(
@@ -100,59 +94,28 @@ function FormattedMessage({ content }: { content: string }) {
     );
     listBuf = [];
   }
-
   for (const raw of lines) {
     const line = raw.trimEnd();
     const t = line.trim();
-
     if (!t) {
       flushList();
       blocks.push(<div key={k++} className="h-2" />);
       continue;
     }
-
     if (/^#{1,3}\s+/.test(t)) {
       flushList();
-      const level = (t.match(/^#+/) || ["#"])[0].length;
       const text = t.replace(/^#{1,3}\s+/, "");
-      const cls =
-        level === 1
-          ? "text-base font-extrabold uppercase tracking-wide text-violet-200 mt-1 mb-1"
-          : level === 2
-            ? "text-sm font-bold text-white mt-1 mb-0.5"
-            : "text-sm font-semibold text-slate-100 mt-1";
       blocks.push(
-        <p key={k++} className={cls}>
+        <p key={k++} className="text-sm font-bold text-white mt-1 mb-0.5">
           {formatInline(text)}
         </p>
       );
       continue;
     }
-
-    if (
-      t.length >= 3 &&
-      t.length <= 48 &&
-      t === t.toUpperCase() &&
-      /[A-ZÀ-Ÿ]/.test(t) &&
-      !/^https?:\/\//i.test(t)
-    ) {
-      flushList();
-      blocks.push(
-        <p
-          key={k++}
-          className="text-sm font-extrabold uppercase tracking-wide text-violet-200 mt-1 mb-0.5"
-        >
-          {formatInline(t)}
-        </p>
-      );
-      continue;
-    }
-
     if (/^([-*•]|\d+[.)])\s+/.test(t)) {
       listBuf.push(t.replace(/^([-*•]|\d+[.)])\s+/, ""));
       continue;
     }
-
     flushList();
     blocks.push(
       <p key={k++} className="leading-relaxed my-0.5">
@@ -161,7 +124,6 @@ function FormattedMessage({ content }: { content: string }) {
     );
   }
   flushList();
-
   return <div className="space-y-0.5 text-[13px] sm:text-sm">{blocks}</div>;
 }
 
@@ -173,7 +135,7 @@ export default function AiChatFloat() {
     {
       role: "assistant",
       content:
-        "**HABARI!**\n\nMimi ni msaidizi wa *ETUZA HUB*.\n\nUnaweza kuniuliza kuhusu:\n- Movies & Tamthilia\n- Radio & TV\n- Miziki & Games\n- VPN & Point\n- Jinsi ya kutumia site",
+        "**HABARI!**\n\nMimi ni msaidizi wa *ETUZA HUB* (site tu).\n\nUnaweza kuniuliza kuhusu:\n- Movies & Tamthilia\n- Radio & TV\n- Miziki & Games\n- VPN & Point\n- Jinsi ya kutumia site\n\n*Kwa maswali yoyote mengine fungua /ai (AI Agent).*",
     },
   ]);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -212,6 +174,7 @@ export default function AiChatFloat() {
           message: text,
           history,
           sessionId: sessionIdRef.current,
+          mode: "hub",
         }),
       });
       const data = await res.json();
@@ -261,8 +224,8 @@ export default function AiChatFloat() {
               <Bot className="w-4 h-4" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold leading-tight">ETUZA AI</p>
-              <p className="text-[10px] text-white/80">Msaada · mercury-3</p>
+              <p className="text-sm font-bold leading-tight">ETUZA HUB Help</p>
+              <p className="text-[10px] text-white/80">Site tu · si AI Agent</p>
             </div>
             <button
               type="button"
@@ -320,7 +283,7 @@ export default function AiChatFloat() {
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Uliza kitu…"
+                placeholder="Uliza kuhusu ETUZA HUB…"
                 className="flex-1 min-w-0 h-11 px-3 rounded-xl bg-slate-950 border border-slate-600 text-sm text-white placeholder:text-slate-500 outline-none focus:border-violet-500"
                 disabled={busy}
               />
@@ -343,7 +306,7 @@ export default function AiChatFloat() {
           onClick={() => setOpen(true)}
           className="fixed z-[60] w-14 h-14 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white shadow-lg shadow-violet-600/40 flex items-center justify-center active:scale-95 border-2 border-white/20"
           style={{ bottom: "4.75rem", right: "0.85rem" }}
-          aria-label="Fungua AI msaada"
+          aria-label="Fungua msaada wa site"
         >
           <MessageCircle className="w-6 h-6" />
         </button>
