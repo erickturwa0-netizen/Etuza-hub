@@ -11,12 +11,16 @@ import {
   FileText,
   Image as ImageIcon,
 } from "lucide-react";
+import AiPlayableCards, {
+  type PlayableCard,
+} from "@/components/AiPlayableCards";
 
 type Msg = {
   role: "user" | "assistant";
   content: string;
   attachments?: { name: string; type: string }[];
   tools?: { tool: string; ok: boolean; summary: string }[];
+  playables?: PlayableCard[];
 };
 
 type AttachmentPayload = {
@@ -119,85 +123,62 @@ function FormattedMessage({ content }: { content: string }) {
     const t = raw.trim();
     if (!t) {
       flushList();
-      blocks.push(<div key={k++} className="h-2" />);
       continue;
     }
-    if (/^#{1,3}\s+/.test(t)) {
-      flushList();
-      blocks.push(
-        <p key={k++} className="text-sm font-bold text-white mt-1 mb-0.5">
-          {formatInline(t.replace(/^#{1,3}\s+/, ""))}
-        </p>
-      );
-      continue;
-    }
-    if (/^([-*•]|\d+[.)])\s+/.test(t)) {
-      listBuf.push(t.replace(/^([-*•]|\d+[.)])\s+/, ""));
+    if (/^[-*]\s+/.test(t)) {
+      listBuf.push(t.replace(/^[-*]\s+/, ""));
       continue;
     }
     flushList();
-    blocks.push(
-      <p key={k++} className="leading-relaxed my-0.5">
-        {formatInline(t)}
-      </p>
-    );
+    if (/^###\s+/.test(t)) {
+      blocks.push(
+        <h3 key={k++} className="text-sm font-bold text-violet-200 mt-2">
+          {formatInline(t.replace(/^###\s+/, ""))}
+        </h3>
+      );
+    } else if (/^##\s+/.test(t)) {
+      blocks.push(
+        <h2 key={k++} className="text-base font-bold text-white mt-2">
+          {formatInline(t.replace(/^##\s+/, ""))}
+        </h2>
+      );
+    } else if (/^#\s+/.test(t)) {
+      blocks.push(
+        <h1 key={k++} className="text-lg font-bold text-white mt-2">
+          {formatInline(t.replace(/^#\s+/, ""))}
+        </h1>
+      );
+    } else {
+      blocks.push(
+        <p key={k++} className="leading-relaxed my-1">
+          {formatInline(t)}
+        </p>
+      );
+    }
   }
   flushList();
-  return <div className="space-y-0.5 text-[13px] sm:text-sm">{blocks}</div>;
-}
-
-async function fileToAttachment(file: File): Promise<AttachmentPayload | null> {
-  const name = file.name.slice(0, 120);
-  const type = file.type || "application/octet-stream";
-  if (
-    type.startsWith("text/") ||
-    /\.(txt|md|csv|json|log|xml|html|js|ts|tsx|css)$/i.test(name)
-  ) {
-    return { name, type: type || "text/plain", text: (await file.text()).slice(0, 80000) };
-  }
-  if (type.startsWith("image/")) {
-    if (file.size > 900000) {
-      return {
-        name,
-        type,
-        text: `[Image: ${name}, ${Math.round(file.size / 1024)}KB]`,
-      };
-    }
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result || ""));
-      r.onerror = () => reject(new Error("read fail"));
-      r.readAsDataURL(file);
-    });
-    return { name, type, dataUrl };
-  }
-  return {
-    name,
-    type,
-    text: `[File: ${name} (${type})]`,
-  };
+  return <div className="text-sm text-slate-100">{blocks}</div>;
 }
 
 export default function AiAgentPanel({
   contextLabel,
-  fullPage = false,
+  className = "",
 }: {
   contextLabel?: string;
-  fullPage?: boolean;
+  className?: string;
 }) {
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<AttachmentPayload[]>([]);
   const [msgs, setMsgs] = useState<Msg[]>([
     {
       role: "assistant",
       content:
-        "**ETUZA AI Agent** 🤖\n\nNinaweza kujibu **swali lolote** — si mambo ya site tu.\n\nPia nina **browser + scrape**, na napokea **attachments**.\n\nJaribu kuuliza chochote au: *Fungua https://…*" +
-        (contextLabel ? `\n\nContext: **${contextLabel}**` : ""),
+        "Habari! Mimi ni **ETUZA AI Agent**.\n\nUnaweza kuniuliza chochote — pia: **nipatie movie…**, **radio…**, **TV channel…** nitaleta button ya **Cheza**.\n\nTools: web · embed · inference · terminal.",
     },
   ]);
-  const endRef = useRef<HTMLDivElement | null>(null);
-  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const sessionIdRef = useRef("");
 
   useEffect(() => {
@@ -205,51 +186,56 @@ export default function AiAgentPanel({
   }, []);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs, busy]);
 
-  async function onPickFiles(files: FileList | null) {
-    if (!files?.length) return;
-    const next: AttachmentPayload[] = [...pending];
-    for (const f of Array.from(files).slice(0, 4)) {
-      if (next.length >= 4) break;
-      try {
-        const a = await fileToAttachment(f);
-        if (a) next.push(a);
-      } catch {
-        /* skip */
-      }
+  async function fileToPayload(f: File): Promise<AttachmentPayload> {
+    const base: AttachmentPayload = { name: f.name, type: f.type || "file" };
+    if (f.type.startsWith("image/")) {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result || ""));
+        r.onerror = reject;
+        r.readAsDataURL(f);
+      });
+      return { ...base, dataUrl: dataUrl.slice(0, 1_500_000) };
     }
-    setPending(next);
-    if (fileRef.current) fileRef.current.value = "";
+    if (
+      f.type.startsWith("text/") ||
+      /\.(txt|md|json|csv|js|ts|tsx|py|log)$/i.test(f.name)
+    ) {
+      const text = await f.text();
+      return { ...base, text: text.slice(0, 12000) };
+    }
+    return base;
   }
 
   async function send() {
     const text = input.trim();
-    if ((!text && !pending.length) || busy) return;
+    if ((!text && !files.length) || busy) return;
     setInput("");
-    const atts = pending;
-    setPending([]);
+    const attsMeta = files.map((f) => ({ name: f.name, type: f.type || "file" }));
     const userContent =
       text ||
-      (atts.length ? `(Attachment: ${atts.map((a) => a.name).join(", ")})` : "");
-    const next: Msg[] = [
-      ...msgs,
-      {
-        role: "user",
-        content: userContent,
-        attachments: atts.map((a) => ({ name: a.name, type: a.type })),
-      },
-    ];
-    setMsgs(next);
+      (files.length ? `(attachments: ${files.map((f) => f.name).join(", ")})` : "");
+    setMsgs((m) => [
+      ...m,
+      { role: "user", content: userContent, attachments: attsMeta },
+    ]);
     setBusy(true);
+    const pendingFiles = [...files];
+    setFiles([]);
+
     try {
-      const history = next
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .slice(0, -1)
-        .slice(-10)
+      const atts: AttachmentPayload[] = [];
+      for (const f of pendingFiles.slice(0, 4)) {
+        atts.push(await fileToPayload(f));
+      }
+      const history = msgs
+        .slice(-20)
         .map((m) => ({ role: m.role, content: m.content }));
       if (!sessionIdRef.current) sessionIdRef.current = getAiSessionId();
+
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -268,8 +254,10 @@ export default function AiAgentPanel({
         ...m,
         {
           role: "assistant",
-          content: data.reply || data.error || "Samahani, sijaweza kujibu sasa.",
+          content:
+            data.reply || data.error || "Samahani, sijaweza kujibu sasa.",
           tools: Array.isArray(data.tools) ? data.tools : undefined,
+          playables: Array.isArray(data.playables) ? data.playables : [],
         },
       ]);
     } catch {
@@ -283,93 +271,87 @@ export default function AiAgentPanel({
 
   return (
     <div
-      className={`flex flex-col rounded-2xl border border-violet-500/30 bg-slate-950 overflow-hidden shadow-xl shadow-violet-950/20 ${
-        fullPage ? "min-h-[70vh]" : "h-[min(70vh,32rem)]"
-      }`}
+      className={`flex flex-col rounded-2xl border border-violet-500/30 bg-slate-950 overflow-hidden shadow-xl shadow-violet-950/20 ${className}`}
     >
-      <div className="flex items-center gap-2 px-3 py-3 bg-gradient-to-r from-violet-700 to-fuchsia-700 text-white shrink-0">
-        <span className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
-          <Bot className="w-5 h-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold leading-tight">ETUZA AI Agent</p>
-          <p className="text-[10px] text-white/80 flex items-center gap-1.5">
-            <Globe className="w-3 h-3" /> Swali lolote · Browser · Scrape
+      <div className="px-4 py-3 border-b border-violet-500/20 flex items-center gap-2 bg-violet-950/30">
+        <Bot className="w-5 h-5 text-violet-300" />
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-white">ETUZA AI Agent</p>
+          <p className="text-[10px] text-slate-400 truncate">
+            Movie · TV · Radio · Tools · Play
           </p>
         </div>
+        <Globe className="w-4 h-4 text-violet-400/60 ml-auto" />
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 min-h-0">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[min(60vh,520px)] min-h-[280px]">
         {msgs.map((m, i) => (
           <div
             key={i}
-            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+            className={`rounded-2xl px-3 py-2.5 max-w-[95%] ${
+              m.role === "user"
+                ? "ml-auto bg-violet-600/80 text-white"
+                : "mr-auto bg-slate-900/90 border border-slate-800 text-slate-100"
+            }`}
           >
-            <div
-              className={`max-w-[92%] rounded-2xl px-3 py-2.5 ${
-                m.role === "user"
-                  ? "bg-violet-600 text-white rounded-br-md text-sm leading-relaxed whitespace-pre-wrap"
-                  : "bg-slate-800 text-slate-100 rounded-bl-md border border-slate-700"
-              }`}
-            >
-              {m.attachments && m.attachments.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-1.5">
-                  {m.attachments.map((a, j) => (
-                    <span
-                      key={j}
-                      className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-black/25"
-                    >
-                      {a.type.startsWith("image/") ? (
-                        <ImageIcon className="w-3 h-3" />
-                      ) : (
-                        <FileText className="w-3 h-3" />
-                      )}
-                      {a.name}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {m.role === "assistant" ? (
+            {m.attachments && m.attachments.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-1.5">
+                {m.attachments.map((a, j) => (
+                  <span
+                    key={j}
+                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-black/25"
+                  >
+                    {a.type.startsWith("image/") ? (
+                      <ImageIcon className="w-3 h-3" />
+                    ) : (
+                      <FileText className="w-3 h-3" />
+                    )}
+                    {a.name}
+                  </span>
+                ))}
+              </div>
+            )}
+            {m.role === "assistant" ? (
+              <>
                 <FormattedMessage content={m.content} />
-              ) : (
-                m.content
-              )}
-              {m.tools && m.tools.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-white/10 space-y-1">
-                  {m.tools.map((t, j) => (
-                    <p key={j} className="text-[10px] text-slate-400">
-                      🔧 {t.tool}: {t.summary}
-                    </p>
-                  ))}
-                </div>
-              )}
-            </div>
+                {m.playables && m.playables.length > 0 && (
+                  <AiPlayableCards items={m.playables} />
+                )}
+              </>
+            ) : (
+              m.content
+            )}
+            {m.tools && m.tools.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-white/10 space-y-1">
+                {m.tools.map((t, j) => (
+                  <p key={j} className="text-[10px] text-slate-400">
+                    🔧 {t.tool}: {t.summary}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         ))}
         {busy && (
-          <div className="flex justify-start">
-            <div className="bg-slate-800 border border-slate-700 rounded-2xl rounded-bl-md px-3 py-2 text-slate-400 text-sm inline-flex items-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Agent anafanya kazi…
-            </div>
+          <div className="flex items-center gap-2 text-slate-400 text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Inafikiri…
           </div>
         )}
-        <div ref={endRef} />
+        <div ref={bottomRef} />
       </div>
 
-      {pending.length > 0 && (
-        <div className="px-3 py-2 border-t border-slate-800 bg-slate-900/80 flex flex-wrap gap-1.5">
-          {pending.map((a, i) => (
+      {files.length > 0 && (
+        <div className="px-3 py-2 border-t border-slate-800 flex flex-wrap gap-2">
+          {files.map((f, i) => (
             <span
               key={i}
-              className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-violet-500/15 text-violet-100 border border-violet-500/30"
+              className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-slate-900 border border-slate-700"
             >
-              <Paperclip className="w-3 h-3" />
-              {a.name}
+              {f.name}
               <button
                 type="button"
-                className="ml-0.5 p-0.5 rounded hover:bg-white/10"
-                onClick={() => setPending((p) => p.filter((_, j) => j !== i))}
+                onClick={() => setFiles((x) => x.filter((_, j) => j !== i))}
               >
                 <X className="w-3 h-3" />
               </button>
@@ -378,57 +360,47 @@ export default function AiAgentPanel({
         </div>
       )}
 
-      <div className="shrink-0 border-t border-slate-800 bg-slate-900 p-2.5">
-        <form
-          className="flex items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void send();
+      <div className="p-3 border-t border-slate-800 flex items-end gap-2">
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const list = e.target.files ? Array.from(e.target.files) : [];
+            setFiles((prev) => [...prev, ...list].slice(0, 4));
+            e.target.value = "";
           }}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="p-2.5 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-900"
+          title="Attachment"
         >
-          <input
-            ref={fileRef}
-            type="file"
-            className="hidden"
-            multiple
-            accept="image/*,.txt,.md,.csv,.json,.log,.xml,.html,.js,.ts,.tsx,.css,text/*"
-            onChange={(e) => void onPickFiles(e.target.files)}
-          />
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-            className="h-11 w-11 shrink-0 rounded-xl border border-slate-600 bg-slate-950 text-slate-300 flex items-center justify-center hover:border-violet-500 hover:text-white disabled:opacity-40"
-            aria-label="Pakia attachment"
-          >
-            <Paperclip className="w-4 h-4" />
-          </button>
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Uliza chochote, paste link, au pakia faili…"
-            rows={1}
-            className="flex-1 min-w-0 min-h-[44px] max-h-28 px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-600 text-sm text-white placeholder:text-slate-500 outline-none focus:border-violet-500 resize-y"
-            disabled={busy}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-          />
-          <button
-            type="submit"
-            disabled={busy || (!input.trim() && !pending.length)}
-            className="h-11 w-11 shrink-0 rounded-xl bg-violet-600 text-white flex items-center justify-center disabled:opacity-40"
-            aria-label="Tuma"
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </form>
-        <p className="text-[10px] text-slate-500 mt-1.5 px-1">
-          Mode: agent (swali lolote) · tools · attachments
-        </p>
+          <Paperclip className="w-4 h-4" />
+        </button>
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void send();
+            }
+          }}
+          rows={1}
+          placeholder="Nipatie movie… / radio… / TV…"
+          className="flex-1 resize-none rounded-xl bg-slate-900 border border-slate-700 px-3 py-2.5 text-sm text-white max-h-28"
+        />
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void send()}
+          className="p-2.5 rounded-xl bg-violet-600 text-white disabled:opacity-50"
+        >
+          <Send className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );
