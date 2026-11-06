@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  Save,
-  Link2,
+  Settings,
   Film,
   Tv,
   Radio,
@@ -11,17 +10,14 @@ import {
   Shield,
   Music,
   Clapperboard,
-  Download,
-  Info,
 } from "lucide-react";
 
 type Source = {
-  id: string;
   category: string;
   name: string;
   url: string;
   enabled: boolean;
-  notes: string | null;
+  notes?: string | null;
 };
 
 const ICONS: Record<string, typeof Film> = {
@@ -44,26 +40,6 @@ const LABELS: Record<string, string> = {
   vpn: "VPN",
 };
 
-/** Reference endpoints (sniffed) shown under each section */
-const SECTION_HINTS: Record<string, string[]> = {
-  movie: [
-    "TMDB: api.themoviedb.org/3 (key from Movian APK)",
-    "ElitePlex: eliteplex-api.vercel.app/api/movies",
-    "Sync Movies button on Dashboard pulls Popular + Top Rated + Trending",
-  ],
-  tv: [
-    "EasyAPI: easyapi.sh/live-tv/api/v1/channel-visibility",
-    "Proxy: easyapi.sh/proxy.json",
-    "Sports: popflix.dev/live-tv/api/v1/sports/events",
-    "Free streams: pinned m3u8 + IPTV-org",
-  ],
-  drama: ["ElitePlex Series: eliteplex-api.vercel.app/api/series"],
-  music: ["iTunes Search (Bongo / TZ)"],
-  radio: ["Radio Browser (Tanzania)"],
-  game: ["FreeToGame API"],
-  vpn: ["Manual only"],
-};
-
 export default function AdminSettingsPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,16 +56,16 @@ export default function AdminSettingsPage() {
         credentials: "include",
       });
       const data = await res.json();
-      if (!res.ok) setError(data.error || "Failed");
+      if (!res.ok) throw new Error(data.error || "Failed");
       setSources(data.sources || []);
-    } catch {
-      setError("Tatizo la mtandao");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
     }
     setLoading(false);
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   function update(category: string, patch: Partial<Source>) {
@@ -118,10 +94,10 @@ export default function AdminSettingsPage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) setError(data.error || "Imeshindikana");
-      else setMsg("Imehifadhiwa ✓");
-    } catch {
-      setError("Tatizo la mtandao");
+      if (!res.ok) throw new Error(data.error || "Save failed");
+      setMsg("Imehifadhiwa");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
     }
     setSaving(false);
   }
@@ -129,7 +105,6 @@ export default function AdminSettingsPage() {
   async function importAll() {
     setImporting(true);
     setMsg("");
-    setError("");
     try {
       await fetch("/api/admin/api-sources", { credentials: "include" });
       const res = await fetch("/api/admin/import-all", {
@@ -137,92 +112,58 @@ export default function AdminSettingsPage() {
         credentials: "include",
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Import imeshindikana");
-      } else {
-        const lines = (data.report || [])
-          .map(
-            (r: { category: string; count: number; error?: string }) =>
-              `${LABELS[r.category] || r.category}: ${r.count}${r.error ? ` (${r.error})` : ""}`
-          )
-          .join(" · ");
-        setMsg(`Import ✓ ${data.total || 0} items — ${lines}`);
-        await load();
-      }
-    } catch {
-      setError("Tatizo la mtandao");
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      setMsg("Import imekamilika");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
     }
     setImporting(false);
   }
 
   return (
-    <div>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <Settings className="w-6 h-6 text-violet-400" />
         <div>
-          <h1 className="text-2xl font-bold">Settings</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            API kwa kila sehemu (Movies, TV, Drama…)
+          <h1 className="text-xl font-bold text-white">Settings</h1>
+          <p className="text-xs text-slate-500">
+            API sources · URL zimefichwa kwa usalama
           </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={importAll}
-            disabled={importing || loading}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-60"
-          >
-            <Download className="w-4 h-4" />
-            {importing ? "Inapakia…" : "Import APIs zote"}
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving || loading}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold disabled:opacity-60"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? "…" : "Hifadhi APIs"}
-          </button>
         </div>
       </div>
 
       {msg && (
-        <div className="mb-4 px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-sm">
+        <p className="text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3 py-2">
           {msg}
-        </div>
+        </p>
       )}
       {error && (
-        <div className="mb-4 px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-sm">
+        <p className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
           {error}
-        </div>
+        </p>
       )}
 
       {loading ? (
         <p className="text-slate-500 text-sm">Inapakia…</p>
       ) : (
-        <div className="space-y-4 max-w-2xl">
+        <div className="space-y-3">
           {sources.map((s) => {
-            const Icon = ICONS[s.category] || Link2;
-            const hints = SECTION_HINTS[s.category] || [];
+            const Icon = ICONS[s.category] || Settings;
             return (
-              <div key={s.category} className="glass-card p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center text-violet-400">
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-sm">
-                        {LABELS[s.category] || s.category}
-                      </p>
-                      {s.notes && (
-                        <p className="text-[11px] text-slate-500 line-clamp-2">
-                          {s.notes}
-                        </p>
-                      )}
-                    </div>
+              <div
+                key={s.category}
+                className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 space-y-3"
+              >
+                <div className="flex items-center gap-3">
+                  <Icon className="w-5 h-5 text-violet-400" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-white text-sm">
+                      {LABELS[s.category] || s.category}
+                    </p>
+                    <p className="text-[11px] text-slate-500">{s.name}</p>
                   </div>
-                  <label className="flex items-center gap-2 text-sm text-slate-400">
+                  <label className="flex items-center gap-2 text-xs text-slate-400">
                     <input
                       type="checkbox"
                       checked={s.enabled}
@@ -230,38 +171,36 @@ export default function AdminSettingsPage() {
                         update(s.category, { enabled: e.target.checked })
                       }
                     />
-                    On
+                    Enabled
                   </label>
                 </div>
-                <input
-                  value={s.name}
-                  onChange={(e) => update(s.category, { name: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm"
-                  placeholder="Jina"
-                />
-                <input
-                  value={s.url}
-                  onChange={(e) => update(s.category, { url: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm font-mono"
-                  placeholder="https://api…"
-                />
-                {hints.length > 0 && (
-                  <div className="rounded-lg bg-slate-900/80 border border-slate-800 px-3 py-2">
-                    <p className="text-[11px] text-slate-400 flex items-center gap-1 mb-1">
-                      <Info className="w-3 h-3" /> APIs za sehemu hii
-                    </p>
-                    <ul className="text-[11px] text-slate-500 space-y-0.5 list-disc list-inside">
-                      {hints.map((h) => (
-                        <li key={h}>{h}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                <p className="text-xs text-slate-500 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800">
+                  API URL / endpoints zimefichwa · hazionekani kwenye panel
+                </p>
               </div>
             );
           })}
         </div>
       )}
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => void save()}
+          className="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold disabled:opacity-50"
+        >
+          Hifadhi
+        </button>
+        <button
+          type="button"
+          disabled={importing}
+          onClick={() => void importAll()}
+          className="px-4 py-2.5 rounded-xl border border-slate-700 text-slate-200 text-sm disabled:opacity-50"
+        >
+          Import all
+        </button>
+      </div>
     </div>
   );
 }
