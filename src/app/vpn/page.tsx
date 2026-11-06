@@ -2,6 +2,7 @@ import ContentCard from "@/components/ContentCard";
 import { getPublishedContent } from "@/lib/content";
 import { Shield } from "lucide-react";
 import VpnPageTracker from "@/components/VpnPageTracker";
+import VpnMyConfigs from "@/components/VpnMyConfigs";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "VPN – ETUZA HUB" };
@@ -12,6 +13,7 @@ export default async function VpnPage() {
   return (
     <main className="max-w-6xl mx-auto px-4 py-10">
       <VpnPageTracker />
+      <VpnMyConfigs />
       <div className="flex items-center gap-3 mb-4">
         <div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center text-blue-400">
           <Shield className="w-5 h-5" />
@@ -36,14 +38,14 @@ export default async function VpnPage() {
       </div>
 
       <p className="text-xs text-slate-500 mb-6 max-w-xl">
-        Bofya config → ukurasa wa download. Ikiwa malipo yamewashwa kwenye Admin,
-        utaona dialog ya bei, utatuma pesa, kisha upakie screenshot. Baada ya
-        admin kuidhinisha, config yako inatayarishwa na kutumwa kwako.
+        Baada ya malipo na admin kutuma config, itaonekana hapa juu na button{" "}
+        <b className="text-slate-300">Nakili config</b>.
       </p>
 
       {items.length === 0 ? (
         <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6 text-sm text-slate-400">
-          Hakuna VPN configs bado. Admin: <b className="text-slate-200">Add Content → VPN</b>
+          Hakuna VPN configs bado. Admin:{" "}
+          <b className="text-slate-200">Add Content → VPN</b>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
