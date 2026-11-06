@@ -333,17 +333,64 @@ async function ddgHtmlSearch(
   return results;
 }
 
+/** Clean Swahili/English question wrappers for better search hit rate */
+function cleanSearchQuery(raw: string): string[] {
+  let q = raw.trim().slice(0, 200);
+  q = q
+    .replace(/[?!.]+$/g, "")
+    .replace(
+      /^(tafuta|search|google|nisaidie|niambie|eleza|tell me|who is|what is)\s+/i,
+      ""
+    )
+    .replace(
+      /\b(ni nani|nani ni|nani|nini maana ya|nini|who is|what is|maeelze|elezea)\b/gi,
+      " "
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  const variants = new Set<string>();
+  if (q) variants.add(q);
+  const toks = q
+    .split(/\s+/)
+    .filter(
+      (w) =>
+        w.length > 1 && !/^(ya|wa|na|za|la|the|a|an|in|of|to)$/i.test(w)
+    );
+  if (toks.length >= 2) variants.add(toks.slice(0, 4).join(" "));
+  if (toks.length >= 1) variants.add(toks[0]);
+  if (/\blisu\b/i.test(q) && !/lissu/i.test(q)) {
+    variants.add("Tundu Lissu");
+    variants.add("Tundu Lissu Tanzania");
+  }
+  return [...variants].slice(0, 4);
+}
+
 export async function webSearch(query: string): Promise<ToolResult> {
-  const q = query.trim().slice(0, 200);
+  const variants = cleanSearchQuery(query);
+  const q = variants[0] || query.trim().slice(0, 200);
   if (!q) {
     return { tool: "web_search", ok: false, summary: "Query tupu." };
   }
   try {
-    const [wikiEn, wikiSw, ddg] = await Promise.all([
-      wikiSearch(q, "en"),
-      wikiSearch(q, "sw"),
-      ddgHtmlSearch(q),
-    ]);
+    const searches = variants.slice(0, 3);
+    const wikiEnParts: string[] = [];
+    const wikiSwParts: string[] = [];
+    const ddgAll: { title: string; url: string; snippet: string }[] = [];
+    for (const v of searches) {
+      const [en, sw, ddg] = await Promise.all([
+        wikiSearch(v, "en"),
+        wikiSearch(v, "sw"),
+        ddgHtmlSearch(v),
+      ]);
+      wikiEnParts.push(...en);
+      wikiSwParts.push(...sw);
+      for (const r of ddg) {
+        if (!ddgAll.some((x) => x.url === r.url)) ddgAll.push(r);
+      }
+    }
+    const wikiEn = [...new Set(wikiEnParts)].slice(0, 8);
+    const wikiSw = [...new Set(wikiSwParts)].slice(0, 8);
+    const ddg = ddgAll.slice(0, 8);
     const parts: string[] = [];
     if (wikiSw.length) parts.push("=== Wikipedia SW ===\n" + wikiSw.join("\n"));
     if (wikiEn.length) parts.push("=== Wikipedia EN ===\n" + wikiEn.join("\n"));
@@ -377,9 +424,9 @@ export async function webSearch(query: string): Promise<ToolResult> {
       tool: "web_search",
       ok,
       summary: ok
-        ? `Utafutaji OK: "${q}" (wiki+web)`
+        ? `Utafutaji OK: "${q}" (+${searches.length - 1} variants)`
         : `Hakuna data nyingi kwa "${q}"`,
-      data: { query: q, body, results: ddg },
+      data: { query: q, variants: searches, body, results: ddg },
     };
   } catch (e) {
     return {
@@ -396,10 +443,11 @@ export async function runAiToolsForMessage(
 ): Promise<{ block: string; results: ToolResult[] }> {
   const mode = opts?.mode || "hub";
   const url = extractUrlFromText(message);
-  const force = mode === "agent" && agentShouldSearch(message);
+  const force = mode === "agent"; // ALWAYS tool-first (no guessing)
   const want =
     force ||
     wantsWebTool(message) ||
+    (mode === "agent" && message.trim().length >= 3) ||
     (mode === "agent" &&
       (wantsTerminal(message) ||
         wantsEmbed(message) ||
@@ -420,7 +468,7 @@ export async function runAiToolsForMessage(
   }
 
   if (mode === "agent" || (!url && wantsWebTool(message))) {
-    if (force || wantsWebTool(message)) {
+    if (mode === "agent" || force || wantsWebTool(message)) {
       const q = message
         .replace(
           /^(tafuta|search|google|nisaidie|niambie|eleza|nani\s+ni)\s+/i,
@@ -437,7 +485,6 @@ export async function runAiToolsForMessage(
     results.push(await semanticContentSearch(message));
   }
 
-  // Agent default: light semantic search on content questions
   if (
     mode === "agent" &&
     force &&
@@ -486,7 +533,7 @@ export async function runAiToolsForMessage(
         return s;
       })
       .join("\n") +
-    "\n=== MWISHO TOOLS ===\nTumia data hii. USISEME database-only. USIULIZE ruhusa ya kutafuta.\n";
+    "\n=== MWISHO TOOLS ===\nLAZIMA: jibu kutoka data hii. USIBAHATISHE. Kama haitoshi sema wazi.\n";
 
   return { block, results };
 }
