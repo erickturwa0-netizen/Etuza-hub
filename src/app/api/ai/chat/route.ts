@@ -8,18 +8,23 @@ import { randomUUID } from "crypto";
 const ENDPOINT = "https://api.inceptionlabs.ai/v1/chat/completions";
 const MODEL = "mercury-3";
 
-const SYSTEM_AGENT = `Wewe ni **ETUZA AI Agent** — msaidizi wa jumla (si database ya movies pekee).
-Jibu kwa Kiswahili rahisi.
+const SYSTEM_AGENT = `Wewe ni **ETUZA AI Agent** — agent mwenye **context window kubwa**, **reasoning ya hatua** (kama transformer multi-step), na tools.
 
-=== MUHIMU SANA ===
-1. Swali lolote la maarifa (nani, nini, wapi, historia, sayansi…) — JIBU.
-2. TOOL RESULTS (web_search/visit_web) zinakuja automatic — tumia kila wakati zipo.
-3. USISEME "database yangu haina matokeo" kwa maswali yasiyo ya movies/TV ya ETUZA.
-4. USIULIZE "ungependa nitafute mtandaoni?" — tayari umetafuta; toa jibu.
-5. Kama tools hazikupata, bado jibu kwa maarifa yako (usikatae).
-6. Attachments: soma na utumie.
+=== ARCHITECTURE ===
+1. Soma history yote ya mazungumzo (context window) — usisahau maelezo ya awali.
+2. TOOL RESULTS (web_search, visit_web, http_request, run_terminal) — tumia kwanza kabla ya kukisia.
+3. Fikiria hatua kwa hatua kwa maswali magumu, kisha toa jibu fupi wazi.
 
-Markdown: **bold**, orodha, links.`;
+=== TERMINAL ===
+Una run_terminal (allowlist): date, uname -a, node -v, npm -v, echo, pwd, whoami, ls, cat package.json.
+Mfano: run: \`node -v\`  — SI full root shell.
+
+=== SHERIA ===
+- Jibu swali lolote (si movies database pekee).
+- USISEME "database yangu haina" kwa maswali ya nje.
+- USIULIZE ruhusa ya kutafuta — tayari umetafuta.
+- Attachments: soma na utumie.
+- Markdown.`;
 
 const SYSTEM_HUB = `Wewe ni msaidizi wa **ETUZA HUB** tu (https://etuza-hub-v2.vercel.app).
 Jibu **MASWALI YA ETUZA HUB PEKEE** (movies, TV, radio, miziki, point, VPN).
@@ -40,7 +45,7 @@ function isGreeting(message: string): boolean {
 }
 
 const GREETING_HUB = `# HABARI!\n\nKaribu **ETUZA HUB**. Kwa maswali yoyote mengine → [/ai](https://etuza-hub-v2.vercel.app/ai).`;
-const GREETING_AGENT = `# HABARI!\n\nMimi ni **ETUZA AI Agent**. Naweza kutafuta mtandaoni na kujibu swali lolote.`;
+const GREETING_AGENT = `# HABARI!\n\nMimi ni **ETUZA AI Agent** (context + tools + terminal salama). Uliza chochote.`;
 
 function localHelpHub(message: string): string {
   const m = message.toLowerCase();
@@ -139,7 +144,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    message = String(body?.message || "").trim().slice(0, 2000);
+    message = String(body?.message || "").trim().slice(0, 8000);
     sessionId = String(body?.sessionId || "").trim().slice(0, 80);
     const rawMode = String(body?.mode || "hub").toLowerCase();
     mode = rawMode === "agent" || rawMode === "full" ? "agent" : "hub";
@@ -185,10 +190,10 @@ export async function POST(req: Request) {
             (m.role === "user" || m.role === "assistant") &&
             typeof m.content === "string"
         )
-        .slice(-12)
+        .slice(-24)
         .map((m: { role: string; content: string }) => ({
           role: m.role,
-          content: String(m.content).slice(0, 2000),
+          content: String(m.content).slice(0, 4000),
         }));
     }
   } catch {
@@ -238,7 +243,7 @@ export async function POST(req: Request) {
     if (toolBlock && mode === "agent") {
       return NextResponse.json({
         reply:
-          `**Data kutoka mtandao:**\n\n` +
+          `**Data kutoka tools:**\n\n` +
           toolMeta.map((t) => `- ${t.tool}: ${t.summary}`).join("\n"),
         tools: toolMeta,
         mode,
@@ -256,7 +261,6 @@ export async function POST(req: Request) {
   }
 
   let researchBlock = "";
-  // ONLY search movie DB for hub mode or explicit media keywords — never for general Qs
   const q =
     mode === "hub" ||
     /\b(movie|filamu|tv\s*channel|radio|miziki|music|tamthilia|drama|etuza)\b/i.test(
@@ -299,7 +303,7 @@ export async function POST(req: Request) {
           { role: "user", content: message },
         ],
         temperature: mode === "agent" ? 0.5 : 0.45,
-        max_tokens: mode === "agent" ? 2000 : 1200,
+        max_tokens: mode === "agent" ? 3500 : 1200,
       }),
     });
 
@@ -310,7 +314,7 @@ export async function POST(req: Request) {
       if (toolBlock) {
         return NextResponse.json({
           reply:
-            `**Data kutoka mtandao:**\n` +
+            `**Data kutoka tools:**\n` +
             toolMeta.map((t) => `- **${t.tool}**: ${t.summary}`).join("\n"),
           tools: toolMeta,
           mode,
@@ -339,11 +343,10 @@ export async function POST(req: Request) {
       /database yangu/i.test(reply.slice(0, 200));
     if (refuse) {
       reply = toolBlock
-        ? `Nimetafuta mtandaoni:\n` +
-          toolMeta.map((t) => `- ${t.summary}`).join("\n") +
-          `\n\nUliza tena kwa undani kama unahitaji zaidi.`
+        ? `Nimetumia tools:\n` +
+          toolMeta.map((t) => `- ${t.summary}`).join("\n")
         : mode === "agent"
-          ? "Jaribu kuuliza tena kwa maneno mengine."
+          ? "Jaribu kuuliza tena."
           : localHelpHub(message);
       void logAiUsage({
         sessionId,
