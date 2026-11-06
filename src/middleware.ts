@@ -16,6 +16,8 @@ const PUBLIC_PATHS = [
   "/play",
   "/privacy",
   "/terms",
+  "/ai",
+  "/account",
 ];
 
 const PUBLIC_API = [
@@ -44,26 +46,29 @@ const PUBLIC_API = [
   "/api/payments/settings",
   "/api/payments/access",
   "/api/payments/request",
+  "/api/ai",
+  "/api/vpn/event",
+  "/api/vpn/my-config",
 ];
 
 const COOKIE_NAME = "etuza_session";
 
 function getSecret() {
   const secret =
-    process.env.AUTH_SECRET || process.env.DATABASE_URL || "etuza-hub-dev-secret-change-me";
+    process.env.AUTH_SECRET ||
+    process.env.DATABASE_URL ||
+    "etuza-hub-dev-secret-change-me";
   return new TextEncoder().encode(secret.slice(0, 64));
 }
 
-type Session = { userId: string; email: string; role: string };
-
-async function getSession(token: string | undefined): Promise<Session | null> {
+async function readSession(req: NextRequest) {
+  const token = req.cookies.get(COOKIE_NAME)?.value;
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, getSecret());
-    if (!payload.userId || !payload.email) return null;
     return {
-      userId: String(payload.userId),
-      email: String(payload.email),
+      userId: String(payload.userId || ""),
+      email: String(payload.email || ""),
       role: String(payload.role || "user"),
     };
   } catch {
@@ -83,48 +88,35 @@ function isPublicApi(pathname: string) {
   );
 }
 
-export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
 
-  if (isPublicApi(pathname)) {
+  if (
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon") ||
+    pathname.includes(".")
+  ) {
     return NextResponse.next();
   }
 
-  if (isPublicPath(pathname)) {
+  const session = await readSession(req);
+
+  if (pathname.startsWith("/api/")) {
+    if (isPublicApi(pathname)) return NextResponse.next();
+    // other APIs: allow through (handlers check auth themselves)
     return NextResponse.next();
-  }
-
-  const token = request.cookies.get(COOKIE_NAME)?.value;
-  const session = await getSession(token);
-  const loggedIn = !!session;
-
-  if (!loggedIn) {
-    if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/login";
-    loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
   }
 
   if (pathname.startsWith("/admin") && session?.role !== "admin") {
-    const home = request.nextUrl.clone();
-    home.pathname = "/";
-    return NextResponse.redirect(home);
-  }
-
-  if ((pathname === "/login" || pathname === "/signup") && loggedIn) {
-    const dest = request.nextUrl.clone();
-    dest.pathname = session?.role === "admin" ? "/admin" : "/";
-    return NextResponse.redirect(dest);
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|.*\\..*).*)"],
 };
