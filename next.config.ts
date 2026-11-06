@@ -6,10 +6,14 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "image.tmdb.org" },
       { protocol: "https", hostname: "images.igdb.com" },
       { protocol: "https", hostname: "logo.clearbit.com" },
-      { protocol: "https", hostname: "*.supabase.co" },
+      { protocol: "https", hostname: "**.supabase.co" },
       { protocol: "https", hostname: "archive.org" },
       { protocol: "https", hostname: "i.imgur.com" },
     ],
+  },
+  // Temporary safety if a type slips through — remove once build is green
+  typescript: {
+    ignoreBuildErrors: false,
   },
   async headers() {
     return [
@@ -20,7 +24,6 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              // Adsterra + players need external scripts
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
               "style-src 'self' 'unsafe-inline' https:",
               "img-src 'self' data: blob: https:",

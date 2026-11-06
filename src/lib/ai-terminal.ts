@@ -1,12 +1,7 @@
 /**
  * Restricted terminal for ETUZA AI Agent (serverless-safe allowlist).
- * NOT a full shell — only safe, read-only / diagnostic commands.
+ * Dynamic import of child_process avoids edge/client bundle issues.
  */
-
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
 
 const ALLOWED = [
   /^date$/i,
@@ -63,12 +58,15 @@ export async function runTerminal(command: string): Promise<TerminalResult> {
     return {
       tool: "run_terminal",
       ok: false,
-      summary: `Amri haijaruhusiwa. Ruhusa: date, uname -a, node -v, npm -v, echo, pwd, whoami, ls, cat package.json. Uliza: run: \`node -v\``,
+      summary: `Amri haijaruhusiwa. Ruhusa: date, uname -a, node -v, npm -v, echo, pwd, whoami, ls, cat package.json.`,
       data: { command: cmd },
     };
   }
 
   try {
+    const { exec } = await import("child_process");
+    const { promisify } = await import("util");
+    const execAsync = promisify(exec);
     const { stdout, stderr } = await execAsync(cmd, {
       timeout: 8000,
       maxBuffer: 64 * 1024,
