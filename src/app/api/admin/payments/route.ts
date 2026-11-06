@@ -11,6 +11,7 @@ import {
   DEFAULT_VPN_PACKAGES,
 } from "@/lib/payments";
 import { POINTS } from "@/lib/points";
+import { onVpnPaymentApproved, logVpnEvent } from "@/lib/vpn-referral";
 
 async function requireAdmin() {
   const session = await getSession();
@@ -42,63 +43,51 @@ export async function GET() {
   const auth = await requireAdmin();
   if ("error" in auth && auth.error) return auth.error;
 
-  const [settings, pending, recent] = await Promise.all([
-    getPaymentSettings(),
-    prisma.paymentRequest.findMany({
-      where: { status: "pending" },
-      orderBy: { createdAt: "desc" },
-      take: 80,
-      include: {
-        user: { select: { email: true, fullName: true } },
-        content: { select: { title: true, type: true, accessDays: true } },
-      },
-    }),
-    prisma.paymentRequest.findMany({
-      where: { status: { not: "pending" } },
-      orderBy: { updatedAt: "desc" },
-      take: 40,
-      include: {
-        user: { select: { email: true, fullName: true } },
-        content: { select: { title: true, type: true } },
-      },
-    }),
-  ]);
+  const settings = await getPaymentSettings();
+  const vpnPackages =
+    (settings as { vpnPackages?: string | null }).vpnPackages || null;
 
-  const vpnPackages = parseVpnPackages(
-    (settings as { vpnPackages?: string | null }).vpnPackages
-  );
+  const pending = await prisma.paymentRequest.findMany({
+    where: { status: "pending" },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      user: { select: { email: true, fullName: true } },
+      content: { select: { title: true, type: true } },
+    },
+  });
+  const recent = await prisma.paymentRequest.findMany({
+    where: { status: { not: "pending" } },
+    orderBy: { updatedAt: "desc" },
+    take: 30,
+    include: {
+      user: { select: { email: true, fullName: true } },
+      content: { select: { title: true, type: true } },
+    },
+  });
 
   return NextResponse.json({
-    settings: { ...settings, vpnPackages },
+    settings: {
+      ...settings,
+      vpnPackages: parseVpnPackages(vpnPackages),
+    },
     pending,
     recent,
   });
 }
 
-const vpnPkgSchema = z.object({
-  plan: z.enum(["once", "week", "month", "year"]),
-  enabled: z.boolean(),
-  priceTzs: z.number().int().min(0),
-  title: z.string(),
-  protocol: z.string().optional().default(""),
-  configText: z.string().optional().default(""),
-  fileUrl: z.string().optional().default(""),
-  imageUrl: z.string().optional().default(""),
-});
-
 const settingsSchema = z.object({
-  enabled: z.boolean(),
-  payPhone: z.string().min(9).max(20),
-  payNetwork: z.enum(NETWORKS as unknown as [string, ...string[]]),
-  priceWeek: z.number().int().min(0),
-  priceMonth: z.number().int().min(0),
-  priceYear: z.number().int().min(0),
-  priceOnce: z.number().int().min(0),
+  enabled: z.boolean().optional(),
+  payPhone: z.string().optional(),
+  payNetwork: z.string().optional(),
+  priceWeek: z.number().optional(),
+  priceMonth: z.number().optional(),
+  priceYear: z.number().optional(),
+  priceOnce: z.number().optional(),
   instructions: z.string().optional().nullable(),
-  paidCategories: z.array(z.string()).optional(),
+  paidCategories: z.union([z.string(), z.array(z.string())]).optional(),
   showPackages: z.boolean().optional(),
-  pointsAdsEnabled: z.boolean().optional(),
-  vpnPackages: z.array(vpnPkgSchema).optional(),
+  vpnPackages: z.any().optional(),
 });
 
 export async function PUT(req: Request) {
@@ -110,52 +99,44 @@ export async function PUT(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Data si sahihi" }, { status: 400 });
   }
-  const d = parsed.data;
-  const paidCategories = (d.paidCategories || [...CONTENT_TYPES])
-    .filter((c) => (CONTENT_TYPES as readonly string[]).includes(c))
-    .join(",");
-  const showPackages = d.showPackages === true;
-  const pointsAdsEnabled = d.pointsAdsEnabled !== false;
-  const vpnPackages = JSON.stringify(
-    d.vpnPackages?.length ? d.vpnPackages : DEFAULT_VPN_PACKAGES
-  );
+
+  const data: Record<string, unknown> = { ...parsed.data };
+  if (Array.isArray(data.paidCategories)) {
+    data.paidCategories = (data.paidCategories as string[]).join(",");
+  }
+  if (data.vpnPackages && typeof data.vpnPackages !== "string") {
+    data.vpnPackages = JSON.stringify(data.vpnPackages);
+  }
 
   const settings = await prisma.paymentSettings.upsert({
     where: { id: "default" },
     create: {
       id: "default",
-      enabled: d.enabled,
-      payPhone: d.payPhone,
-      payNetwork: d.payNetwork,
-      priceWeek: d.priceWeek,
-      priceMonth: d.priceMonth,
-      priceYear: d.priceYear,
-      priceOnce: d.priceOnce,
-      instructions: d.instructions || null,
-      paidCategories,
-      showPackages,
-      pointsAdsEnabled,
-      vpnPackages,
+      enabled: Boolean(data.enabled),
+      payPhone: String(data.payPhone || ""),
+      payNetwork: String(data.payNetwork || "vodacom"),
+      priceWeek: Number(data.priceWeek ?? 2000),
+      priceMonth: Number(data.priceMonth ?? 5000),
+      priceYear: Number(data.priceYear ?? 40000),
+      priceOnce: Number(data.priceOnce ?? 1000),
+      instructions: (data.instructions as string) || null,
+      paidCategories: String(
+        data.paidCategories || CONTENT_TYPES.join(",")
+      ),
+      showPackages: Boolean(data.showPackages),
+      vpnPackages:
+        (data.vpnPackages as string) ||
+        JSON.stringify(DEFAULT_VPN_PACKAGES),
     },
-    update: {
-      enabled: d.enabled,
-      payPhone: d.payPhone,
-      payNetwork: d.payNetwork,
-      priceWeek: d.priceWeek,
-      priceMonth: d.priceMonth,
-      priceYear: d.priceYear,
-      priceOnce: d.priceOnce,
-      instructions: d.instructions || null,
-      paidCategories,
-      showPackages,
-      pointsAdsEnabled,
-      vpnPackages,
-    },
+    update: data,
   });
+
   return NextResponse.json({
     settings: {
       ...settings,
-      vpnPackages: parseVpnPackages(vpnPackages),
+      vpnPackages: parseVpnPackages(
+        (settings as { vpnPackages?: string | null }).vpnPackages
+      ),
     },
   });
 }
@@ -180,11 +161,16 @@ export async function POST(req: Request) {
 
   const reqRow = await prisma.paymentRequest.findUnique({
     where: { id: parsed.data.id },
-    include: { content: { select: { accessDays: true, priceMode: true } } },
+    include: {
+      content: { select: { accessDays: true, priceMode: true, type: true } },
+    },
   });
   if (!reqRow) return NextResponse.json({ error: "Haipo" }, { status: 404 });
   if (reqRow.status !== "pending") {
-    return NextResponse.json({ error: "Tayari imeshughulikiwa" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Tayari imeshughulikiwa" },
+      { status: 400 }
+    );
   }
 
   if (parsed.data.action === "reject") {
@@ -223,7 +209,30 @@ export async function POST(req: Request) {
     }),
   ]);
 
-  // Grant package bonus points (expire with package; normal points untouched)
+  // VPN: config order + Team A/B/C referral days
+  try {
+    const isVpn =
+      reqRow.content?.type === "vpn" ||
+      String(reqRow.plan || "").toLowerCase().includes("vpn");
+    if (isVpn) {
+      await onVpnPaymentApproved({
+        paymentRequestId: reqRow.id,
+        buyerId: reqRow.userId,
+        amount: reqRow.amount,
+        plan: reqRow.plan,
+      });
+      await logVpnEvent({
+        kind: "pay",
+        userId: reqRow.userId,
+        path: "/vpn",
+        meta: String(reqRow.amount),
+      });
+    }
+  } catch (e) {
+    console.error("vpn referral on approve", e);
+  }
+
+  // Grant package bonus points
   try {
     await prisma.user.update({
       where: { id: reqRow.userId },

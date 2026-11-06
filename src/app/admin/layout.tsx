@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Wallet,
   AlertTriangle,
+  Shield,
 } from "lucide-react";
 import LogoutButton from "@/components/LogoutButton";
 
@@ -16,6 +17,7 @@ const nav = [
   { href: "/admin/content", label: "Content", icon: Film },
   { href: "/admin/content/new", label: "Add Content", icon: Plus },
   { href: "/admin/payments", label: "Malipo", icon: Wallet },
+  { href: "/admin/vpn", label: "VPN", icon: Shield },
   { href: "/admin/reports", label: "Ripoti", icon: AlertTriangle },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/settings", label: "Settings", icon: Settings },
