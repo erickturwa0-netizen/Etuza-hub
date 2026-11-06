@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/admin";
+import { getSession } from "@/lib/auth";
 import { ensureVpnTables } from "@/lib/vpn-referral";
-import { randomUUID } from "crypto";
+
+async function requireAdmin() {
+  const session = await getSession();
+  if (!session)
+    return { error: NextResponse.json({ error: "Login" }, { status: 401 }) };
+  if (session.role !== "admin")
+    return { error: NextResponse.json({ error: "Admin only" }, { status: 403 }) };
+  return { session };
+}
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -98,7 +106,6 @@ export async function GET() {
   });
 }
 
-/** Deliver config to buyer (like add content) */
 export async function POST(req: Request) {
   const auth = await requireAdmin();
   if ("error" in auth && auth.error) return auth.error;
@@ -110,10 +117,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "orderId required" }, { status: 400 });
   }
 
-  const configText = body?.configText ? String(body.configText).slice(0, 50000) : "";
+  const configText = body?.configText
+    ? String(body.configText).slice(0, 50000)
+    : "";
   const fileUrl = body?.fileUrl ? String(body.fileUrl).slice(0, 2000) : "";
   const protocol = body?.protocol ? String(body.protocol).slice(0, 80) : "";
-  const adminNote = body?.adminNote ? String(body.adminNote).slice(0, 500) : null;
+  const adminNote = body?.adminNote
+    ? String(body.adminNote).slice(0, 500)
+    : null;
 
   if (!configText && !fileUrl) {
     return NextResponse.json(
@@ -123,8 +134,17 @@ export async function POST(req: Request) {
   }
 
   const rows = await prisma.$queryRawUnsafe<
-    { id: string; user_id: string; plan: string; amount: number; status: string }[]
-  >(`SELECT id, user_id, plan, amount, status FROM "VpnOrder" WHERE id = $1`, orderId);
+    {
+      id: string;
+      user_id: string;
+      plan: string;
+      amount: number;
+      status: string;
+    }[]
+  >(
+    `SELECT id, user_id, plan, amount, status FROM "VpnOrder" WHERE id = $1`,
+    orderId
+  );
 
   const order = rows[0];
   if (!order) {
@@ -148,7 +168,6 @@ export async function POST(req: Request) {
     orderId
   );
 
-  // Grant user access entry + extend vpn_expires_at roughly by plan
   const days =
     order.plan === "year"
       ? 365
@@ -185,14 +204,13 @@ export async function POST(req: Request) {
     console.error("vpn expires", e);
   }
 
-  // Optional: create private content row so they can download from /vpn list filtered
   try {
     await prisma.content.create({
       data: {
         type: "vpn",
-        title: `VPN Config · ${order.plan} · ${order.user_id.slice(0, 6)}`,
-        description: adminNote || "Config yako baada ya malipo",
-        linkUrl: fileUrl || "#",
+        title: `VPN Config · ${order.plan}`,
+        description: adminNote || "Config baada ya malipo",
+        linkUrl: fileUrl || "https://etuza-hub-v2.vercel.app/account",
         linkType: "download",
         configText: configText || null,
         fileUrl: fileUrl || null,
