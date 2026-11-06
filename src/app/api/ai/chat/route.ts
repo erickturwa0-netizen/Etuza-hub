@@ -15,23 +15,25 @@ import { randomUUID } from "crypto";
 const ENDPOINT = "https://api.inceptionlabs.ai/v1/chat/completions";
 const MODEL = "mercury-3";
 
-const SYSTEM_AGENT = `Wewe ni **ETUZA AI Agent** — context, inference, embeddings, tools, na **playables**.
+const SYSTEM_AGENT = `Wewe ni **ETUZA AI Agent** wa ETUZA HUB.
 
-=== PLAY / MEDIA ===
-Ukiona PLAYABLES kwenye tool results, waambie mtumiaji abonyeze button **Cheza** (cards zitaonekana chini ya jibu). Usiseme huna video kama playables zipo.
+=== KANUNI YA DATA (LAZIMA) ===
+1. TOOL RESULTS ni chanzo cha ukweli. Kama zipo, JIBU kutoka hapo PEKEE kwa mambo ya ukweli (nani, nini, wapi, bei, habari).
+2. USIBAHATISHE. Usitoe majina, tarehe, au takwimu usizoziona kwenye TOOL RESULTS au history.
+3. Kama tools hazikupata data: sema wazi "Sijapata taarifa ya kutosha mtandaoni" + toa tip — USIJENGE hadithi.
+4. PLAYABLES: waambie wabonyeze **Cheza**.
 
-=== TOOLS ===
-web_search, visit_web, http_request, run_terminal, embed, semantic_search, inference.
+=== MUUNDO WA JIBU ===
+- Anza na jibu fupi moja kwa moja
+- Bullet 2–5 kutoka sources
+- Mwisho: sources (URL) kama zipo
+- USIandike "hatua 1,2,3" za thinking isipokuwa user aliomba inference
 
-=== SHERIA ===
-- Jibu swali lolote.
-- USISEME database-only fallback.
-- USIULIZE ruhusa ya kutafuta.
-- Markdown.`;
+=== LUGHA ===
+Kiswahili rahisi. Markdown.`;
 
 const SYSTEM_HUB = `Wewe ni msaidizi wa **ETUZA HUB** tu.
-Maswali ya site pekee. Mingine → /ai.
-Point zinakatwa baada ya video kuanza.`;
+Maswali ya site pekee. Mingine → /ai.`;
 
 function isGreeting(message: string): boolean {
   const m = message.trim().toLowerCase().replace(/[!?.]+$/g, "");
@@ -46,10 +48,9 @@ function isGreeting(message: string): boolean {
   );
 }
 
-const GREETING_HUB =
-  "# HABARI!\n\nKaribu **ETUZA HUB**. Maswali mengine → /ai";
+const GREETING_HUB = "# HABARI!\n\nKaribu **ETUZA HUB**. Mingine → /ai";
 const GREETING_AGENT =
-  "# HABARI!\n\nMimi ni **ETUZA AI Agent**. Uliza: *nipatie movie…*, *radio…*, *TV channel…* — nitaleta **Cheza**.";
+  "# HABARI!\n\nMimi ni **ETUZA AI Agent**. Nina **search mtandaoni** (si kubahatisha). Uliza chochote — utaona hatua za tools.";
 
 function localHelpHub(message: string): string {
   const m = message.toLowerCase();
@@ -57,25 +58,12 @@ function localHelpHub(message: string): string {
   if (/movie|filamu/.test(m)) return "**Movies** → /movies";
   if (/tv|channel/.test(m)) return "**TV** → /tv";
   if (/music|miziki/.test(m)) return "**Miziki** → /music";
-  if (
-    !/etuza|movie|filamu|tv|radio|miziki|music|point|vpn|game|tamthilia|drama|account|ads/.test(
-      m
-    )
-  ) {
-    return "Mimi ni msaada wa **ETUZA HUB** tu. Mingine → /ai";
-  }
-  return "**ETUZA HUB** → /movies · /ai";
+  return "**ETUZA HUB** → /ai kwa maswali ya nje";
 }
 
 function extractSearchQuery(message: string): string | null {
   const m = message.trim();
-  if (
-    m.length < 2 ||
-    isGreeting(m) ||
-    /https?:\/\//i.test(m) ||
-    /ATTACHMENTS/i.test(m)
-  )
-    return null;
+  if (m.length < 2 || isGreeting(m) || /https?:\/\//i.test(m)) return null;
   const patterns = [
     /(?:tafuta|search|nipatie|nataka|movie\s+ya|filamu\s+ya)(.+)/i,
     /(?:movie|filamu|tamthilia|drama|muziki|music|channel|tv)\s+(.+)/i,
@@ -111,8 +99,7 @@ async function searchContent(q: string) {
       orderBy: { createdAt: "desc" },
       take: 8,
     });
-  } catch (e) {
-    console.error("ai content search", e);
+  } catch {
     return [];
   }
 }
@@ -131,8 +118,8 @@ async function logAiUsage(opts: {
         kind: opts.kind,
       },
     });
-  } catch (e) {
-    console.error("ai usage log", e);
+  } catch {
+    /* ignore */
   }
 }
 
@@ -162,17 +149,15 @@ export async function POST(req: Request) {
           typeof a?.dataUrl === "string" &&
           a.dataUrl.startsWith("data:")
         ) {
-          attLines.push(
-            `--- IMAGE: ${name} ---\n[Picha imepakiwa]\n---`
-          );
+          attLines.push(`--- IMAGE: ${name} ---\n[Picha]\n---`);
         }
       }
       if (attLines.length) {
-        message =
-          (message + "\n\n=== ATTACHMENTS ===\n" + attLines.join("\n")).slice(
-            0,
-            16000
-          );
+        message = (
+          message +
+          "\n\n=== ATTACHMENTS ===\n" +
+          attLines.join("\n")
+        ).slice(0, 16000);
       }
     }
 
@@ -231,7 +216,6 @@ export async function POST(req: Request) {
     console.error("ai tools", e);
   }
 
-  // --- Playables: movie / TV / radio / music ---
   let researchBlock = "";
   let playables: Playable[] = [];
   const mediaTypes = detectMediaTypes(message);
@@ -253,11 +237,7 @@ export async function POST(req: Request) {
       types: mediaTypes && mediaTypes.length ? mediaTypes : null,
       take: 8,
     });
-    if (playables.length) {
-      researchBlock = playablesBlock(playables);
-    } else if (mode === "hub" && mediaQ) {
-      researchBlock = `\n\n=== DATABASE ===\nHakuna matokeo kwa "${mediaQ}".\n`;
-    }
+    if (playables.length) researchBlock = playablesBlock(playables);
   }
 
   if (!playables.length && mode === "hub") {
@@ -283,10 +263,13 @@ export async function POST(req: Request) {
     void logAiUsage({ sessionId, userId, kind: "fallback" });
     return NextResponse.json({
       reply: playables.length
-        ? "Nimeleta hizi — bonyeza **Cheza** ili kucheza moja kwa moja."
-        : mode === "agent"
-          ? "AI Agent inahitaji INCEPTION_API_KEY kwenye Vercel."
-          : localHelpHub(message),
+        ? "Nimeleta hizi — bonyeza **Cheza**."
+        : toolBlock
+          ? "**Data kutoka tools (mtandaoni):**\n" +
+            toolMeta.map((t) => `- **${t.tool}**: ${t.summary}`).join("\n")
+          : mode === "agent"
+            ? "INCEPTION_API_KEY haipo kwenye Vercel."
+            : localHelpHub(message),
       searched: mediaQ || null,
       playables,
       tools: toolMeta,
@@ -311,7 +294,7 @@ export async function POST(req: Request) {
           ...history,
           { role: "user", content: message },
         ],
-        temperature: mode === "agent" ? 0.5 : 0.45,
+        temperature: mode === "agent" ? 0.35 : 0.45,
         max_tokens: mode === "agent" ? 3500 : 1200,
       }),
     });
@@ -322,10 +305,11 @@ export async function POST(req: Request) {
       void logAiUsage({ sessionId, userId, kind: "fallback" });
       return NextResponse.json({
         reply: playables.length
-          ? "Bonyeza **Cheza** hapa chini kucheza."
-          : mode === "agent"
-            ? "Model haikujibu. Jaribu tena."
-            : localHelpHub(message),
+          ? "Bonyeza **Cheza** hapa chini."
+          : toolMeta.length
+            ? "**Data kutoka tools:**\n" +
+              toolMeta.map((t) => `- ${t.summary}`).join("\n")
+            : "Model haikujibu. Jaribu tena.",
         playables,
         tools: toolMeta,
         mode,
@@ -346,18 +330,12 @@ export async function POST(req: Request) {
 
     if (refuse) {
       reply = playables.length
-        ? "Nimepata hizi — bonyeza **Cheza** chini ili kucheza moja kwa moja."
-        : toolBlock
-          ? "Nimetumia tools:\n" +
+        ? "Nimepata hizi — bonyeza **Cheza**."
+        : toolMeta.length
+          ? "Kutoka mtandaoni:\n" +
             toolMeta.map((t) => `- ${t.summary}`).join("\n")
-          : mode === "agent"
-            ? "Jaribu kuuliza tena (mf. nipatie movie ya action)."
-            : localHelpHub(message);
-      void logAiUsage({
-        sessionId,
-        userId,
-        kind: playables.length ? "playables" : "fallback",
-      });
+          : "Sijapata taarifa ya kutosha mtandaoni. Jaribu swali lingine.";
+      void logAiUsage({ sessionId, userId, kind: "fallback" });
     } else {
       void logAiUsage({
         sessionId,
@@ -377,11 +355,7 @@ export async function POST(req: Request) {
     console.error("ai chat", e);
     void logAiUsage({ sessionId, userId, kind: "fallback" });
     return NextResponse.json({
-      reply: playables.length
-        ? "Bonyeza **Cheza** ili kucheza."
-        : mode === "agent"
-          ? "Tatizo la mtandao. Jaribu tena."
-          : localHelpHub(message),
+      reply: "Tatizo la mtandao. Jaribu tena.",
       playables,
       tools: toolMeta,
       mode,
