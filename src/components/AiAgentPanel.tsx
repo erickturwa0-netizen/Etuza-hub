@@ -10,16 +10,23 @@ import {
   Globe,
   FileText,
   Image as ImageIcon,
+  Search,
+  Terminal,
+  CheckCircle2,
+  XCircle,
+  Sparkles,
 } from "lucide-react";
 import AiPlayableCards, {
   type PlayableCard,
 } from "@/components/AiPlayableCards";
 
+type ToolMeta = { tool: string; ok: boolean; summary: string };
+
 type Msg = {
   role: "user" | "assistant";
   content: string;
   attachments?: { name: string; type: string }[];
-  tools?: { tool: string; ok: boolean; summary: string }[];
+  tools?: ToolMeta[];
   playables?: PlayableCard[];
 };
 
@@ -28,6 +35,12 @@ type AttachmentPayload = {
   type: string;
   text?: string;
   dataUrl?: string;
+};
+
+type LiveStep = {
+  id: string;
+  label: string;
+  status: "running" | "done" | "error";
 };
 
 function getAiSessionId(): string {
@@ -46,6 +59,15 @@ function getAiSessionId(): string {
   } catch {
     return `s_${Date.now()}`;
   }
+}
+
+function toolIcon(name: string) {
+  const n = name.toLowerCase();
+  if (n.includes("search") || n.includes("web")) return Search;
+  if (n.includes("terminal") || n.includes("run")) return Terminal;
+  if (n.includes("visit") || n.includes("http") || n.includes("browse"))
+    return Globe;
+  return Sparkles;
 }
 
 function formatInline(text: string): ReactNode[] {
@@ -160,6 +182,64 @@ function FormattedMessage({ content }: { content: string }) {
   return <div className="text-sm text-slate-100">{blocks}</div>;
 }
 
+function LiveSteps({ steps }: { steps: LiveStep[] }) {
+  if (!steps.length) return null;
+  return (
+    <div className="mr-auto max-w-[95%] rounded-2xl border border-violet-500/25 bg-slate-950/90 px-3 py-2.5 space-y-1.5">
+      <p className="text-[10px] uppercase tracking-wider text-violet-300/80 font-semibold mb-1">
+        Agent steps
+      </p>
+      {steps.map((s) => (
+        <div key={s.id} className="flex items-center gap-2 text-xs text-slate-300">
+          {s.status === "running" ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-400 shrink-0" />
+          ) : s.status === "done" ? (
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          ) : (
+            <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+          )}
+          <span className={s.status === "running" ? "text-violet-200" : ""}>
+            {s.label}
+          </span>
+          {s.status === "running" && (
+            <span className="text-violet-400 font-mono animate-pulse">▊</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ToolsDone({ tools }: { tools: ToolMeta[] }) {
+  if (!tools?.length) return null;
+  return (
+    <div className="mt-2 pt-2 border-t border-white/10 space-y-1.5">
+      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+        Tools zilizotumika
+      </p>
+      {tools.map((t, j) => {
+        const Icon = toolIcon(t.tool);
+        return (
+          <div
+            key={j}
+            className="flex items-start gap-2 text-[11px] text-slate-400"
+          >
+            <Icon className="w-3.5 h-3.5 mt-0.5 text-violet-400 shrink-0" />
+            <div className="min-w-0">
+              <span className="font-semibold text-slate-300">{t.tool}</span>
+              {" · "}
+              <span className={t.ok ? "text-emerald-400" : "text-amber-400"}>
+                {t.ok ? "OK" : "FAIL"}
+              </span>
+              <p className="text-slate-500 truncate">{t.summary}</p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function AiAgentPanel({
   contextLabel,
   className = "",
@@ -171,23 +251,87 @@ export default function AiAgentPanel({
     {
       role: "assistant",
       content:
-        "Habari! Mimi ni **ETUZA AI Agent**.\n\nUnaweza kuniuliza chochote — pia: **nipatie movie…**, **radio…**, **TV channel…** nitaleta button ya **Cheza**.\n\nTools: web · embed · inference · terminal.",
+        "Habari! Mimi ni **ETUZA AI Agent**.\n\nNina **kutafuta mtandaoni** (si kubahatisha). Uliza: *Lisu ni nani*, *nipatie movie…*, *run: node -v*.\n\nUtaona **hatua** (search / browse / terminal) zinapozunguka kabla ya jibu.",
     },
   ]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [liveSteps, setLiveSteps] = useState<LiveStep[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const sessionIdRef = useRef("");
+  const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     sessionIdRef.current = getAiSessionId();
+    return () => {
+      if (stepTimer.current) clearInterval(stepTimer.current);
+    };
   }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [msgs, busy]);
+  }, [msgs, busy, liveSteps]);
+
+  function startLiveSteps(userText: string) {
+    const wantsTerm =
+      /\b(terminal|shell|run command|run:|amri|bash|cmd)\b/i.test(userText);
+    const steps: LiveStep[] = [
+      { id: "plan", label: "Kupanga ombi…", status: "running" },
+      {
+        id: "search",
+        label: "web_search — inatafuta mtandaoni…",
+        status: "running",
+      },
+      {
+        id: "browse",
+        label: "visit_web / scrape — inasoma vyanzo…",
+        status: "running",
+      },
+    ];
+    if (wantsTerm) {
+      steps.push({
+        id: "term",
+        label: "run_terminal — inaendesha amri…",
+        status: "running",
+      });
+    }
+    steps.push({
+      id: "answer",
+      label: "Inaandaa jibu kutoka data…",
+      status: "running",
+    });
+    setLiveSteps(steps);
+
+    let i = 0;
+    if (stepTimer.current) clearInterval(stepTimer.current);
+    stepTimer.current = setInterval(() => {
+      i += 1;
+      setLiveSteps((prev) =>
+        prev.map((s, idx) => {
+          if (idx < i - 1) return { ...s, status: "done" };
+          if (idx === i - 1) return { ...s, status: "running" };
+          return s;
+        })
+      );
+      // keep last step running until request finishes
+      if (i >= steps.length) {
+        if (stepTimer.current) clearInterval(stepTimer.current);
+      }
+    }, 900);
+  }
+
+  function finishLiveSteps(ok: boolean) {
+    if (stepTimer.current) clearInterval(stepTimer.current);
+    setLiveSteps((prev) =>
+      prev.map((s) => ({
+        ...s,
+        status: ok ? "done" : s.status === "running" ? "error" : s.status,
+      }))
+    );
+    setTimeout(() => setLiveSteps([]), 1200);
+  }
 
   async function fileToPayload(f: File): Promise<AttachmentPayload> {
     const base: AttachmentPayload = { name: f.name, type: f.type || "file" };
@@ -223,6 +367,7 @@ export default function AiAgentPanel({
       { role: "user", content: userContent, attachments: attsMeta },
     ]);
     setBusy(true);
+    startLiveSteps(text || userContent);
     const pendingFiles = [...files];
     setFiles([]);
 
@@ -250,6 +395,7 @@ export default function AiAgentPanel({
         }),
       });
       const data = await res.json();
+      finishLiveSteps(res.ok);
       setMsgs((m) => [
         ...m,
         {
@@ -261,6 +407,7 @@ export default function AiAgentPanel({
         },
       ]);
     } catch {
+      finishLiveSteps(false);
       setMsgs((m) => [
         ...m,
         { role: "assistant", content: "Tatizo la mtandao. Jaribu tena." },
@@ -278,7 +425,7 @@ export default function AiAgentPanel({
         <div className="min-w-0">
           <p className="text-sm font-bold text-white">ETUZA AI Agent</p>
           <p className="text-[10px] text-slate-400 truncate">
-            Movie · TV · Radio · Tools · Play
+            Live tools · web_search · scrape · terminal · Cheza
           </p>
         </div>
         <Globe className="w-4 h-4 text-violet-400/60 ml-auto" />
@@ -317,27 +464,18 @@ export default function AiAgentPanel({
                 {m.playables && m.playables.length > 0 && (
                   <AiPlayableCards items={m.playables} />
                 )}
+                {m.tools && m.tools.length > 0 && (
+                  <ToolsDone tools={m.tools} />
+                )}
               </>
             ) : (
               m.content
             )}
-            {m.tools && m.tools.length > 0 && (
-              <div className="mt-2 pt-2 border-t border-white/10 space-y-1">
-                {m.tools.map((t, j) => (
-                  <p key={j} className="text-[10px] text-slate-400">
-                    🔧 {t.tool}: {t.summary}
-                  </p>
-                ))}
-              </div>
-            )}
           </div>
         ))}
-        {busy && (
-          <div className="flex items-center gap-2 text-slate-400 text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Inafikiri…
-          </div>
-        )}
+
+        {busy && <LiveSteps steps={liveSteps} />}
+
         <div ref={bottomRef} />
       </div>
 
@@ -390,7 +528,7 @@ export default function AiAgentPanel({
             }
           }}
           rows={1}
-          placeholder="Nipatie movie… / radio… / TV…"
+          placeholder="Uliza — nita-search mtandaoni (si kubahatisha)…"
           className="flex-1 resize-none rounded-xl bg-slate-900 border border-slate-700 px-3 py-2.5 text-sm text-white max-h-28"
         />
         <button
