@@ -182,7 +182,6 @@ export async function POST(req: Request) {
     await prisma.userAccess.create({
       data: {
         userId: order.user_id,
-        contentId: null,
         plan: `vpn:${order.plan}`,
         expiresAt: expires,
       },
