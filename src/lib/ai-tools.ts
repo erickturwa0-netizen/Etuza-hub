@@ -1,6 +1,6 @@
 /**
- * ETUZA AI agent tools — web_search, visit_web, http_request, run_terminal
- * Server-side (Vercel-safe allowlist terminal).
+ * ETUZA AI agent tools — web, terminal, embed, inference
+ * Server-side (Vercel-safe).
  */
 
 import {
@@ -8,6 +8,14 @@ import {
   wantsTerminal,
   extractCommand,
 } from "@/lib/ai-terminal";
+import {
+  embedTool,
+  semanticContentSearch,
+  inferenceScaffold,
+  wantsEmbed,
+  wantsInference,
+} from "@/lib/ai-embed";
+import { runInferencePass } from "@/lib/ai-inference";
 
 const BLOCKED_HOSTS = new Set([
   "localhost",
@@ -82,10 +90,10 @@ function stripHtml(html: string): string {
   t = t.replace(/<[^>]+>/g, " ");
   return t
     .replace(/&nbsp;/g, " ")
-    .replace(/&/g, "&")
-    .replace(/</g, "<")
-    .replace(/>/g, ">")
-    .replace(/"/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
@@ -330,14 +338,12 @@ export async function webSearch(query: string): Promise<ToolResult> {
   if (!q) {
     return { tool: "web_search", ok: false, summary: "Query tupu." };
   }
-
   try {
     const [wikiEn, wikiSw, ddg] = await Promise.all([
       wikiSearch(q, "en"),
       wikiSearch(q, "sw"),
       ddgHtmlSearch(q),
     ]);
-
     const parts: string[] = [];
     if (wikiSw.length) parts.push("=== Wikipedia SW ===\n" + wikiSw.join("\n"));
     if (wikiEn.length) parts.push("=== Wikipedia EN ===\n" + wikiEn.join("\n"));
@@ -352,7 +358,6 @@ export async function webSearch(query: string): Promise<ToolResult> {
             .join("\n")
       );
     }
-
     if (parts.join("").length < 200 && ddg[0]?.url) {
       try {
         const page = await visitWeb(ddg[0].url);
@@ -366,16 +371,14 @@ export async function webSearch(query: string): Promise<ToolResult> {
         /* */
       }
     }
-
     const body = parts.join("\n\n").slice(0, MAX_TEXT);
     const ok = body.length > 40;
-
     return {
       tool: "web_search",
       ok,
       summary: ok
         ? `Utafutaji OK: "${q}" (wiki+web)`
-        : `Hakuna data nyingi kwa "${q}" — jibu kwa maarifa yako kama unaweza`,
+        : `Hakuna data nyingi kwa "${q}"`,
       data: { query: q, body, results: ddg },
     };
   } catch (e) {
@@ -397,7 +400,10 @@ export async function runAiToolsForMessage(
   const want =
     force ||
     wantsWebTool(message) ||
-    (mode === "agent" && wantsTerminal(message));
+    (mode === "agent" &&
+      (wantsTerminal(message) ||
+        wantsEmbed(message) ||
+        wantsInference(message)));
 
   if (!want) {
     return { block: "", results: [] };
@@ -409,15 +415,12 @@ export async function runAiToolsForMessage(
     const preferHttp =
       /\b(api|json|http_request|endpoint)\b/i.test(message) ||
       /\/api\//i.test(url);
-    if (preferHttp) {
-      results.push(await httpRequest({ url }));
-    } else {
-      results.push(await visitWeb(url));
-    }
+    if (preferHttp) results.push(await httpRequest({ url }));
+    else results.push(await visitWeb(url));
   }
 
   if (mode === "agent" || (!url && wantsWebTool(message))) {
-    if (force || wantsWebTool(message) || !wantsTerminal(message)) {
+    if (force || wantsWebTool(message)) {
       const q = message
         .replace(
           /^(tafuta|search|google|nisaidie|niambie|eleza|nani\s+ni)\s+/i,
@@ -426,6 +429,32 @@ export async function runAiToolsForMessage(
         .trim()
         .slice(0, 200);
       results.push(await webSearch(q || message));
+    }
+  }
+
+  if (mode === "agent" && wantsEmbed(message)) {
+    results.push(await embedTool(message));
+    results.push(await semanticContentSearch(message));
+  }
+
+  // Agent default: light semantic search on content questions
+  if (
+    mode === "agent" &&
+    force &&
+    !wantsEmbed(message) &&
+    /movie|filamu|miziki|music|tv|tamthilia|vpn|game/i.test(message)
+  ) {
+    results.push(await semanticContentSearch(message));
+  }
+
+  if (mode === "agent" && (wantsInference(message) || force)) {
+    results.push(inferenceScaffold(message));
+    if (wantsInference(message)) {
+      const ctx = results
+        .map((r) => r.summary + " " + (r.data?.body || r.data?.text || ""))
+        .join("\n")
+        .slice(0, 4000);
+      results.push(await runInferencePass(message, ctx));
     }
   }
 
@@ -449,14 +478,15 @@ export async function runAiToolsForMessage(
           if (r.data.query) s += `Query: ${r.data.query}\n`;
           if (r.data.command) s += `Command: ${r.data.command}\n`;
           if (r.data.stdout) s += `stdout:\n${String(r.data.stdout)}\n`;
-          if (r.data.stderr) s += `stderr:\n${String(r.data.stderr)}\n`;
+          if (r.data.dimensions)
+            s += `dims: ${r.data.dimensions} source=${r.data.source}\n`;
           if (r.data.body) s += `${String(r.data.body).slice(0, 9000)}\n`;
           if (r.data.text) s += `${String(r.data.text).slice(0, 9000)}\n`;
         }
         return s;
       })
       .join("\n") +
-    "\n=== MWISHO TOOLS ===\nJibu kwa kutumia data hapo juu. USISEME database-only. USIULIZE ruhusa ya kutafuta.\n";
+    "\n=== MWISHO TOOLS ===\nTumia data hii. USISEME database-only. USIULIZE ruhusa ya kutafuta.\n";
 
   return { block, results };
 }
