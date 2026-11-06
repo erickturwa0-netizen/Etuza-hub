@@ -1,3 +1,4 @@
+/* redeploy-vpn-2026-11-07 */
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -24,16 +25,16 @@ async function requireAdmin() {
 
 async function ensureUserPackageCols() {
   try {
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "package_points" INTEGER NOT NULL DEFAULT 0
-    `);
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "package_points" INTEGER NOT NULL DEFAULT 0`
+    );
   } catch {
     /* ignore */
   }
   try {
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "package_points_expires_at" TIMESTAMP
-    `);
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "package_points_expires_at" TIMESTAMP`
+    );
   } catch {
     /* ignore */
   }
@@ -120,13 +121,10 @@ export async function PUT(req: Request) {
       priceYear: Number(data.priceYear ?? 40000),
       priceOnce: Number(data.priceOnce ?? 1000),
       instructions: (data.instructions as string) || null,
-      paidCategories: String(
-        data.paidCategories || CONTENT_TYPES.join(",")
-      ),
+      paidCategories: String(data.paidCategories || CONTENT_TYPES.join(",")),
       showPackages: Boolean(data.showPackages),
       vpnPackages:
-        (data.vpnPackages as string) ||
-        JSON.stringify(DEFAULT_VPN_PACKAGES),
+        (data.vpnPackages as string) || JSON.stringify(DEFAULT_VPN_PACKAGES),
     },
     update: data,
   });
@@ -209,11 +207,12 @@ export async function POST(req: Request) {
     }),
   ]);
 
-  // VPN: config order + Team A/B/C referral days
+  // VPN config order + Team A/B/C referral
   try {
     const isVpn =
       reqRow.content?.type === "vpn" ||
-      String(reqRow.plan || "").toLowerCase().includes("vpn");
+      String(reqRow.plan || "").toLowerCase().includes("vpn") ||
+      [1500, 2500, 8000, 1000, 2000, 5000].includes(Number(reqRow.amount));
     if (isVpn) {
       await onVpnPaymentApproved({
         paymentRequestId: reqRow.id,
@@ -232,7 +231,6 @@ export async function POST(req: Request) {
     console.error("vpn referral on approve", e);
   }
 
-  // Grant package bonus points
   try {
     await prisma.user.update({
       where: { id: reqRow.userId },
