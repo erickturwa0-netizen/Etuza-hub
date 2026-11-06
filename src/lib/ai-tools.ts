@@ -1,7 +1,13 @@
 /**
- * ETUZA AI agent tools — web_search, visit_web, http_request
- * Server-side (Vercel-safe).
+ * ETUZA AI agent tools — web_search, visit_web, http_request, run_terminal
+ * Server-side (Vercel-safe allowlist terminal).
  */
+
+import {
+  runTerminal,
+  wantsTerminal,
+  extractCommand,
+} from "@/lib/ai-terminal";
 
 const BLOCKED_HOSTS = new Set([
   "localhost",
@@ -76,10 +82,10 @@ function stripHtml(html: string): string {
   t = t.replace(/<[^>]+>/g, " ");
   return t
     .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
+    .replace(/&/g, "&")
+    .replace(/</g, "<")
+    .replace(/>/g, ">")
+    .replace(/"/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
@@ -251,7 +257,6 @@ async function wikiSearch(query: string, lang: "en" | "sw"): Promise<string[]> {
         `• ${titles[i]}${descs[i] ? " — " + descs[i] : ""}${urls[i] ? " (" + urls[i] + ")" : ""}`
       );
     }
-    // extract first page summary
     if (titles[0]) {
       const sumUrl =
         `https://${lang}.wikipedia.org/api/rest_v1/page/summary/` +
@@ -320,7 +325,6 @@ async function ddgHtmlSearch(
   return results;
 }
 
-/** Multi-source web search — always try hard */
 export async function webSearch(query: string): Promise<ToolResult> {
   const q = query.trim().slice(0, 200);
   if (!q) {
@@ -349,7 +353,6 @@ export async function webSearch(query: string): Promise<ToolResult> {
       );
     }
 
-    // If still thin, fetch first DDG page text
     if (parts.join("").length < 200 && ddg[0]?.url) {
       try {
         const page = await visitWeb(ddg[0].url);
@@ -391,7 +394,10 @@ export async function runAiToolsForMessage(
   const mode = opts?.mode || "hub";
   const url = extractUrlFromText(message);
   const force = mode === "agent" && agentShouldSearch(message);
-  const want = force || wantsWebTool(message);
+  const want =
+    force ||
+    wantsWebTool(message) ||
+    (mode === "agent" && wantsTerminal(message));
 
   if (!want) {
     return { block: "", results: [] };
@@ -410,16 +416,22 @@ export async function runAiToolsForMessage(
     }
   }
 
-  // Agent (or explicit search intent): always web_search the question
   if (mode === "agent" || (!url && wantsWebTool(message))) {
-    const q = message
-      .replace(
-        /^(tafuta|search|google|nisaidie|niambie|eleza|nani\s+ni)\s+/i,
-        ""
-      )
-      .trim()
-      .slice(0, 200);
-    results.push(await webSearch(q || message));
+    if (force || wantsWebTool(message) || !wantsTerminal(message)) {
+      const q = message
+        .replace(
+          /^(tafuta|search|google|nisaidie|niambie|eleza|nani\s+ni)\s+/i,
+          ""
+        )
+        .trim()
+        .slice(0, 200);
+      results.push(await webSearch(q || message));
+    }
+  }
+
+  if (mode === "agent" && wantsTerminal(message)) {
+    const cmd = extractCommand(message) || "node -v";
+    results.push(await runTerminal(cmd));
   }
 
   if (!results.length) {
@@ -435,13 +447,16 @@ export async function runAiToolsForMessage(
           if (r.data.title) s += `Title: ${r.data.title}\n`;
           if (r.data.url) s += `URL: ${r.data.url}\n`;
           if (r.data.query) s += `Query: ${r.data.query}\n`;
+          if (r.data.command) s += `Command: ${r.data.command}\n`;
+          if (r.data.stdout) s += `stdout:\n${String(r.data.stdout)}\n`;
+          if (r.data.stderr) s += `stderr:\n${String(r.data.stderr)}\n`;
           if (r.data.body) s += `${String(r.data.body).slice(0, 9000)}\n`;
           if (r.data.text) s += `${String(r.data.text).slice(0, 9000)}\n`;
         }
         return s;
       })
       .join("\n") +
-    "\n=== MWISHO TOOLS ===\nJibu swali la mtumiaji kwa kutumia data hapo juu AU maarifa yako. USISEME 'database yangu haina' — wewe SI database ya movies pekee. USIULIZE ruhusa ya kutafuta — tayari umetafuta.\n";
+    "\n=== MWISHO TOOLS ===\nJibu kwa kutumia data hapo juu. USISEME database-only. USIULIZE ruhusa ya kutafuta.\n";
 
   return { block, results };
 }
