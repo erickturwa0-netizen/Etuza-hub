@@ -1,5 +1,5 @@
 /**
- * ETUZA AI agent tools — web, terminal, embed, inference
+ * ETUZA AI agent tools — Tavily (primary), web, terminal, embed, inference
  * Server-side (Vercel-safe).
  */
 
@@ -16,6 +16,7 @@ import {
   wantsInference,
 } from "@/lib/ai-embed";
 import { runInferencePass } from "@/lib/ai-inference";
+import { tavilySearch, tavilyExtract } from "@/lib/ai-tavily";
 
 const BLOCKED_HOSTS = new Set([
   "localhost",
@@ -217,6 +218,22 @@ export async function visitWeb(urlRaw: string): Promise<ToolResult> {
     return { tool: "visit_web", ok: false, summary: "URL batili." };
   }
   try {
+    const ex = await tavilyExtract([url]);
+    if (ex.ok && ex.body) {
+      return {
+        tool: "visit_web",
+        ok: true,
+        summary: `Tavily scrape: ${url}`,
+        data: {
+          status: 200,
+          url,
+          title: url,
+          text: ex.body.slice(0, MAX_TEXT),
+          links: [],
+          source: "tavily",
+        },
+      };
+    }
     const { ok, status, text, finalUrl } = await fetchText(url, {
       headers: {
         "User-Agent":
@@ -333,7 +350,6 @@ async function ddgHtmlSearch(
   return results;
 }
 
-/** Clean Swahili/English question wrappers for better search hit rate */
 function cleanSearchQuery(raw: string): string[] {
   let q = raw.trim().slice(0, 200);
   q = q
@@ -343,7 +359,7 @@ function cleanSearchQuery(raw: string): string[] {
       ""
     )
     .replace(
-      /\b(ni nani|nani ni|nani|nini maana ya|nini|who is|what is|maeelze|elezea)\b/gi,
+      /\b(ni nani|nani ni|nani|nini maana ya|nini|who is|what is)\b/gi,
       " "
     )
     .replace(/\s+/g, " ")
@@ -405,26 +421,13 @@ export async function webSearch(query: string): Promise<ToolResult> {
             .join("\n")
       );
     }
-    if (parts.join("").length < 200 && ddg[0]?.url) {
-      try {
-        const page = await visitWeb(ddg[0].url);
-        if (page.data?.text) {
-          parts.push(
-            `=== Page extract (${ddg[0].url}) ===\n` +
-              String(page.data.text).slice(0, 3000)
-          );
-        }
-      } catch {
-        /* */
-      }
-    }
     const body = parts.join("\n\n").slice(0, MAX_TEXT);
     const ok = body.length > 40;
     return {
       tool: "web_search",
       ok,
       summary: ok
-        ? `Utafutaji OK: "${q}" (+${searches.length - 1} variants)`
+        ? `Fallback wiki+web: "${q}"`
         : `Hakuna data nyingi kwa "${q}"`,
       data: { query: q, variants: searches, body, results: ddg },
     };
@@ -443,7 +446,7 @@ export async function runAiToolsForMessage(
 ): Promise<{ block: string; results: ToolResult[] }> {
   const mode = opts?.mode || "hub";
   const url = extractUrlFromText(message);
-  const force = mode === "agent"; // ALWAYS tool-first (no guessing)
+  const force = mode === "agent";
   const want =
     force ||
     wantsWebTool(message) ||
@@ -476,7 +479,22 @@ export async function runAiToolsForMessage(
         )
         .trim()
         .slice(0, 200);
-      results.push(await webSearch(q || message));
+      const tav = await tavilySearch(q || message, { maxResults: 6 });
+      if (tav.ok) {
+        let body = tav.body;
+        if (tav.results[0]?.url) {
+          const ex = await tavilyExtract([tav.results[0].url]);
+          if (ex.ok) body = (body + "\n\n" + ex.body).slice(0, 14000);
+        }
+        results.push({
+          tool: "web_search",
+          ok: true,
+          summary: tav.summary,
+          data: { query: q || message, source: "tavily", body },
+        });
+      } else {
+        results.push(await webSearch(q || message));
+      }
     }
   }
 
@@ -494,15 +512,13 @@ export async function runAiToolsForMessage(
     results.push(await semanticContentSearch(message));
   }
 
-  if (mode === "agent" && (wantsInference(message) || force)) {
+  if (mode === "agent" && wantsInference(message)) {
     results.push(inferenceScaffold(message));
-    if (wantsInference(message)) {
-      const ctx = results
-        .map((r) => r.summary + " " + (r.data?.body || r.data?.text || ""))
-        .join("\n")
-        .slice(0, 4000);
-      results.push(await runInferencePass(message, ctx));
-    }
+    const ctx = results
+      .map((r) => r.summary + " " + (r.data?.body || r.data?.text || ""))
+      .join("\n")
+      .slice(0, 4000);
+    results.push(await runInferencePass(message, ctx));
   }
 
   if (mode === "agent" && wantsTerminal(message)) {
@@ -523,10 +539,9 @@ export async function runAiToolsForMessage(
           if (r.data.title) s += `Title: ${r.data.title}\n`;
           if (r.data.url) s += `URL: ${r.data.url}\n`;
           if (r.data.query) s += `Query: ${r.data.query}\n`;
+          if (r.data.source) s += `Source: ${r.data.source}\n`;
           if (r.data.command) s += `Command: ${r.data.command}\n`;
           if (r.data.stdout) s += `stdout:\n${String(r.data.stdout)}\n`;
-          if (r.data.dimensions)
-            s += `dims: ${r.data.dimensions} source=${r.data.source}\n`;
           if (r.data.body) s += `${String(r.data.body).slice(0, 9000)}\n`;
           if (r.data.text) s += `${String(r.data.text).slice(0, 9000)}\n`;
         }
