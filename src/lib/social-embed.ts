@@ -135,7 +135,11 @@ export function isVideoMusicLink(
   const l = (link || "").toLowerCase();
   const c = (category || "").toLowerCase();
   if (/video/.test(c)) return true;
-  if (/youtube|youtu\.be|youtube-nocookie|vimeo|dailymotion|tiktok|facebook\.com|fb\.watch/.test(l))
+  if (
+    /youtube|youtu\.be|youtube-nocookie|vimeo|dailymotion|tiktok|facebook\.com|fb\.watch/.test(
+      l
+    )
+  )
     return true;
   if (/\/embed\/[\w-]{11}/i.test(link || "")) return true;
   if (ytId(link)) return true;

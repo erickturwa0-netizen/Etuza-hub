@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import StreamPlayer from "@/components/StreamPlayer";
 import AudioPlayer from "@/components/AudioPlayer";
+import MusicVideoPlayer from "@/components/MusicVideoPlayer";
 import PreRollGate from "@/components/PreRollGate";
 import GameDownloadPanel from "@/components/GameDownloadPanel";
 import PresenceTracker from "@/components/PresenceTracker";
@@ -90,12 +91,13 @@ export default async function WatchPage({
             ? "movie"
             : item.type === "tv"
               ? "tv"
-              : item.type;
+              : item.type === "radio"
+                ? "radio"
+                : "other";
 
   const contentKey = `${item.type}:${item.id}`;
   const isDownload = item.linkType === "download" || item.type === "vpn";
   const isWebGame =
-    item.type === "game" &&
     item.linkType !== "download" &&
     (item.linkType === "stream" || isWebGameUrl(link));
   const isGameDownload = item.type === "game" && isDownload;
@@ -137,7 +139,7 @@ export default async function WatchPage({
         </>
       );
     }
-    if (isWebGame) {
+    if (item.type === "game" && isWebGameUrl(link)) {
       return <WebGamePlayer src={link} title={item.title} />;
     }
     if (item.type === "game") {
@@ -163,11 +165,30 @@ export default async function WatchPage({
       );
     }
 
-    // Video Music (YouTube etc.) → StreamPlayer, not audio-only
+    // Video Music (YouTube etc.) → dedicated VIDEO player (not audio)
     const musicIsVideo =
       item.type === "music" && isVideoMusicLink(link, item.category);
 
-    if (item.type === "radio" || (item.type === "music" && !musicIsVideo)) {
+    if (musicIsVideo) {
+      return (
+        <PreRollGate
+          contentKey={contentKey}
+          title={item.title}
+          enabled={usePointsGate}
+        >
+          <div className="w-full max-w-full overflow-hidden">
+            <MusicVideoPlayer
+              src={link}
+              title={item.title}
+              poster={item.coverUrl}
+            />
+          </div>
+          {reportForm}
+        </PreRollGate>
+      );
+    }
+
+    if (item.type === "radio" || item.type === "music") {
       return (
         <PreRollGate
           contentKey={contentKey}
@@ -218,6 +239,9 @@ export default async function WatchPage({
       {item.category && (
         <p className="text-xs text-slate-500 mb-4 uppercase tracking-wide">
           {item.category}
+          {item.type === "music" && isVideoMusicLink(link, item.category)
+            ? " · VIDEO"
+            : ""}
         </p>
       )}
 
