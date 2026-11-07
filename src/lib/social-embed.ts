@@ -35,7 +35,7 @@ function ytId(u: string): string | null {
   return null;
 }
 
-/** Prefer youtube.com (more reliable in iframes than nocookie in some regions) */
+/** Prefer youtube.com. modestbranding reduces logo size — full watermark cannot be removed (YT ToS). */
 export function youtubeEmbedUrl(
   id: string,
   opts?: { autoplay?: boolean; mirror?: "youtube" | "nocookie" }
@@ -47,7 +47,7 @@ export function youtubeEmbedUrl(
   const ap = opts?.autoplay ? "1" : "0";
   return (
     `${host}/embed/${id}` +
-    `?autoplay=${ap}&modestbranding=1&rel=0&playsinline=1&controls=1&fs=1&enablejsapi=1`
+    `?autoplay=${ap}&modestbranding=1&rel=0&playsinline=1&controls=1&fs=1&enablejsapi=1&iv_load_policy=3&cc_load_policy=0&disablekb=0`
   );
 }
 
