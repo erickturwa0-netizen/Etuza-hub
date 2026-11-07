@@ -9,7 +9,6 @@ export type SocialKind =
 
 function ytId(u: string): string | null {
   const s = u.trim();
-  // bare 11-char id
   if (/^[\w-]{11}$/.test(s)) return s;
 
   const patterns = [
@@ -36,22 +35,46 @@ function ytId(u: string): string | null {
   return null;
 }
 
+/** Prefer youtube.com (more reliable in iframes than nocookie in some regions) */
+export function youtubeEmbedUrl(
+  id: string,
+  opts?: { autoplay?: boolean; mirror?: "youtube" | "nocookie" }
+): string {
+  const host =
+    opts?.mirror === "nocookie"
+      ? "https://www.youtube-nocookie.com"
+      : "https://www.youtube.com";
+  const ap = opts?.autoplay ? "1" : "0";
+  return (
+    `${host}/embed/${id}` +
+    `?autoplay=${ap}&modestbranding=1&rel=0&playsinline=1&controls=1&fs=1&enablejsapi=1`
+  );
+}
+
+export function youtubeEmbedMirrors(id: string): string[] {
+  return [
+    youtubeEmbedUrl(id, { mirror: "youtube" }),
+    youtubeEmbedUrl(id, { mirror: "nocookie" }),
+  ];
+}
+
 export function detectSocial(url: string): {
   kind: SocialKind;
   embedUrl: string | null;
   id: string | null;
+  mirrors?: string[];
 } {
   const u = url.trim();
   if (!u) return { kind: null, embedUrl: null, id: null };
 
   const id = ytId(u);
   if (id) {
+    const mirrors = youtubeEmbedMirrors(id);
     return {
       kind: "youtube",
       id,
-      embedUrl:
-        `https://www.youtube-nocookie.com/embed/${id}` +
-        `?autoplay=0&modestbranding=1&rel=0&playsinline=1&controls=1&fs=1`,
+      embedUrl: mirrors[0],
+      mirrors,
     };
   }
 
@@ -104,7 +127,7 @@ export function detectSocial(url: string): {
   return { kind: null, embedUrl: null, id: null };
 }
 
-/** Music item should use video player (YouTube etc.) not audio-only */
+/** Music item should use VIDEO player (YouTube etc.) not audio-only */
 export function isVideoMusicLink(
   link: string,
   category?: string | null
@@ -112,8 +135,9 @@ export function isVideoMusicLink(
   const l = (link || "").toLowerCase();
   const c = (category || "").toLowerCase();
   if (/video/.test(c)) return true;
-  if (/youtube|youtu\.be|youtube-nocookie|vimeo|dailymotion|tiktok/.test(l))
+  if (/youtube|youtu\.be|youtube-nocookie|vimeo|dailymotion|tiktok|facebook\.com|fb\.watch/.test(l))
     return true;
+  if (/\/embed\/[\w-]{11}/i.test(link || "")) return true;
   if (ytId(link)) return true;
   return false;
 }
