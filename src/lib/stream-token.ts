@@ -1,6 +1,7 @@
 /**
  * Signed stream tokens — clients never see raw CDN/API media URLs.
  * Uses AES-256-GCM with key derived from AUTH_SECRET / STREAM_SECRET.
+ * Social embeds (YouTube etc.) are NEVER tokenized — iframe needs real host.
  */
 
 import { createHash, createCipheriv, createDecipheriv, randomBytes } from "crypto";
@@ -31,11 +32,10 @@ function fromB64url(s: string): Buffer {
 }
 
 export type StreamPayload = {
-  u: string; // url
-  e: number; // exp ms
+  u: string;
+  e: number;
 };
 
-/** Encrypt media URL → opaque token (safe for query string) */
 export function encryptStreamUrl(url: string, ttlMs = TTL_MS): string {
   const payload: StreamPayload = {
     u: url.slice(0, 4000),
@@ -49,7 +49,6 @@ export function encryptStreamUrl(url: string, ttlMs = TTL_MS): string {
   return b64url(Buffer.concat([iv, tag, enc]));
 }
 
-/** Decrypt token → raw URL or null if invalid/expired */
 export function decryptStreamToken(token: string): string | null {
   try {
     const buf = fromB64url(token.trim());
@@ -70,23 +69,56 @@ export function decryptStreamToken(token: string): string | null {
   }
 }
 
-/** Public playback path (no raw CDN in network tab path beyond token) */
-export function proxiedStreamPath(url: string): string {
+/** True if URL must stay public for iframe/embed players */
+export function isSocialEmbedUrl(url: string): boolean {
+  const u = (url || "").toLowerCase();
+  return (
+    /youtube\.com|youtube-nocookie\.com|youtu\.be|music\.youtube\.com/i.test(
+      u
+    ) ||
+    /vimeo\.com|dailymotion\.com|tiktok\.com|instagram\.com|facebook\.com|fb\.watch/i.test(
+      u
+    )
+  );
+}
+
+/** Resolve playable URL: if already token path, decrypt; else return as-is */
+export function resolvePlayableUrl(link: string): string {
+  if (!link) return link;
+  if (link.startsWith("/api/proxy/stream")) {
+    try {
+      const q = link.includes("?") ? link.slice(link.indexOf("?")) : "";
+      const params = new URLSearchParams(q);
+      const t = params.get("t");
+      if (t) {
+        const raw = decryptStreamToken(t);
+        if (raw) return raw;
+      }
+      const plain = params.get("url");
+      if (plain) return decodeURIComponent(plain);
+    } catch {
+      /* ignore */
+    }
+  }
+  return link;
+}
+
+export function proxiedStreamPath(url: string, opts?: { type?: string; category?: string | null }): string {
   if (!url) return url;
   if (url.startsWith("/api/proxy/stream")) return url;
-  // youtube / social embeds stay as-is (iframe hosts)
-  if (
-    /youtube\.com|youtu\.be|vimeo\.com|facebook\.com|tiktok\.com|instagram\.com/i.test(
-      url
-    )
-  ) {
-    return url;
-  }
+
+  // Never encrypt social embeds (breaks iframe)
+  if (isSocialEmbedUrl(url)) return url;
+
+  // Video music must stay playable in StreamPlayer
+  const cat = (opts?.category || "").toLowerCase();
+  if (opts?.type === "music" && /video/.test(cat)) return url;
+  if (opts?.type === "music" && isSocialEmbedUrl(url)) return url;
+
   const t = encryptStreamUrl(url);
   return `/api/proxy/stream?t=${encodeURIComponent(t)}`;
 }
 
-/** Sanitize content row for public JSON (hide raw linkUrl) */
 export function sanitizeContentForClient<T extends Record<string, unknown>>(
   item: T,
   opts?: { admin?: boolean }
@@ -94,6 +126,9 @@ export function sanitizeContentForClient<T extends Record<string, unknown>>(
   if (opts?.admin) return item;
   const linkUrl = typeof item.linkUrl === "string" ? item.linkUrl : "";
   const linkType = String(item.linkType || "stream");
+  const type = String(item.type || "");
+  const category =
+    typeof item.category === "string" ? item.category : null;
   const out = { ...item } as T & {
     linkUrl?: string;
     fileUrl?: string | null;
@@ -101,15 +136,17 @@ export function sanitizeContentForClient<T extends Record<string, unknown>>(
   };
 
   if (linkUrl && linkType === "stream" && /^https?:\/\//i.test(linkUrl)) {
-    out.linkUrl = proxiedStreamPath(linkUrl);
+    out.linkUrl = proxiedStreamPath(linkUrl, { type, category });
   }
-  // Never expose raw file CDN for paid vpn configs to public lists
-  if (out.fileUrl && typeof out.fileUrl === "string" && /^https?:\/\//i.test(out.fileUrl)) {
-    if (String(item.type) === "vpn") {
+  if (
+    out.fileUrl &&
+    typeof out.fileUrl === "string" &&
+    /^https?:\/\//i.test(out.fileUrl)
+  ) {
+    if (type === "vpn") {
       out.fileUrl = null;
     }
   }
-  // Strip long config blobs from list payloads
   if (out.configText && String(out.configText).length > 0) {
     out.configText = null;
   }
