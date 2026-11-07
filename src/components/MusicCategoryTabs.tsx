@@ -10,6 +10,8 @@ type Song = {
   cover_url?: string | null;
   category?: string | null;
   link_url?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
 };
 
 function bucket(
@@ -18,10 +20,7 @@ function bucket(
 ): "video" | "dini" | "2026" | "bongo" | "free" | "other" {
   const c = (cat || "").toLowerCase();
   const l = (link || "").toLowerCase();
-  if (
-    /video/.test(c) ||
-    /youtube|youtu\.be|youtube-nocookie/.test(l)
-  )
+  if (/video/.test(c) || /youtube|youtu\.be|youtube-nocookie/.test(l))
     return "video";
   if (/dini|gospel|worship|injili|christian|yesu|praise|choir|religious/.test(c))
     return "dini";
@@ -31,10 +30,24 @@ function bucket(
   return "other";
 }
 
+function isNew(s: Song): boolean {
+  const raw = s.updated_at || s.created_at;
+  if (!raw) return false;
+  const t = Date.parse(raw);
+  if (!Number.isFinite(t)) return false;
+  return Date.now() - t < 7 * 24 * 60 * 60 * 1000;
+}
+
+function sortNewest(a: Song, b: Song): number {
+  const ta = Date.parse(a.updated_at || a.created_at || "") || 0;
+  const tb = Date.parse(b.updated_at || b.created_at || "") || 0;
+  return tb - ta;
+}
+
 export default function MusicCategoryTabs({ songs }: { songs: Song[] }) {
   const [tab, setTab] = useState<
     "all" | "bongo" | "dini" | "video" | "2026" | "free"
-  >("all");
+  >("video");
 
   const counts = useMemo(() => {
     let bongo = 0,
@@ -61,26 +74,29 @@ export default function MusicCategoryTabs({ songs }: { songs: Song[] }) {
   }, [songs]);
 
   const filtered = useMemo(() => {
-    if (tab === "all") return songs;
-    return songs.filter((s) => {
-      const b = bucket(s.category, s.link_url);
-      if (tab === "video") return b === "video";
-      if (tab === "dini") return b === "dini";
-      if (tab === "free") return b === "free";
-      if (tab === "2026")
-        return (
-          b === "2026" ||
-          /2026/.test(s.category || "") ||
-          /2026/.test(s.title || "")
-        );
-      if (tab === "bongo") return b === "bongo" || b === "other";
-      return true;
-    });
+    let list = songs;
+    if (tab !== "all") {
+      list = songs.filter((s) => {
+        const b = bucket(s.category, s.link_url);
+        if (tab === "video") return b === "video";
+        if (tab === "dini") return b === "dini";
+        if (tab === "free") return b === "free";
+        if (tab === "2026")
+          return (
+            b === "2026" ||
+            /2026/.test(s.category || "") ||
+            /2026/.test(s.title || "")
+          );
+        if (tab === "bongo") return b === "bongo" || b === "other";
+        return true;
+      });
+    }
+    return [...list].sort(sortNewest);
   }, [songs, tab]);
 
   const tabs: { id: typeof tab; label: string; count?: number }[] = [
-    { id: "all", label: "Zote", count: songs.length },
     { id: "video", label: "Video", count: counts.video || undefined },
+    { id: "all", label: "Zote", count: songs.length },
     { id: "bongo", label: "Bongo", count: counts.bongo || undefined },
     { id: "dini", label: "Dini", count: counts.dini || undefined },
     { id: "2026", label: "2026", count: counts.y2026 || undefined },
@@ -110,6 +126,7 @@ export default function MusicCategoryTabs({ songs }: { songs: Song[] }) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4">
         {filtered.map((c) => {
           const isVideo = bucket(c.category, c.link_url) === "video";
+          const neu = isNew(c);
           return (
             <Link
               key={c.id}
@@ -137,11 +154,18 @@ export default function MusicCategoryTabs({ songs }: { songs: Song[] }) {
                     )}
                   </div>
                 )}
-                {isVideo && (
-                  <span className="absolute top-2 left-2 text-[10px] px-1.5 py-0.5 rounded bg-red-600/90 text-white font-semibold">
-                    VIDEO
-                  </span>
-                )}
+                <div className="absolute top-2 left-2 flex gap-1">
+                  {isVideo && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-600/90 text-white font-semibold">
+                      VIDEO
+                    </span>
+                  )}
+                  {neu && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/90 text-white font-semibold">
+                      MPYA
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="p-2.5 sm:p-3">
                 <p className="text-sm font-semibold text-white leading-snug line-clamp-2">

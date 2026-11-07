@@ -81,23 +81,11 @@ async function seedIfEmpty(type: ContentType): Promise<Content[]> {
       });
     }
 
-    await prisma.apiSource.upsert({
-      where: { category: type },
-      create: {
-        category: type,
-        name: type,
-        url: cfg.url,
-        notes: SEED_TAG,
-        enabled: true,
-      },
-      update: { url: cfg.url, notes: SEED_TAG, enabled: true },
-    });
-
-    const rows = await prisma.content.findMany({
+    const after = await prisma.content.findMany({
       where: { type, status: "published" },
       orderBy: { createdAt: "desc" },
     });
-    return rows.map(mapRow);
+    return after.map(mapRow);
   } catch (e) {
     console.error("seedIfEmpty", type, e);
     return [];
@@ -117,7 +105,11 @@ export async function getPublishedContent(type?: ContentType): Promise<Content[]
 
       const items = await prisma.content.findMany({
         where: { status: "published", type },
-        orderBy: { createdAt: "desc" },
+        // Music/video: newest updates first so new scrapes appear on top
+        orderBy:
+          type === "music"
+            ? [{ updatedAt: "desc" }, { createdAt: "desc" }]
+            : { createdAt: "desc" },
       });
       if (items.length > 0) return items.map(mapRow);
       if (type === "game" || type === "vpn") return [];
