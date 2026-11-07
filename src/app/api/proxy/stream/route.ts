@@ -1,15 +1,33 @@
 import { NextResponse } from "next/server";
+import { decryptStreamToken } from "@/lib/stream-token";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/** Proxy HLS/m3u8 (and segments) to avoid browser CORS blocks */
+/**
+ * Proxy HLS/media.
+ * Prefer ?t=SIGNED_TOKEN (encrypted). Plain ?url= still works server-side
+ * for internal rewrite of m3u8 segments only (segments use encrypted tokens too).
+ */
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const target = searchParams.get("url");
+    const token = searchParams.get("t");
+    let target = searchParams.get("url");
+
+    if (token) {
+      const decoded = decryptStreamToken(token);
+      if (!decoded) {
+        return NextResponse.json(
+          { error: "Token batili au imeisha muda" },
+          { status: 403 }
+        );
+      }
+      target = decoded;
+    }
+
     if (!target || !/^https?:\/\//i.test(target)) {
-      return NextResponse.json({ error: "url required" }, { status: 400 });
+      return NextResponse.json({ error: "url/token required" }, { status: 400 });
     }
 
     let parsed: URL;
@@ -17,6 +35,18 @@ export async function GET(req: Request) {
       parsed = new URL(target);
     } catch {
       return NextResponse.json({ error: "invalid url" }, { status: 400 });
+    }
+
+    // Block private hosts
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.endsWith(".local") ||
+      /^10\./.test(host) ||
+      /^192\.168\./.test(host)
+    ) {
+      return NextResponse.json({ error: "blocked host" }, { status: 403 });
     }
 
     const res = await fetch(target, {
@@ -47,9 +77,16 @@ export async function GET(req: Request) {
 
     if (isPlaylist) {
       let text = await res.text();
-      // Rewrite relative + absolute segment URIs through proxy
       const base = target.replace(/[^/]+$/, "");
       const origin = parsed.origin;
+
+      const { encryptStreamUrl } = await import("@/lib/stream-token");
+
+      const toProxy = (abs: string) => {
+        const t = encryptStreamUrl(abs);
+        return `/api/proxy/stream?t=${encodeURIComponent(t)}`;
+      };
+
       const lines = text.split(/\r?\n/).map((line) => {
         const t = line.trim();
         if (!t || t.startsWith("#")) return line;
@@ -61,11 +98,9 @@ export async function GET(req: Request) {
         } else {
           abs = base + t;
         }
-        // Also rewrite URI="..." inside tags
-        return `/api/proxy/stream?url=${encodeURIComponent(abs)}`;
+        return toProxy(abs);
       });
 
-      // Rewrite URI="..." in EXT tags
       text = lines
         .join("\n")
         .replace(/URI="([^"]+)"/gi, (_m, uri: string) => {
@@ -73,31 +108,30 @@ export async function GET(req: Request) {
           if (!/^https?:\/\//i.test(uri)) {
             abs = uri.startsWith("/") ? origin + uri : base + uri;
           }
-          return `URI="/api/proxy/stream?url=${encodeURIComponent(abs)}"`;
+          return `URI="${toProxy(abs)}"`;
         });
 
       return new NextResponse(text, {
         status: 200,
         headers: {
           "Content-Type": "application/vnd.apple.mpegurl",
+          "Cache-Control": "no-store",
           "Access-Control-Allow-Origin": "*",
-          "Cache-Control": "no-cache",
         },
       });
     }
 
-    // Binary segment
     const buf = await res.arrayBuffer();
     return new NextResponse(buf, {
       status: 200,
       headers: {
         "Content-Type": contentType || "application/octet-stream",
+        "Cache-Control": "no-store",
         "Access-Control-Allow-Origin": "*",
-        "Cache-Control": "public, max-age=10",
       },
     });
   } catch (e) {
-    console.error("proxy/stream", e);
+    console.error("proxy stream", e);
     return NextResponse.json({ error: "proxy failed" }, { status: 500 });
   }
 }
