@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { ensureElitePlexContent } from "@/lib/eliteplex";
+import { sanitizeContentForClient } from "@/lib/stream-token";
 
 const vpnPkgSchema = z.object({
   plan: z.enum(["once", "week", "month", "timed"]),
@@ -80,7 +81,6 @@ export async function GET(req: Request) {
       orderBy: { createdAt: "desc" },
     });
 
-    // Admin / mine: hide ElitePlex API dumps only
     if (adminList || mineOnly) {
       const filtered = items.filter((it) => {
         const cat = (it.category || "").toLowerCase();
@@ -88,10 +88,14 @@ export async function GET(req: Request) {
         if (cat.startsWith("api-")) return false;
         return true;
       });
+      // Admin still sees raw URLs for editing
       return NextResponse.json({ items: filtered });
     }
 
-    return NextResponse.json({ items });
+    const safe = items.map((it) =>
+      sanitizeContentForClient(it as unknown as Record<string, unknown>)
+    );
+    return NextResponse.json({ items: safe });
   } catch (err) {
     console.error("GET /api/content", err);
     return NextResponse.json({ error: "Failed", items: [] }, { status: 500 });
