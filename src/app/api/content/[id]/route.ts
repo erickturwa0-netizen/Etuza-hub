@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { sanitizeContentForClient } from "@/lib/stream-token";
 import { getSession } from "@/lib/auth";
 
 const schema = z.object({
@@ -31,7 +32,9 @@ export async function GET(
   const { id } = await params;
   const item = await prisma.content.findUnique({ where: { id } });
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json({ item });
+  return NextResponse.json({
+    item: sanitizeContentForClient(item as unknown as Record<string, unknown>),
+  });
 }
 
 export async function PATCH(
