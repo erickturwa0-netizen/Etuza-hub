@@ -103,15 +103,9 @@ function LoginForm() {
         </div>
 
         <div className="space-y-4">
-          <GoogleSignInButton next={next} />
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-800" />
-            </div>
-            <div className="relative flex justify-center text-[10px] uppercase tracking-wider">
-              <span className="bg-[#0a0a0f] px-2 text-slate-500">au fingerprint</span>
-            </div>
-          </div>
+          {/* Google Sign-In: imefichwa kwa sasa — itaonekana baada ya kumaliza vitu vilivyobaki */}
+          {/* <GoogleSignInButton next={next} /> */}
+
           <FingerprintAuth mode="login" email={email} next={next} />
 
           <div className="relative my-4">
@@ -119,7 +113,9 @@ function LoginForm() {
               <div className="w-full border-t border-slate-800" />
             </div>
             <div className="relative flex justify-center text-[10px] uppercase tracking-wider">
-              <span className="bg-[#0a0a0f] px-2 text-slate-500">au email</span>
+              <span className="bg-[#0a0a0f] px-2 text-slate-500">
+                au email / password
+              </span>
             </div>
           </div>
 
