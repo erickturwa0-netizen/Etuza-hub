@@ -21,11 +21,12 @@ model User {
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
 
-  pointLogs        PointLog[]
-  paymentRequests  PaymentRequest[]
-  accesses         UserAccess[]
-  playbackReports  PlaybackReport[]
-  aiUsages         AiUsage[]
+  pointLogs             PointLog[]
+  paymentRequests       PaymentRequest[]
+  accesses              UserAccess[]
+  playbackReports       PlaybackReport[]
+  aiUsages              AiUsage[]
+  webAuthnCredentials   WebAuthnCredential[]
 
   @@map("User")
 }
@@ -44,12 +45,11 @@ model PointLog {
   @@map("PointLog")
 }
 
-/** Every ETUZA AI message — for admin stats */
 model AiUsage {
   id        String   @id @default(cuid())
   sessionId String   @map("session_id")
   userId    String?  @map("user_id")
-  kind      String   @default("chat") // chat | greeting | fallback
+  kind      String   @default("chat")
   createdAt DateTime @default(now()) @map("created_at")
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -121,38 +121,18 @@ model ViewSession {
   @@map("ViewSession")
 }
 
-model PaymentSettings {
-  id               String   @id @default("default")
-  enabled          Boolean  @default(false)
-  payPhone         String   @default("") @map("pay_phone")
-  payNetwork       String   @default("vodacom") @map("pay_network")
-  priceWeek        Int      @default(2000) @map("price_week")
-  priceMonth       Int      @default(5000) @map("price_month")
-  priceYear        Int      @default(40000) @map("price_year")
-  priceOnce        Int      @default(1000) @map("price_once")
-  instructions     String?  @default("Tuma pesa kisha pakia screenshot ya muamala.")
-  paidCategories   String   @default("movie,drama,tv,music,radio,game") @map("paid_categories")
-  showPackages     Boolean  @default(false) @map("show_packages")
-  vpnPackages      String?  @map("vpn_packages") @db.Text
-  pointsAdsEnabled Boolean  @default(true) @map("points_ads_enabled")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-
-  @@map("PaymentSettings")
-}
-
 model PaymentRequest {
-  id            String   @id @default(cuid())
-  userId        String   @map("user_id")
-  contentId     String?  @map("content_id")
-  plan          String
-  amount        Int
-  senderPhone   String   @map("sender_phone")
-  senderNetwork String   @map("sender_network")
-  screenshotUrl String   @map("screenshot_url") @db.Text
-  status        String   @default("pending")
-  adminNote     String?  @map("admin_note")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  contentId   String?  @map("content_id")
+  amountTzs   Int      @map("amount_tzs")
+  packageKey  String?  @map("package_key")
+  status      String   @default("pending")
+  proofUrl    String?  @map("proof_url")
+  note        String?
+  adminNote   String?  @map("admin_note")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   content Content? @relation(fields: [contentId], references: [id], onDelete: SetNull)
@@ -163,12 +143,12 @@ model PaymentRequest {
 }
 
 model UserAccess {
-  id        String    @id @default(cuid())
-  userId    String    @map("user_id")
-  contentId String?   @map("content_id")
-  plan      String
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  contentId String?  @map("content_id")
+  kind      String   @default("content")
   expiresAt DateTime? @map("expires_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   content Content? @relation(fields: [contentId], references: [id], onDelete: Cascade)
@@ -178,7 +158,6 @@ model UserAccess {
   @@map("UserAccess")
 }
 
-/** User reports stream/video failed — admin can refund points */
 model PlaybackReport {
   id            String   @id @default(cuid())
   userId        String   @map("user_id")
@@ -200,4 +179,23 @@ model PlaybackReport {
   @@index([userId])
   @@index([status])
   @@map("PlaybackReport")
+}
+
+/** Device fingerprint / passkey (WebAuthn) — phone fingerprint / Face ID */
+model WebAuthnCredential {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  credentialId String   @unique @map("credential_id")
+  publicKey    String   @map("public_key") @db.Text
+  counter      Int      @default(0)
+  deviceType   String?  @map("device_type")
+  backedUp     Boolean  @default(false) @map("backed_up")
+  transports   String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("WebAuthnCredential")
 }
