@@ -4,11 +4,9 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Lock, LogIn, Mail } from "lucide-react";
-import { CATEGORY_ICONS } from "@/lib/covers";
-import GoogleSignInButton from "@/components/GoogleSignInButton";
+import { CATEGORY_ICONS } from "@/lib/category-icons";
 import FingerprintAuth from "@/components/FingerprintAuth";
 import { getOrCreateDeviceId } from "@/lib/device-id";
-import { isGooglePending } from "@/lib/firebase-client";
 
 const ICONS = [
   { src: CATEGORY_ICONS.movie, label: "Movies" },
@@ -26,9 +24,7 @@ function LoginForm() {
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [phase, setPhase] = useState<"splash" | "form">(() =>
-    typeof window !== "undefined" && isGooglePending() ? "form" : "splash"
-  );
+  const [phase, setPhase] = useState<"splash" | "form">("splash");
 
   useEffect(() => {
     getOrCreateDeviceId();
@@ -103,8 +99,7 @@ function LoginForm() {
         </div>
 
         <div className="space-y-4">
-          {/* Google Sign-In: imefichwa kwa sasa — itaonekana baada ya kumaliza vitu vilivyobaki */}
-          {/* <GoogleSignInButton next={next} /> */}
+          {/* Google Sign-In: IMEFICHWA — rudisha baadaye */}
 
           <FingerprintAuth mode="login" email={email} next={next} />
 
