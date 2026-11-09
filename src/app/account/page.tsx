@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Coins, Copy, UserPlus } from "lucide-react";
 import { POINTS } from "@/lib/points";
+import FingerprintAuth from "@/components/FingerprintAuth";
 
 type User = {
   email: string;
@@ -57,11 +58,30 @@ export default function AccountPage() {
         </div>
       </div>
 
+      <div className="glass-card p-5 mb-4 space-y-3">
+        <p className="font-semibold text-white text-sm">Fingerprint / Biometric</p>
+        <p className="text-xs text-slate-400">
+          Sajili alama ya kidole (au Face ID) ya simu yako baada ya Google/login —
+          kisha utaweza kuingia bila password.
+        </p>
+        <FingerprintAuth mode="register" />
+      </div>
+
       <div className="glass-card p-5 mb-4 space-y-2 text-sm text-slate-300">
-        <p>• Usajili: <b className="text-white">+{POINTS.SIGNUP}</b> point</p>
-        <p>• Kila video: <b className="text-white">−{POINTS.WATCH_COST}</b> point</p>
-        <p>• Tazama tangazo: <b className="text-white">+{POINTS.AD_REWARD}</b> point</p>
-        <p>• Alika rafiki (akasajili): <b className="text-white">+{POINTS.INVITE_REWARD}</b> point</p>
+        <p>
+          • Usajili: <b className="text-white">+{POINTS.SIGNUP}</b> point
+        </p>
+        <p>
+          • Kila video: <b className="text-white">−{POINTS.WATCH_COST}</b> point
+        </p>
+        <p>
+          • Tazama tangazo: <b className="text-white">+{POINTS.AD_REWARD}</b>{" "}
+          point
+        </p>
+        <p>
+          • Alika rafiki (akasajili):{" "}
+          <b className="text-white">+{POINTS.INVITE_REWARD}</b> point
+        </p>
       </div>
 
       <div className="glass-card p-5">
@@ -73,18 +93,15 @@ export default function AccountPage() {
         <button
           type="button"
           onClick={() => {
-            navigator.clipboard?.writeText(inviteUrl);
-            setMsg("Link imenakiliwa!");
+            void navigator.clipboard.writeText(inviteUrl);
+            setMsg("Imenakiliwa!");
+            setTimeout(() => setMsg(""), 2000);
           }}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 text-sm font-semibold"
+          className="inline-flex items-center gap-2 text-sm text-violet-300"
         >
-          <Copy className="w-4 h-4" />
-          Nakili link
+          <Copy className="w-4 h-4" /> Nakili link
         </button>
         {msg && <p className="text-xs text-emerald-400 mt-2">{msg}</p>}
-        <p className="text-[11px] text-slate-500 mt-3">
-          Code: <span className="text-violet-300 font-mono">{user.inviteCode}</span>
-        </p>
       </div>
     </main>
   );

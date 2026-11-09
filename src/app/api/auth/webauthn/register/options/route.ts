@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { ensureUserSchema } from "@/lib/db-migrate";
 import {
   generateRegistrationOptions,
   getRpConfig,
@@ -10,9 +11,13 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
+  await ensureUserSchema();
   const session = await getSession();
   if (!session?.userId) {
-    return NextResponse.json({ error: "Ingia kwanza (Google/email)" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Ingia kwanza (Google/email)" },
+      { status: 401 }
+    );
   }
 
   const user = await prisma.user.findUnique({ where: { id: session.userId } });
@@ -42,7 +47,7 @@ export async function POST(req: Request) {
     authenticatorSelection: {
       residentKey: "preferred",
       userVerification: "required",
-      authenticatorAttachment: "platform", // fingerprint / Face ID on device
+      authenticatorAttachment: "platform",
     },
   });
 

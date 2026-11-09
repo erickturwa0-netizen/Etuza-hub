@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { LogIn, Mail, Lock, Eye, EyeOff } from "lucide-react";
-import { CATEGORY_ICONS } from "@/lib/category-icons";
+import { useSearchParams } from "next/navigation";
+import { Eye, EyeOff, Lock, LogIn, Mail } from "lucide-react";
+import { CATEGORY_ICONS } from "@/lib/covers";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
+import FingerprintAuth from "@/components/FingerprintAuth";
 import { getOrCreateDeviceId } from "@/lib/device-id";
 import { isGooglePending } from "@/lib/firebase-client";
 
@@ -14,12 +15,9 @@ const ICONS = [
   { src: CATEGORY_ICONS.music, label: "Miziki" },
   { src: CATEGORY_ICONS.radio, label: "Radio" },
   { src: CATEGORY_ICONS.tv, label: "TV" },
-  { src: CATEGORY_ICONS.game, label: "Games" },
-  { src: CATEGORY_ICONS.vpn, label: "VPN" },
 ];
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next");
 
@@ -98,24 +96,30 @@ function LoginForm() {
     <main className="min-h-screen flex items-center justify-center px-4 py-12 bg-[#0a0a0f]">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 mb-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.svg" alt="ETUZA" className="w-10 h-10 rounded-xl" width={40} height={40} />
-            <span className="text-xl font-extrabold text-violet-300">ETUZA HUB</span>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.svg" alt="ETUZA" className="w-12 h-12 mx-auto rounded-xl mb-3" />
           <h1 className="text-2xl font-bold text-white">Ingia</h1>
-          <p className="text-sm text-slate-400 mt-1">Karibu tena</p>
+          <p className="text-sm text-slate-400 mt-1">ETUZA HUB</p>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 space-y-4">
+        <div className="space-y-4">
           <GoogleSignInButton next={next} />
-
-          <div className="relative py-2">
+          <div className="relative my-4">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-700" />
+              <div className="w-full border-t border-slate-800" />
             </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-slate-900 px-2 text-slate-500">au email</span>
+            <div className="relative flex justify-center text-[10px] uppercase tracking-wider">
+              <span className="bg-[#0a0a0f] px-2 text-slate-500">au fingerprint</span>
+            </div>
+          </div>
+          <FingerprintAuth mode="login" email={email} next={next} />
+
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-800" />
+            </div>
+            <div className="relative flex justify-center text-[10px] uppercase tracking-wider">
+              <span className="bg-[#0a0a0f] px-2 text-slate-500">au email</span>
             </div>
           </div>
 
