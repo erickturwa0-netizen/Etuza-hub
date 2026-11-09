@@ -13,53 +13,50 @@ const ICONS = [
   { src: CATEGORY_ICONS.tv, label: "TV" },
   { src: CATEGORY_ICONS.drama, label: "Tamthilia" },
   { src: CATEGORY_ICONS.music, label: "Miziki" },
-  { src: CATEGORY_ICONS.radio, label: "Radio" },
-  { src: CATEGORY_ICONS.game, label: "Games" },
-  { src: CATEGORY_ICONS.vpn, label: "VPN" },
 ];
 
 function SignupForm() {
   const router = useRouter();
-  const sp = useSearchParams();
+  const searchParams = useSearchParams();
+  const ref = searchParams.get("ref") || "";
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [invite, setInvite] = useState(ref);
 
   useEffect(() => {
     getOrCreateDeviceId();
-    const ref = sp.get("ref") || sp.get("invite") || "";
-    if (ref) setInviteCode(ref.toUpperCase());
-  }, [sp]);
+    if (ref) setInvite(ref);
+  }, [ref]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
-
     try {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
+          fullName,
           email,
           password,
-          fullName,
-          inviteCode: inviteCode.trim() || undefined,
+          inviteCode: invite || undefined,
           deviceId: getOrCreateDeviceId(),
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Imeshindikana kuunda account");
+        setError(data.error || "Imeshindikana kusajili");
         setLoading(false);
         return;
       }
-      router.push("/");
-      router.refresh();
+      router.push("/account");
     } catch {
       setError("Tatizo la mtandao. Jaribu tena.");
       setLoading(false);
@@ -70,32 +67,21 @@ function SignupForm() {
     <main className="min-h-screen flex items-center justify-center px-4 py-12 bg-[#0a0a0f]">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 mb-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/logo.svg"
-              alt="ETUZA"
-              className="w-10 h-10 rounded-xl"
-              width={40}
-              height={40}
-            />
-            <span className="text-xl font-extrabold text-violet-300">ETUZA HUB</span>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.svg" alt="ETUZA" className="w-12 h-12 mx-auto rounded-xl mb-3" />
           <h1 className="text-2xl font-bold text-white">Jisajili</h1>
-          <p className="text-sm text-slate-400 mt-1">Account moja kwa kifaa kimoja</p>
+          <p className="text-sm text-slate-400 mt-1">ETUZA HUB</p>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 space-y-4">
-          <GoogleSignInButton label="Jisajili na Google" />
+        <div className="space-y-4">
+          {/* Google imefichwa kwa sasa — itaonekana baadaye */}
+          {/* <GoogleSignInButton label="Jisajili na Google" /> */}
 
-          <div className="relative py-2">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-700" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-slate-900 px-2 text-slate-500">au email</span>
-            </div>
-          </div>
+          <p className="text-xs text-slate-500 text-center rounded-xl border border-cyan-500/20 bg-cyan-950/20 px-3 py-2">
+            Baada ya kujisajili, nenda <b className="text-cyan-300">Account</b> →
+            sajili <b className="text-cyan-300">Fingerprint</b> ili uingie kwa
+            alama ya kidole.
+          </p>
 
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
@@ -148,15 +134,17 @@ function SignupForm() {
               </div>
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Invite code (hiari)</label>
+              <label className="text-xs text-slate-400 mb-1 block">
+                Invite code (si lazima)
+              </label>
               <div className="relative">
                 <Gift className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
-                  value={inviteCode}
-                  onChange={(e) => setInviteCode(e.target.value)}
+                  value={invite}
+                  onChange={(e) => setInvite(e.target.value)}
                   className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-violet-500 focus:outline-none text-sm"
-                  placeholder="Code ya mwaliko"
+                  placeholder="Code ya rafiki"
                 />
               </div>
             </div>
@@ -174,7 +162,7 @@ function SignupForm() {
           </form>
 
           <p className="text-center text-sm text-slate-400">
-            Tayari una account?{" "}
+            Una account?{" "}
             <Link href="/login" className="text-violet-400 font-medium">
               Ingia
             </Link>
