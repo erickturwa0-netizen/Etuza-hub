@@ -3,7 +3,7 @@ import { ensureIpColumns } from "@/lib/ip-guard";
 
 let migrated = false;
 
-/** Ensure User points columns + PointLog + AiUsage exist (idempotent). */
+/** Ensure User points columns + PointLog + AiUsage + WebAuthn exist (idempotent). */
 export async function ensureUserSchema() {
   if (migrated) return;
   try {
@@ -91,6 +91,31 @@ export async function ensureUserSchema() {
   }
   try {
     await ensureIpColumns();
+  } catch {
+    /* ignore */
+  }
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "WebAuthnCredential" (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        credential_id TEXT NOT NULL UNIQUE,
+        public_key TEXT NOT NULL,
+        counter INTEGER NOT NULL DEFAULT 0,
+        device_type TEXT,
+        backed_up BOOLEAN NOT NULL DEFAULT false,
+        transports TEXT,
+        created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+  } catch {
+    /* ignore */
+  }
+  try {
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "WebAuthnCredential_user_id_idx" ON "WebAuthnCredential"(user_id)`
+    );
   } catch {
     /* ignore */
   }
