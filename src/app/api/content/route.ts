@@ -5,18 +5,7 @@ import { getSession } from "@/lib/auth";
 import { ensureElitePlexContent } from "@/lib/eliteplex";
 import { sanitizeContentForClient } from "@/lib/stream-token";
 import { ensureUserSchema } from "@/lib/db-migrate";
-
-const vpnPkgSchema = z.object({
-  plan: z.enum(["once", "week", "month", "timed"]),
-  enabled: z.boolean(),
-  title: z.string().optional().default(""),
-  priceTzs: z.number().int().min(0),
-  accessDays: z.number().int().min(0).optional().default(0),
-  protocol: z.string().optional().default(""),
-  configText: z.string().optional().default(""),
-  fileUrl: z.string().optional().default(""),
-  imageUrl: z.string().optional().default(""),
-});
+import { Prisma } from "@prisma/client";
 
 const schema = z.object({
   type: z.enum(["movie", "game", "vpn", "tv", "radio", "music", "drama"]),
@@ -27,33 +16,61 @@ const schema = z.object({
   linkType: z.enum(["stream", "download"]).default("stream"),
   category: z.string().optional().nullable(),
   status: z.enum(["draft", "published"]).default("published"),
-  protocol: z.string().optional().nullable(),
-  country: z.string().optional().nullable(),
-  network: z.string().optional().nullable(),
-  configText: z.string().optional().nullable(),
-  fileUrl: z.string().optional().nullable(),
-  priceMode: z
-    .enum(["free", "once", "week", "month", "year", "timed"])
-    .optional(),
-  priceTzs: z.number().int().min(0).optional(),
-  accessDays: z.number().int().min(0).optional(),
-  vpnPackages: z.array(vpnPkgSchema).optional(),
 });
 
-/** Safe select — avoids Prisma crash when DB lags schema */
-const CONTENT_SELECT = {
-  id: true,
-  title: true,
-  type: true,
-  description: true,
-  coverUrl: true,
-  linkUrl: true,
-  linkType: true,
-  category: true,
-  status: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
+type ContentRow = {
+  id: string;
+  title: string;
+  type: string;
+  description: string | null;
+  cover_url: string | null;
+  link_url: string;
+  link_type: string;
+  category: string | null;
+  status: string;
+  created_at: Date;
+  updated_at: Date;
+};
+
+function mapRow(r: ContentRow) {
+  return {
+    id: r.id,
+    title: r.title,
+    type: r.type,
+    description: r.description,
+    coverUrl: r.cover_url,
+    linkUrl: r.link_url,
+    linkType: r.link_type,
+    category: r.category,
+    status: r.status,
+    pointsCost: 0,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+async function listContentRaw(opts: {
+  type?: string | null;
+  publishedOnly?: boolean;
+}) {
+  const clauses: Prisma.Sql[] = [];
+  if (opts.type) clauses.push(Prisma.sql`type = ${opts.type}`);
+  if (opts.publishedOnly) clauses.push(Prisma.sql`status = 'published'`);
+  const where =
+    clauses.length > 0
+      ? Prisma.sql`WHERE ${Prisma.join(clauses, " AND ")}`
+      : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<ContentRow[]>`
+    SELECT id, title, type, description, cover_url, link_url, link_type,
+           category, status, created_at, updated_at
+    FROM "Content"
+    ${where}
+    ORDER BY updated_at DESC
+    LIMIT 200
+  `;
+  return rows.map(mapRow);
+}
 
 export async function GET(req: Request) {
   try {
@@ -82,26 +99,33 @@ export async function GET(req: Request) {
       }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: any = {};
-    if (type) where.type = type;
-    if (publishedOnly) where.status = "published";
-
     let items;
     try {
-      items = await prisma.content.findMany({
-        where,
-        orderBy: { updatedAt: "desc" },
-        take: 200,
-      });
+      items = await listContentRaw({ type, publishedOnly });
     } catch (e) {
-      // Fallback if points_cost / api_source missing in DB
-      console.error("content.findMany full failed, using select", e);
+      console.error("listContentRaw", e);
+      // last resort: prisma without pointsCost via select
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const where: any = {};
+      if (type) where.type = type;
+      if (publishedOnly) where.status = "published";
       items = await prisma.content.findMany({
         where,
         orderBy: { updatedAt: "desc" },
         take: 200,
-        select: CONTENT_SELECT,
+        select: {
+          id: true,
+          title: true,
+          type: true,
+          description: true,
+          coverUrl: true,
+          linkUrl: true,
+          linkType: true,
+          category: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
     }
 
@@ -118,7 +142,7 @@ export async function GET(req: Request) {
     const safe = items.map((it) =>
       sanitizeContentForClient({
         ...(it as unknown as Record<string, unknown>),
-        pointsCost: (it as { pointsCost?: number }).pointsCost ?? 0,
+        pointsCost: 0,
       })
     );
     return NextResponse.json({ items: safe });
