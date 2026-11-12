@@ -5,6 +5,11 @@ import { getSession } from "@/lib/auth";
 import { PUBLIC_API } from "@/lib/public-apis";
 import { maskApiUrl } from "@/lib/stream-token";
 import { ensureUserSchema } from "@/lib/db-migrate";
+import {
+  detectApiCategoryFromUrl,
+  refineCategoryFromPayload,
+  suggestNameFromUrl,
+} from "@/lib/detect-api-type";
 
 export const API_CATEGORIES = [
   "movie",
@@ -30,7 +35,6 @@ const TMDB_POPULAR = TMDB_KEY
   ? `https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_KEY}&language=en-US&page=1`
   : "";
 
-/** Built-in sources — NEVER remove; only seed if missing / URL empty */
 const DEFAULTS: {
   category: ApiCategory;
   name: string;
@@ -139,7 +143,9 @@ function maskRow(s: {
     urlSet: Boolean(s.url && s.url.length > 4),
     enabled: s.enabled,
     notes: s.notes
-      ? String(s.notes).replace(/https?:\/\/[^\s|]+/gi, "***")
+      ? String(s.notes).length > 80
+        ? String(s.notes).slice(0, 4000)
+        : String(s.notes).replace(/https?:\/\/[^\s|]+/gi, "***")
       : s.notes,
   };
 }
@@ -166,11 +172,12 @@ export async function GET() {
 
 const itemSchema = z.object({
   id: z.string().optional(),
-  category: z.enum(API_CATEGORIES),
-  name: z.string().min(1).max(120),
-  url: z.string().max(2000).optional(),
+  category: z.enum(API_CATEGORIES).optional(),
+  name: z.string().max(120).optional(),
+  url: z.string().max(4000).optional(),
   enabled: z.boolean().optional(),
-  notes: z.string().max(500).optional().nullable(),
+  notes: z.string().max(20000).optional().nullable(),
+  autoDetect: z.boolean().optional(),
 });
 
 function isMaskedUrl(url?: string) {
@@ -193,12 +200,56 @@ export async function PUT(req: Request) {
       if (!parsed.success) continue;
       const d = parsed.data;
       const url = isMaskedUrl(d.url) ? undefined : d.url;
+
+      let category = d.category;
+      let name = d.name?.trim();
+      if (url && (!category || d.autoDetect !== false)) {
+        const det = detectApiCategoryFromUrl(url);
+        if (!category) category = det.category;
+        if ((category === "other" || d.autoDetect) && url.startsWith("http")) {
+          try {
+            const probe = await fetch(url, {
+              headers: {
+                Accept: "application/json",
+                "User-Agent": "ETUZA-HUB/1.0",
+              },
+              signal: AbortSignal.timeout(12000),
+              cache: "no-store",
+            });
+            if (probe.ok) {
+              const bodyJson = await probe.json().catch(() => null);
+              category = refineCategoryFromPayload(
+                bodyJson,
+                category || det.category
+              );
+            }
+          } catch {
+            /* keep URL detect */
+          }
+        }
+      }
+      if (d.notes && (!category || category === "other")) {
+        try {
+          const j = JSON.parse(
+            d.notes.replace(/^Status:\s*\d+\s*/i, "").trim()
+          );
+          category = refineCategoryFromPayload(j, category || "other");
+        } catch {
+          if (/taskId|horde|kudos|sonu|mureka|wrmgpt/i.test(d.notes || "")) {
+            category = "ai";
+          }
+        }
+      }
+      if (!category) category = "other";
+      if (!name && url) name = suggestNameFromUrl(url, category);
+      if (!name) name = category;
+
       if (d.id) {
         const row = await prisma.apiSource.update({
           where: { id: d.id },
           data: {
-            category: d.category,
-            name: d.name,
+            category,
+            name,
             ...(url !== undefined ? { url } : {}),
             ...(d.enabled !== undefined ? { enabled: d.enabled } : {}),
             ...(d.notes !== undefined ? { notes: d.notes } : {}),
@@ -206,11 +257,12 @@ export async function PUT(req: Request) {
         });
         updated.push(maskRow(row));
       } else {
+        if (!url) continue;
         const row = await prisma.apiSource.create({
           data: {
-            category: d.category,
-            name: d.name,
-            url: url || "",
+            category,
+            name,
+            url,
             enabled: d.enabled ?? true,
             notes: d.notes || null,
           },
