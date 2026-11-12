@@ -78,7 +78,8 @@ export async function GET(req: Request) {
 
     const items = await prisma.content.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: { updatedAt: "desc" },
+      take: 200,
     });
 
     if (adminList || mineOnly) {
@@ -88,7 +89,6 @@ export async function GET(req: Request) {
         if (cat.startsWith("api-")) return false;
         return true;
       });
-      // Admin still sees raw URLs for editing
       return NextResponse.json({ items: filtered });
     }
 
@@ -98,39 +98,33 @@ export async function GET(req: Request) {
     return NextResponse.json({ items: safe });
   } catch (err) {
     console.error("GET /api/content", err);
-    return NextResponse.json({ error: "Failed", items: [] }, { status: 500 });
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      { error: "Failed", detail: message.slice(0, 500), items: [] },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(req: Request) {
   try {
-    await ensureContentVpnColumn();
     const session = await getSession();
-    if (!session)
+    if (!session) {
       return NextResponse.json({ error: "Login required" }, { status: 401 });
+    }
     if (session.role !== "admin") {
       return NextResponse.json({ error: "Admin only" }, { status: 403 });
     }
 
+    await ensureContentVpnColumn();
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: "Data si sahihi" }, { status: 400 });
     }
-
     const d = parsed.data;
     const linkType =
       d.type === "game" || d.type === "vpn" ? "download" : d.linkType;
-
-    const vpnPackagesJson =
-      d.type === "vpn" && d.vpnPackages?.length
-        ? JSON.stringify(d.vpnPackages)
-        : null;
-
-    let priceMode = d.priceMode || "free";
-    if (d.type === "vpn" && d.vpnPackages?.some((p) => p.enabled)) {
-      if (priceMode === "free") priceMode = "once";
-    }
 
     const item = await prisma.content.create({
       data: {
@@ -142,22 +136,11 @@ export async function POST(req: Request) {
         linkType,
         category: d.category || null,
         status: d.status,
-        protocol: d.protocol || null,
-        country: d.country || null,
-        network: d.network || null,
-        configText: d.configText || null,
-        fileUrl: d.fileUrl || null,
-        priceMode,
-        priceTzs: d.priceTzs ?? 0,
-        accessDays: d.accessDays ?? 0,
-        vpnPackages: vpnPackagesJson,
-        createdBy: session.userId,
+        pointsCost: 0,
       },
     });
-
     return NextResponse.json({ item }, { status: 201 });
   } catch (err) {
-    console.error("POST /api/content", err);
     const message = err instanceof Error ? err.message : "Failed";
     return NextResponse.json({ error: message }, { status: 500 });
   }
