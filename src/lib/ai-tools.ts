@@ -1,5 +1,5 @@
 /**
- * ETUZA AI agent tools — Tavily (primary), web, terminal, embed, inference, image_gen
+ * ETUZA AI agent tools — Tavily, web, terminal, embed, inference, image_gen, music_gen
  * Server-side (Vercel-safe).
  */
 
@@ -22,6 +22,11 @@ import {
   extractImagePrompt,
   generateImageHorde,
 } from "@/lib/ai-image-gen";
+import {
+  wantsMusicGen,
+  extractMusicPrompt,
+  generateMusicSonu3,
+} from "@/lib/ai-music-gen";
 
 const BLOCKED_HOSTS = new Set([
   "localhost",
@@ -248,12 +253,14 @@ export async function runAiToolsForMessage(
     force ||
     wantsWebTool(message) ||
     wantsImageGen(message) ||
+    wantsMusicGen(message) ||
     (mode === "agent" && message.trim().length >= 3) ||
     (mode === "agent" &&
       (wantsTerminal(message) ||
         wantsEmbed(message) ||
         wantsInference(message) ||
-        wantsImageGen(message)));
+        wantsImageGen(message) ||
+        wantsMusicGen(message)));
 
   if (!want) {
     return { block: "", results: [] };
@@ -306,12 +313,17 @@ export async function runAiToolsForMessage(
     mode === "agent" &&
     force &&
     !wantsEmbed(message) &&
-    /movie|filamu|miziki|music|tv|tamthilia|vpn|game/i.test(message)
+    /movie|filamu|miziki|music|tv|tamthilia|vpn|game/i.test(message) &&
+    !wantsMusicGen(message)
   ) {
     results.push(await semanticContentSearch(message));
   }
 
-  if (wantsImageGen(message) || (mode === "agent" && /\b(picha|image)\b/i.test(message))) {
+  if (wantsMusicGen(message)) {
+    results.push(await generateMusicSonu3(extractMusicPrompt(message)));
+  }
+
+  if (wantsImageGen(message) || (mode === "agent" && /\b(picha|image)\b/i.test(message) && !wantsMusicGen(message))) {
     results.push(await generateImageHorde(extractImagePrompt(message)));
   }
 
@@ -346,7 +358,9 @@ export async function runAiToolsForMessage(
           if (r.data.command) s += `Command: ${r.data.command}\n`;
           if (r.data.stdout) s += `stdout:\n${String(r.data.stdout)}\n`;
           if (r.data.imageUrl) s += `ImageURL: ${r.data.imageUrl}\n`;
-          if (r.data.prompt) s += `ImagePrompt: ${r.data.prompt}\n`;
+          if (r.data.audioUrl) s += `AudioURL: ${r.data.audioUrl}\n`;
+          if (r.data.lyrics) s += `Lyrics:\n${String(r.data.lyrics).slice(0, 2000)}\n`;
+          if (r.data.prompt) s += `Prompt: ${r.data.prompt}\n`;
           if (r.data.body) s += `${String(r.data.body).slice(0, 9000)}\n`;
           if (r.data.text) s += `${String(r.data.text).slice(0, 9000)}\n`;
         }
