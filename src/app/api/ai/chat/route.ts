@@ -12,7 +12,7 @@ import {
 } from "@/lib/ai-playables";
 import { randomUUID } from "crypto";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 export const runtime = "nodejs";
 
 const ENDPOINT = "https://api.inceptionlabs.ai/v1/chat/completions";
@@ -21,28 +21,22 @@ const MODEL = "mercury-3";
 const SYSTEM_AGENT = `Wewe ni **ETUZA AI Agent** wa ETUZA HUB.
 
 === KANUNI YA DATA (LAZIMA) ===
-1. TOOL RESULTS ni chanzo cha ukweli. Kama zipo, JIBU kutoka hapo PEKEE kwa mambo ya ukweli (nani, nini, wapi, bei, habari).
-2. USIBAHATISHE. Usitoe majina, tarehe, au takwimu usizoziona kwenye TOOL RESULTS au history.
-3. Kama tools hazikupata data: sema wazi "Sijapata taarifa ya kutosha mtandaoni" + toa tip — USIJENGE hadithi.
+1. TOOL RESULTS ni chanzo cha ukweli. Kama zipo, JIBU kutoka hapo PEKEE.
+2. USIBAHATISHE.
+3. Kama tools hazikupata data: sema wazi "Sijapata taarifa ya kutosha".
 4. PLAYABLES: waambie wabonyeze **Cheza**.
-5. IMAGE_GEN: kama tool image_gen OK, sema picha imeundwa na ImageURL inaonyeshwa UI — usidai umeshindwa kama URL ipo.
-
-=== MUUNDO WA JIBU ===
-- Anza na jibu fupi moja kwa moja
-- Bullet 2–5 kutoka sources
-- Mwisho: sources (URL) kama zipo
-- USIandike "hatua 1,2,3" za thinking isipokuwa user aliomba inference
+5. IMAGE_GEN: kama image_gen OK, picha inaonyeshwa UI.
+6. MUSIC_GEN: kama music_gen OK, wimbo + lyrics vinaonyeshwa UI (AudioURL).
 `;
 
 const SYSTEM_HUB = `Wewe ni **ETUZA HUB assistant** (float).
-Jibu kwa Kiswahili fupi kuhusu ETUZA HUB: movies, TV, radio, miziki, point, VPN, account.
-Usidanganye. Kama hutajui, sema.
+Jibu kwa Kiswahili fupi kuhusu ETUZA HUB.
 `;
 
 const GREETING_AGENT =
-  "# HABARI!\n\nMimi ni **ETUZA AI Agent**. Nina **search mtandaoni** na **tengeneza picha** (Horde). Uliza chochote.";
+  "# HABARI!\n\nMimi ni **ETUZA AI Agent**. Nina search, **picha**, **wimbo (AI music)**, na **sauti (TTS)**.";
 const GREETING_HUB =
-  "Habari! Mimi ni msaidizi wa **ETUZA HUB**. Naweza kukusaidia kuhusu movies, TV, radio, point, VPN.";
+  "Habari! Mimi ni msaidizi wa **ETUZA HUB**.";
 
 function isGreeting(m: string) {
   return /^(habari|hujambo|jambo|hello|hi|hey|mambo)[!.?\s]*$/i.test(m.trim());
@@ -67,8 +61,8 @@ async function logAiUsage(opts: {
   }
 }
 
-function localHelpHub(message: string) {
-  return "Ninaweza kukusaidia kuhusu ETUZA HUB (movies, TV, radio, point, account). Uliza swali maalum.";
+function localHelpHub(_message: string) {
+  return "Ninaweza kukusaidia kuhusu ETUZA HUB (movies, TV, radio, point, account).";
 }
 
 async function searchContent(q: string) {
@@ -141,6 +135,9 @@ export async function POST(req: Request) {
     ok: boolean;
     summary: string;
     imageUrl?: string;
+    audioUrl?: string;
+    songTitle?: string;
+    lyrics?: string;
   }[] = [];
   try {
     const ran = await runAiToolsForMessage(message, { mode });
@@ -151,6 +148,12 @@ export async function POST(req: Request) {
       summary: r.summary,
       imageUrl:
         typeof r.data?.imageUrl === "string" ? r.data.imageUrl : undefined,
+      audioUrl:
+        typeof r.data?.audioUrl === "string" ? r.data.audioUrl : undefined,
+      songTitle:
+        typeof r.data?.title === "string" ? r.data.title : undefined,
+      lyrics:
+        typeof r.data?.lyrics === "string" ? r.data.lyrics : undefined,
     }));
     images = toolMeta
       .map((t) => t.imageUrl)
@@ -172,7 +175,8 @@ export async function POST(req: Request) {
       (Array.isArray(mediaTypes) && mediaTypes.length > 0) ||
       /\b(movie|filamu|radio|tv|channel|miziki|music|tamthilia|drama|play|cheza|nipatie|nataka|naomba|stream|watch|tazama|sikiliza)\b/i.test(
         message
-      ));
+      )) &&
+    !/\b(tengeneza\s+wimbo|generate\s+(a\s+)?song|unda\s+wimbo)\b/i.test(message);
 
   if (wantsMedia || (mode === "hub" && mediaQ)) {
     playables = await findPlayables({
@@ -208,7 +212,7 @@ export async function POST(req: Request) {
       reply: playables.length
         ? "Nimeleta hizi — bonyeza **Cheza**."
         : toolBlock
-          ? "**Data kutoka tools (mtandaoni):**\n" +
+          ? "**Data kutoka tools:**\n" +
             toolMeta.map((t) => `- **${t.tool}**: ${t.summary}`).join("\n")
           : mode === "agent"
             ? "INCEPTION_API_KEY haipo kwenye Vercel."
@@ -244,18 +248,15 @@ export async function POST(req: Request) {
         temperature: 0.3,
         max_tokens: 1200,
       }),
-      signal: AbortSignal.timeout(55000),
+      signal: AbortSignal.timeout(110000),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       void logAiUsage({ sessionId, userId, kind: "fallback" });
       return NextResponse.json({
-        reply: playables.length
-          ? "Nimeleta content — bonyeza **Cheza**."
-          : toolMeta.length
-            ? "**Data kutoka tools:**\n" +
-              toolMeta.map((t) => `- ${t.summary}`).join("\n")
-            : "AI haikujibu. Jaribu tena.",
+        reply: toolMeta.length
+          ? toolMeta.map((t) => `- ${t.summary}`).join("\n")
+          : "AI haikujibu. Jaribu tena.",
         playables,
         tools: toolMeta,
         images,
