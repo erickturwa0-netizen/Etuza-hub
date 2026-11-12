@@ -12,6 +12,9 @@ import {
 } from "@/lib/ai-playables";
 import { randomUUID } from "crypto";
 
+export const maxDuration = 60;
+export const runtime = "nodejs";
+
 const ENDPOINT = "https://api.inceptionlabs.ai/v1/chat/completions";
 const MODEL = "mercury-3";
 
@@ -22,86 +25,27 @@ const SYSTEM_AGENT = `Wewe ni **ETUZA AI Agent** wa ETUZA HUB.
 2. USIBAHATISHE. Usitoe majina, tarehe, au takwimu usizoziona kwenye TOOL RESULTS au history.
 3. Kama tools hazikupata data: sema wazi "Sijapata taarifa ya kutosha mtandaoni" + toa tip — USIJENGE hadithi.
 4. PLAYABLES: waambie wabonyeze **Cheza**.
+5. IMAGE_GEN: kama tool image_gen OK, sema picha imeundwa na ImageURL inaonyeshwa UI — usidai umeshindwa kama URL ipo.
 
 === MUUNDO WA JIBU ===
 - Anza na jibu fupi moja kwa moja
 - Bullet 2–5 kutoka sources
 - Mwisho: sources (URL) kama zipo
 - USIandike "hatua 1,2,3" za thinking isipokuwa user aliomba inference
+`;
 
-=== LUGHA ===
-Kiswahili rahisi. Markdown.`;
+const SYSTEM_HUB = `Wewe ni **ETUZA HUB assistant** (float).
+Jibu kwa Kiswahili fupi kuhusu ETUZA HUB: movies, TV, radio, miziki, point, VPN, account.
+Usidanganye. Kama hutajui, sema.
+`;
 
-const SYSTEM_HUB = `Wewe ni msaidizi wa **ETUZA HUB** tu.
-Maswali ya site pekee. Mingine → /ai.`;
-
-function isGreeting(message: string): boolean {
-  const m = message.trim().toLowerCase().replace(/[!?.]+$/g, "");
-  if (m.length > 40) return false;
-  const greets = [
-    "habari", "hujambo", "jambo", "mambo", "vipi", "salama",
-    "hello", "hi", "hey", "good morning", "good evening",
-    "habari yako", "shikamoo", "asante", "thanks", "thank you",
-  ];
-  return greets.some(
-    (g) => m === g || m.startsWith(g + " ") || m.endsWith(" " + g)
-  );
-}
-
-const GREETING_HUB = "# HABARI!\n\nKaribu **ETUZA HUB**. Mingine → /ai";
 const GREETING_AGENT =
-  "# HABARI!\n\nMimi ni **ETUZA AI Agent**. Nina **search mtandaoni** (si kubahatisha). Uliza chochote — utaona hatua za tools.";
+  "# HABARI!\n\nMimi ni **ETUZA AI Agent**. Nina **search mtandaoni** na **tengeneza picha** (Horde). Uliza chochote.";
+const GREETING_HUB =
+  "Habari! Mimi ni msaidizi wa **ETUZA HUB**. Naweza kukusaidia kuhusu movies, TV, radio, point, VPN.";
 
-function localHelpHub(message: string): string {
-  const m = message.toLowerCase();
-  if (/point|poin/.test(m)) return "**Point** → /account";
-  if (/movie|filamu/.test(m)) return "**Movies** → /movies";
-  if (/tv|channel/.test(m)) return "**TV** → /tv";
-  if (/music|miziki/.test(m)) return "**Miziki** → /music";
-  return "**ETUZA HUB** → /ai kwa maswali ya nje";
-}
-
-function extractSearchQuery(message: string): string | null {
-  const m = message.trim();
-  if (m.length < 2 || isGreeting(m) || /https?:\/\//i.test(m)) return null;
-  const patterns = [
-    /(?:tafuta|search|nipatie|nataka|movie\s+ya|filamu\s+ya)(.+)/i,
-    /(?:movie|filamu|tamthilia|drama|muziki|music|channel|tv)\s+(.+)/i,
-  ];
-  for (const re of patterns) {
-    const hit = m.match(re);
-    if (hit?.[1]) {
-      const q = hit[1].replace(/[?!.]+$/g, "").trim();
-      if (q.length >= 2 && q.length <= 80) return q;
-    }
-  }
-  return null;
-}
-
-async function searchContent(q: string) {
-  try {
-    return await prisma.content.findMany({
-      where: {
-        status: "published",
-        OR: [
-          { title: { contains: q, mode: "insensitive" } },
-          { category: { contains: q, mode: "insensitive" } },
-          { description: { contains: q, mode: "insensitive" } },
-        ],
-      },
-      select: {
-        id: true,
-        title: true,
-        type: true,
-        category: true,
-        coverUrl: true,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 8,
-    });
-  } catch {
-    return [];
-  }
+function isGreeting(m: string) {
+  return /^(habari|hujambo|jambo|hello|hi|hey|mambo)[!.?\s]*$/i.test(m.trim());
 }
 
 async function logAiUsage(opts: {
@@ -113,7 +57,7 @@ async function logAiUsage(opts: {
     await ensureUserSchema();
     await prisma.aiUsage.create({
       data: {
-        sessionId: opts.sessionId.slice(0, 80),
+        sessionId: opts.sessionId,
         userId: opts.userId || null,
         kind: opts.kind,
       },
@@ -123,72 +67,59 @@ async function logAiUsage(opts: {
   }
 }
 
-export async function POST(req: Request) {
-  let message = "";
-  let history: { role: string; content: string }[] = [];
-  let sessionId = "";
-  let mode: "hub" | "agent" = "hub";
+function localHelpHub(message: string) {
+  return "Ninaweza kukusaidia kuhusu ETUZA HUB (movies, TV, radio, point, account). Uliza swali maalum.";
+}
 
+async function searchContent(q: string) {
   try {
-    const body = await req.json();
-    message = String(body?.message || "").trim().slice(0, 8000);
-    sessionId = String(body?.sessionId || "").trim().slice(0, 80);
-    const rawMode = String(body?.mode || "hub").toLowerCase();
-    mode = rawMode === "agent" || rawMode === "full" ? "agent" : "hub";
-
-    if (Array.isArray(body?.attachments)) {
-      const attLines: string[] = [];
-      for (const a of body.attachments.slice(0, 4)) {
-        const name = String(a?.name || "file").slice(0, 120);
-        const type = String(a?.type || "").slice(0, 80);
-        if (typeof a?.text === "string" && a.text.trim()) {
-          attLines.push(
-            `--- FILE: ${name} (${type}) ---\n${String(a.text).slice(0, 12000)}\n---`
-          );
-        } else if (
-          typeof a?.dataUrl === "string" &&
-          a.dataUrl.startsWith("data:")
-        ) {
-          attLines.push(`--- IMAGE: ${name} ---\n[Picha]\n---`);
-        }
-      }
-      if (attLines.length) {
-        message = (
-          message +
-          "\n\n=== ATTACHMENTS ===\n" +
-          attLines.join("\n")
-        ).slice(0, 16000);
-      }
-    }
-
-    if (Array.isArray(body?.history)) {
-      history = body.history
-        .filter(
-          (m: { role?: string; content?: string }) =>
-            (m.role === "user" || m.role === "assistant") &&
-            typeof m.content === "string"
-        )
-        .slice(-24)
-        .map((m: { role: string; content: string }) => ({
-          role: m.role,
-          content: String(m.content).slice(0, 4000),
-        }));
-    }
+    return await prisma.content.findMany({
+      where: {
+        status: "published",
+        OR: [
+          { title: { contains: q, mode: "insensitive" } },
+          { category: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      take: 8,
+      orderBy: { updatedAt: "desc" },
+    });
   } catch {
-    return NextResponse.json({ error: "Ombi batili" }, { status: 400 });
+    return [];
   }
+}
+
+function extractSearchQuery(message: string): string | null {
+  const m = message
+    .replace(/^(tafuta|search|nipatie|nataka|naomba)\s+/i, "")
+    .trim();
+  return m.length >= 2 ? m.slice(0, 120) : null;
+}
+
+export async function POST(req: Request) {
+  await ensureUserSchema();
+  const session = await getSession();
+  const userId = session?.userId || null;
+
+  let body: {
+    message?: string;
+    mode?: string;
+    sessionId?: string;
+    history?: { role: string; content: string }[];
+  } = {};
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "JSON batili" }, { status: 400 });
+  }
+
+  const message = String(body.message || "").trim();
+  const mode = body.mode === "agent" ? "agent" : "hub";
+  const sessionId = String(body.sessionId || randomUUID()).slice(0, 80);
+  const history = Array.isArray(body.history) ? body.history.slice(-12) : [];
 
   if (!message) {
-    return NextResponse.json({ error: "Andika ujumbe" }, { status: 400 });
-  }
-  if (!sessionId) sessionId = randomUUID();
-
-  let userId: string | null = null;
-  try {
-    const session = await getSession();
-    userId = session?.userId || null;
-  } catch {
-    /* ignore */
+    return NextResponse.json({ error: "Message tupu" }, { status: 400 });
   }
 
   if (isGreeting(message) && !/ATTACHMENTS/i.test(message)) {
@@ -198,12 +129,19 @@ export async function POST(req: Request) {
       searched: null,
       playables: [],
       tools: [],
+      images: [],
       mode,
     });
   }
 
   let toolBlock = "";
-  let toolMeta: { tool: string; ok: boolean; summary: string }[] = [];
+  let images: string[] = [];
+  let toolMeta: {
+    tool: string;
+    ok: boolean;
+    summary: string;
+    imageUrl?: string;
+  }[] = [];
   try {
     const ran = await runAiToolsForMessage(message, { mode });
     toolBlock = ran.block;
@@ -211,7 +149,12 @@ export async function POST(req: Request) {
       tool: r.tool,
       ok: r.ok,
       summary: r.summary,
+      imageUrl:
+        typeof r.data?.imageUrl === "string" ? r.data.imageUrl : undefined,
     }));
+    images = toolMeta
+      .map((t) => t.imageUrl)
+      .filter((u): u is string => typeof u === "string" && u.startsWith("http"));
   } catch (e) {
     console.error("ai tools", e);
   }
@@ -273,6 +216,7 @@ export async function POST(req: Request) {
       searched: mediaQ || null,
       playables,
       tools: toolMeta,
+      images,
       mode,
     });
   }
@@ -284,80 +228,64 @@ export async function POST(req: Request) {
     const res = await fetch(ENDPOINT, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: MODEL,
         messages: [
           { role: "system", content: system },
-          ...history,
-          { role: "user", content: message },
+          ...history.map((h) => ({
+            role: h.role === "assistant" ? "assistant" : "user",
+            content: String(h.content || "").slice(0, 4000),
+          })),
+          { role: "user", content: message.slice(0, 8000) },
         ],
-        temperature: mode === "agent" ? 0.35 : 0.45,
-        max_tokens: mode === "agent" ? 3500 : 1200,
+        temperature: 0.3,
+        max_tokens: 1200,
       }),
+      signal: AbortSignal.timeout(55000),
     });
-
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      console.error("inception", res.status, data);
       void logAiUsage({ sessionId, userId, kind: "fallback" });
       return NextResponse.json({
         reply: playables.length
-          ? "Bonyeza **Cheza** hapa chini."
+          ? "Nimeleta content — bonyeza **Cheza**."
           : toolMeta.length
             ? "**Data kutoka tools:**\n" +
               toolMeta.map((t) => `- ${t.summary}`).join("\n")
-            : "Model haikujibu. Jaribu tena.",
+            : "AI haikujibu. Jaribu tena.",
         playables,
         tools: toolMeta,
+        images,
         mode,
       });
     }
-
-    let reply =
+    const reply =
       data?.choices?.[0]?.message?.content ||
-      data?.choices?.[0]?.text ||
-      "";
-    reply = String(reply).trim();
-
-    const refuse =
-      !reply ||
-      /^(samahani[,.]?\s*)+$/i.test(reply) ||
-      /siwezi (kujibu|kusaidia|kutoa)/i.test(reply.slice(0, 120)) ||
-      /database yangu/i.test(reply.slice(0, 200));
-
-    if (refuse) {
-      reply = playables.length
-        ? "Nimepata hizi — bonyeza **Cheza**."
-        : toolMeta.length
-          ? "Kutoka mtandaoni:\n" +
-            toolMeta.map((t) => `- ${t.summary}`).join("\n")
-          : "Sijapata taarifa ya kutosha mtandaoni. Jaribu swali lingine.";
-      void logAiUsage({ sessionId, userId, kind: "fallback" });
-    } else {
-      void logAiUsage({
-        sessionId,
-        userId,
-        kind: mode === "agent" ? "agent_chat" : "hub_chat",
-      });
-    }
-
+      (toolMeta.length
+        ? toolMeta.map((t) => `- ${t.summary}`).join("\n")
+        : "Sijapata jibu.");
+    void logAiUsage({ sessionId, userId, kind: "chat" });
     return NextResponse.json({
       reply,
       searched: mediaQ || null,
       playables,
       tools: toolMeta,
+      images,
       mode,
     });
   } catch (e) {
     console.error("ai chat", e);
     void logAiUsage({ sessionId, userId, kind: "fallback" });
     return NextResponse.json({
-      reply: "Tatizo la mtandao. Jaribu tena.",
+      reply: toolMeta.length
+        ? toolMeta.map((t) => `- ${t.summary}`).join("\n")
+        : "Tatizo la mtandao kwa AI. Jaribu tena.",
       playables,
       tools: toolMeta,
+      images,
       mode,
     });
   }
