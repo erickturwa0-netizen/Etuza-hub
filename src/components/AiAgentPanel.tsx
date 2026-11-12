@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bot,
   Globe,
   Loader2,
   Send,
   Paperclip,
-  X,
   FileText,
   Image as ImageIcon,
   Terminal,
@@ -32,6 +31,9 @@ type ToolMeta = {
   ok: boolean;
   summary: string;
   imageUrl?: string;
+  audioUrl?: string;
+  songTitle?: string;
+  lyrics?: string;
 };
 
 type Msg = {
@@ -53,6 +55,7 @@ function toolIcon(name: string) {
   if (name.includes("search") || name.includes("web")) return Search;
   if (name.includes("terminal")) return Terminal;
   if (name.includes("image")) return ImageIcon;
+  if (name.includes("music")) return Volume2;
   return Sparkles;
 }
 
@@ -110,25 +113,19 @@ function ToolsDone({ tools }: { tools: ToolMeta[] }) {
   if (!tools?.length) return null;
   return (
     <div className="mt-2 space-y-1">
-      {tools.map((t, j) => {
-        const Icon = toolIcon(t.tool);
-        return (
-          <div
-            key={j}
-            className="flex items-start gap-1.5 text-[11px] text-slate-400"
-          >
-            {t.ok ? (
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
-            ) : (
-              <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
-            )}
-            <span>
-              <span className="font-semibold text-slate-300">{t.tool}</span>
-              {" — "}{t.summary}
-            </span>
-          </div>
-        );
-      })}
+      {tools.map((t, j) => (
+        <div key={j} className="flex items-start gap-1.5 text-[11px] text-slate-400">
+          {t.ok ? (
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+          ) : (
+            <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+          )}
+          <span>
+            <span className="font-semibold text-slate-300">{t.tool}</span>
+            {" — "}{t.summary}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -184,9 +181,7 @@ export default function AiAgentPanel({
         alert(data.error || "Sauti haikupatikana");
         return;
       }
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
+      if (audioRef.current) audioRef.current.pause();
       const a = new Audio(data.audioUrl);
       audioRef.current = a;
       a.onended = () => setSpeakIdx(null);
@@ -203,6 +198,9 @@ export default function AiAgentPanel({
     if (/picha|image|draw|tengeneza\s+picha|horde/i.test(message)) {
       steps.push({ id: "img", label: "Inatengeneza picha (Horde)…", status: "pending" });
     }
+    if (/wimbo|song|tengeneza\s+wimbo|music\s*gen|compose/i.test(message)) {
+      steps.push({ id: "music", label: "Inatengeneza wimbo (Sonu3)… ~90s", status: "pending" });
+    }
     if (/tafuta|search|nani|habari|http/i.test(message) || mode === "agent") {
       steps.push({ id: "search", label: "Inatafuta mtandaoni…", status: "pending" });
     }
@@ -217,9 +215,7 @@ export default function AiAgentPanel({
         )
       );
       i += 1;
-      if (i >= steps.length) {
-        if (stepTimer.current) clearInterval(stepTimer.current);
-      }
+      if (i >= steps.length && stepTimer.current) clearInterval(stepTimer.current);
     }, 900);
   }
 
@@ -234,14 +230,9 @@ export default function AiAgentPanel({
     setText("");
     setBusy(true);
     startSteps(t);
-
     const attachments = files.map((f) => ({ name: f.name, type: f.type }));
-    setMsgs((m) => [
-      ...m,
-      { role: "user", content: t || "(attachment)", attachments },
-    ]);
+    setMsgs((m) => [...m, { role: "user", content: t || "(attachment)", attachments }]);
     setFiles([]);
-
     try {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
@@ -251,10 +242,7 @@ export default function AiAgentPanel({
           message: t || "Tafadhali angalia attachment zangu.",
           mode,
           sessionId: sessionId.current,
-          history: msgs.slice(-8).map((x) => ({
-            role: x.role,
-            content: x.content,
-          })),
+          history: msgs.slice(-8).map((x) => ({ role: x.role, content: x.content })),
         }),
       });
       const data = await res.json();
@@ -271,10 +259,7 @@ export default function AiAgentPanel({
       ]);
     } catch {
       stopSteps();
-      setMsgs((m) => [
-        ...m,
-        { role: "assistant", content: "Tatizo la mtandao. Jaribu tena." },
-      ]);
+      setMsgs((m) => [...m, { role: "assistant", content: "Tatizo la mtandao. Jaribu tena." }]);
     }
     setBusy(false);
     setLiveSteps([]);
@@ -289,7 +274,7 @@ export default function AiAgentPanel({
         <div className="min-w-0">
           <p className="text-sm font-semibold text-white">ETUZA AI Agent</p>
           <p className="text-[10px] text-slate-400 truncate">
-            Live tools · web_search · image_gen · TTS · Cheza
+            Live tools · search · image · music · TTS · Cheza
           </p>
         </div>
         <Globe className="w-4 h-4 text-violet-400/60 ml-auto" />
@@ -308,15 +293,8 @@ export default function AiAgentPanel({
             {m.attachments && m.attachments.length > 0 && (
               <div className="flex flex-wrap gap-1 mb-1.5">
                 {m.attachments.map((a, j) => (
-                  <span
-                    key={j}
-                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-black/25"
-                  >
-                    {a.type.startsWith("image/") ? (
-                      <ImageIcon className="w-3 h-3" />
-                    ) : (
-                      <FileText className="w-3 h-3" />
-                    )}
+                  <span key={j} className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-black/25">
+                    {a.type.startsWith("image/") ? <ImageIcon className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
                     {a.name}
                   </span>
                 ))}
@@ -330,33 +308,32 @@ export default function AiAgentPanel({
                   onClick={() => void speakMessage(i, m.content)}
                   className="mt-2 inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg border border-cyan-500/30 bg-cyan-950/40 text-cyan-200 hover:bg-cyan-900/40"
                 >
-                  {speakIdx === i ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Volume2 className="w-3.5 h-3.5" />
-                  )}
+                  {speakIdx === i ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Volume2 className="w-3.5 h-3.5" />}
                   {speakIdx === i ? "Inasikilizwa…" : "Sikiliza jibu"}
                 </button>
-                {m.playables && m.playables.length > 0 && (
-                  <AiPlayableCards items={m.playables} />
-                )}
+                {m.playables && m.playables.length > 0 && <AiPlayableCards items={m.playables} />}
                 {m.tools && m.tools.length > 0 && <ToolsDone tools={m.tools} />}
-                {((m.images && m.images.length > 0) ||
-                  m.tools?.some((t) => t.imageUrl)) && (
+                {((m.images && m.images.length > 0) || m.tools?.some((t) => t.imageUrl)) && (
                   <div className="mt-2 grid gap-2">
                     {(m.images && m.images.length
                       ? m.images
-                      : (m.tools || [])
-                          .map((t) => t.imageUrl)
-                          .filter((u): u is string => !!u)
+                      : (m.tools || []).map((t) => t.imageUrl).filter((u): u is string => !!u)
                     ).map((src, j) => (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        key={j}
-                        src={src}
-                        alt="AI generated"
-                        className="rounded-xl border border-slate-700 max-h-64 w-full object-contain bg-black"
-                      />
+                      <img key={j} src={src} alt="AI generated" className="rounded-xl border border-slate-700 max-h-64 w-full object-contain bg-black" />
+                    ))}
+                  </div>
+                )}
+                {m.tools?.some((t) => t.audioUrl) && (
+                  <div className="mt-2 space-y-2">
+                    {m.tools.filter((t) => t.audioUrl).map((t, j) => (
+                      <div key={j} className="rounded-xl border border-pink-500/30 bg-pink-950/20 p-2.5">
+                        <p className="text-xs font-semibold text-pink-200 mb-1">{t.songTitle || "AI Music"}</p>
+                        <audio controls src={t.audioUrl} className="w-full h-10" />
+                        {t.lyrics && (
+                          <pre className="mt-2 text-[10px] text-slate-400 whitespace-pre-wrap max-h-40 overflow-y-auto">{t.lyrics}</pre>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
@@ -366,7 +343,6 @@ export default function AiAgentPanel({
             )}
           </div>
         ))}
-
         {busy && <LiveSteps steps={liveSteps} />}
         <div ref={bottomRef} />
       </div>
@@ -382,11 +358,7 @@ export default function AiAgentPanel({
             setFiles((f) => [...f, ...list].slice(0, 5));
           }}
         />
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          className="p-2.5 rounded-xl border border-slate-700 text-slate-400"
-        >
+        <button type="button" onClick={() => fileRef.current?.click()} className="p-2.5 rounded-xl border border-slate-700 text-slate-400">
           <Paperclip className="w-4 h-4" />
         </button>
         <textarea
@@ -399,15 +371,10 @@ export default function AiAgentPanel({
             }
           }}
           rows={1}
-          placeholder="Uliza… mfano: Tengeneza picha / sikiliza jibu"
+          placeholder="Uliza… mfano: Tengeneza wimbo wa sad song"
           className="flex-1 resize-none rounded-xl bg-slate-950 border border-slate-700 px-3 py-2.5 text-sm text-white focus:border-violet-500 focus:outline-none"
         />
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void send()}
-          className="p-2.5 rounded-xl bg-violet-600 text-white disabled:opacity-50"
-        >
+        <button type="button" disabled={busy} onClick={() => void send()} className="p-2.5 rounded-xl bg-violet-600 text-white disabled:opacity-50">
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </button>
       </div>
