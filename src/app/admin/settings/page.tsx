@@ -61,7 +61,7 @@ export default function AdminSettingsPage() {
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
 
-  const [newCat, setNewCat] = useState("movie");
+  const [newCat, setNewCat] = useState("ai");
   const [newName, setNewName] = useState("");
   const [newUrl, setNewUrl] = useState("");
   const [newNotes, setNewNotes] = useState("");
@@ -144,7 +144,7 @@ export default function AdminSettingsPage() {
       setNewName("");
       setNewUrl("");
       setNewNotes("");
-      setMsg("API mpya imeongezwa");
+      setMsg("API mpya imeongezwa (zilizopo hazijafutwa)");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
@@ -160,10 +160,8 @@ export default function AdminSettingsPage() {
         `/api/admin/api-sources?id=${encodeURIComponent(id)}`,
         { method: "DELETE", credentials: "include" }
       );
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Delete failed");
-      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
       setMsg("Imefutwa");
       await load();
     } catch (e) {
@@ -195,7 +193,8 @@ export default function AdminSettingsPage() {
       <div>
         <h1 className="text-xl font-bold text-white">Settings · API Sources</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Chagua <strong>aina</strong> (movie, tamthilia, TV, AI…) kisha weka URL ya API
+          APIs za <strong>movie, music, radio, TV, tamthilia</strong> zinabaki kama zilivyo.
+          Hapa unaongeza tu API za ziada (mfano Omegatech AI) — chagua aina kisha weka URL.
         </p>
       </div>
 
@@ -212,7 +211,7 @@ export default function AdminSettingsPage() {
 
       <div className="rounded-2xl border border-violet-500/30 bg-violet-950/20 p-4 space-y-3">
         <p className="text-sm font-semibold text-violet-200 flex items-center gap-2">
-          <Plus className="w-4 h-4" /> Ongeza API mpya
+          <Plus className="w-4 h-4" /> Ongeza API mpya (ya ziada)
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="text-xs text-slate-400 space-y-1">
@@ -234,7 +233,7 @@ export default function AdminSettingsPage() {
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="Mfano: Omegatech Movies"
+              placeholder="Mfano: Omegatech FreeImage"
               className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white"
             />
           </label>
@@ -244,7 +243,7 @@ export default function AdminSettingsPage() {
           <input
             value={newUrl}
             onChange={(e) => setNewUrl(e.target.value)}
-            placeholder="https://..."
+            placeholder="https://api.omegatech.app/api/ai/freeimage?action=horde&prompt=..."
             className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white font-mono"
           />
         </label>
