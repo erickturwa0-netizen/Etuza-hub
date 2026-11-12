@@ -24,23 +24,37 @@ model User {
   paymentRequests     PaymentRequest[]
   webauthnCredentials WebAuthnCredential[]
   aiUsages            AiUsage[]
+  accesses            UserAccess[]
+  playbackReports     PlaybackReport[]
 
   @@map("User")
 }
 
-model WebAuthnCredential {
-  id           String   @id @default(cuid())
-  userId       String   @map("user_id")
-  credentialId String   @unique @map("credential_id")
-  publicKey    String   @map("public_key")
-  counter      BigInt   @default(0)
-  transports   String?
-  createdAt    DateTime @default(now()) @map("created_at")
+model PointLog {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  amount    Int
+  reason    String?
+  createdAt DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@map("WebAuthnCredential")
+  @@map("PointLog")
+}
+
+model AiUsage {
+  id        String   @id @default(cuid())
+  sessionId String   @map("session_id")
+  userId    String?  @map("user_id")
+  kind      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId])
+  @@index([userId])
+  @@map("AiUsage")
 }
 
 model Content {
@@ -57,6 +71,9 @@ model Content {
   apiSource   String?  @map("api_source")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
+
+  accesses        UserAccess[]
+  playbackReports PlaybackReport[]
 
   @@index([type])
   @@index([status])
@@ -93,42 +110,15 @@ model ViewSession {
   @@map("ViewSession")
 }
 
-model PointLog {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  amount    Int
-  reason    String?
-  createdAt DateTime @default(now()) @map("created_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("PointLog")
-}
-
-model AiUsage {
-  id        String   @id @default(cuid())
-  sessionId String   @map("session_id")
-  userId    String?  @map("user_id")
-  kind      String
-  createdAt DateTime @default(now()) @map("created_at")
-
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  @@index([sessionId])
-  @@index([userId])
-  @@map("AiUsage")
-}
-
 model PaymentRequest {
-  id            String   @id @default(cuid())
-  userId        String   @map("user_id")
-  amount        Int
-  status        String   @default("pending")
-  contentType   String   @default("movie") @map("content_type")
-  notes         String?
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  amount      Int
+  status      String   @default("pending")
+  contentType String   @default("movie") @map("content_type")
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -137,28 +127,47 @@ model PaymentRequest {
   @@map("PaymentRequest")
 }
 
-model VpnConfig {
-  id           String   @id @default(cuid())
-  userId       String?  @map("user_id")
-  title        String
-  configText   String   @map("config_text")
-  packageDays  Int      @default(0) @map("package_days")
-  expiresAt    DateTime? @map("expires_at")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+model UserAccess {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  contentId String   @map("content_id")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  @@index([userId])
-  @@map("VpnConfig")
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentId])
+  @@map("UserAccess")
 }
 
-model Presence {
-  id           String   @id @default(cuid())
-  sessionId    String   @unique @map("session_id")
-  userId       String?  @map("user_id")
-  path         String?
-  deviceType   String?  @map("device_type")
-  lastSeen     DateTime @default(now()) @map("last_seen")
+model PlaybackReport {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  contentId String   @map("content_id")
+  reason    String?
+  status    String   @default("open")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@index([lastSeen])
-  @@map("Presence")
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@index([contentId])
+  @@index([status])
+  @@map("PlaybackReport")
+}
+
+model WebAuthnCredential {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  credentialId String   @unique @map("credential_id")
+  publicKey    String   @map("public_key")
+  counter      BigInt   @default(0)
+  transports   String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("WebAuthnCredential")
 }
