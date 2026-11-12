@@ -10,6 +10,7 @@ import {
   refineCategoryFromPayload,
   suggestNameFromUrl,
 } from "@/lib/detect-api-type";
+import { importFromApiSource } from "@/lib/import-source";
 
 export const API_CATEGORIES = [
   "movie",
@@ -43,13 +44,13 @@ const DEFAULTS: {
 }[] = [
   {
     category: "movie",
-    name: "TMDB + ElitePlex Movies",
-    url: TMDB_POPULAR || ELITEPLEX_MOVIES,
-    notes: "tmdb+eliteplex-v2",
+    name: "Movies (Omegatech + vidsrc)",
+    url: "https://api.omegatech.app/api/movie/MovieBox-pro?action=trending",
+    notes: "omegatech-moviebox-v1",
   },
   {
     category: "drama",
-    name: "ElitePlex Series + Anime (Tamthilia)",
+    name: "Series / Tamthilia",
     url: ELITEPLEX_SERIES,
     notes: "eliteplex-drama-v1",
   },
@@ -77,9 +78,9 @@ const DEFAULTS: {
   },
   {
     category: "game",
-    name: "Games",
-    url: PUBLIC_API.game?.url || "",
-    notes: "FreeToGame / Manual",
+    name: "FreeToGame Browser",
+    url: PUBLIC_API.game?.url || "https://www.freetogame.com/api/games?platform=browser&sort-by=popularity",
+    notes: "FreeToGame",
   },
   {
     category: "vpn",
@@ -92,9 +93,7 @@ const DEFAULTS: {
 async function ensureDefaults() {
   await ensureUserSchema();
   for (const d of DEFAULTS) {
-    const rows = await prisma.apiSource.findMany({
-      where: { category: d.category },
-    });
+    const rows = await prisma.apiSource.findMany({ where: { category: d.category } });
     if (rows.length === 0) {
       await prisma.apiSource.create({
         data: {
@@ -105,24 +104,6 @@ async function ensureDefaults() {
           notes: d.notes,
         },
       });
-      continue;
-    }
-    for (const row of rows) {
-      const empty = !row.url || row.url.trim().length < 4;
-      const looksDefault =
-        !row.name ||
-        row.name === d.name ||
-        row.name.toLowerCase().includes(d.category);
-      if (empty && d.url && looksDefault) {
-        await prisma.apiSource.update({
-          where: { id: row.id },
-          data: {
-            url: d.url,
-            name: row.name || d.name,
-            notes: row.notes || d.notes,
-          },
-        });
-      }
     }
   }
 }
@@ -206,27 +187,6 @@ export async function PUT(req: Request) {
       if (url && (!category || d.autoDetect !== false)) {
         const det = detectApiCategoryFromUrl(url);
         if (!category) category = det.category;
-        if ((category === "other" || d.autoDetect) && url.startsWith("http")) {
-          try {
-            const probe = await fetch(url, {
-              headers: {
-                Accept: "application/json",
-                "User-Agent": "ETUZA-HUB/1.0",
-              },
-              signal: AbortSignal.timeout(12000),
-              cache: "no-store",
-            });
-            if (probe.ok) {
-              const bodyJson = await probe.json().catch(() => null);
-              category = refineCategoryFromPayload(
-                bodyJson,
-                category || det.category
-              );
-            }
-          } catch {
-            /* keep URL detect */
-          }
-        }
       }
       if (d.notes && (!category || category === "other")) {
         try {
@@ -267,7 +227,27 @@ export async function PUT(req: Request) {
             notes: d.notes || null,
           },
         });
-        updated.push(maskRow(row));
+        let importNote = "";
+        if (category !== "ai") {
+          try {
+            const imp = await importFromApiSource({
+              url,
+              category,
+              notes: d.notes,
+            });
+            importNote = imp.imported
+              ? `imported:${imp.imported}`
+              : imp.error
+                ? `err:${imp.error}`
+                : "imported:0";
+          } catch (e) {
+            console.error("importFromApiSource", e);
+          }
+        }
+        updated.push({
+          ...maskRow(row),
+          notes: [row.notes, importNote].filter(Boolean).join(" | ").slice(0, 500),
+        });
       }
     }
     await ensureDefaults();
@@ -292,24 +272,6 @@ export async function DELETE(req: Request) {
     const id = searchParams.get("id");
     if (!id) {
       return NextResponse.json({ error: "id required" }, { status: 400 });
-    }
-    const row = await prisma.apiSource.findUnique({ where: { id } });
-    if (row) {
-      const protectedCats = new Set(["movie", "music", "radio", "drama", "tv"]);
-      if (protectedCats.has(row.category)) {
-        const count = await prisma.apiSource.count({
-          where: { category: row.category },
-        });
-        if (count <= 1) {
-          return NextResponse.json(
-            {
-              error:
-                "Huwezi kufuta API ya mwisho ya aina hii (movie/music/radio…). Unaweza ku-disable tu.",
-            },
-            { status: 400 }
-          );
-        }
-      }
     }
     await prisma.apiSource.delete({ where: { id } });
     return NextResponse.json({ ok: true });
