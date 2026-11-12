@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   XCircle,
   Sparkles,
+  Volume2,
 } from "lucide-react";
 
 type Playable = {
@@ -142,6 +143,8 @@ export default function AiAgentPanel({
   const [busy, setBusy] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [liveSteps, setLiveSteps] = useState<LiveStep[]>([]);
+  const [speakIdx, setSpeakIdx] = useState<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const stepTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -158,8 +161,42 @@ export default function AiAgentPanel({
   useEffect(() => {
     return () => {
       if (stepTimer.current) clearInterval(stepTimer.current);
+      audioRef.current?.pause();
     };
   }, []);
+
+  async function speakMessage(idx: number, content: string) {
+    if (speakIdx === idx) {
+      audioRef.current?.pause();
+      setSpeakIdx(null);
+      return;
+    }
+    setSpeakIdx(idx);
+    try {
+      const res = await fetch("/api/ai/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: content }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.audioUrl) {
+        setSpeakIdx(null);
+        alert(data.error || "Sauti haikupatikana");
+        return;
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      const a = new Audio(data.audioUrl);
+      audioRef.current = a;
+      a.onended = () => setSpeakIdx(null);
+      a.onerror = () => setSpeakIdx(null);
+      await a.play();
+    } catch {
+      setSpeakIdx(null);
+      alert("Tatizo la mtandao kwa sauti");
+    }
+  }
 
   function startSteps(message: string) {
     const steps: LiveStep[] = [];
@@ -252,7 +289,7 @@ export default function AiAgentPanel({
         <div className="min-w-0">
           <p className="text-sm font-semibold text-white">ETUZA AI Agent</p>
           <p className="text-[10px] text-slate-400 truncate">
-            Live tools · web_search · image_gen · terminal · Cheza
+            Live tools · web_search · image_gen · TTS · Cheza
           </p>
         </div>
         <Globe className="w-4 h-4 text-violet-400/60 ml-auto" />
@@ -288,6 +325,18 @@ export default function AiAgentPanel({
             {m.role === "assistant" ? (
               <>
                 <FormattedMessage content={m.content} />
+                <button
+                  type="button"
+                  onClick={() => void speakMessage(i, m.content)}
+                  className="mt-2 inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg border border-cyan-500/30 bg-cyan-950/40 text-cyan-200 hover:bg-cyan-900/40"
+                >
+                  {speakIdx === i ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Volume2 className="w-3.5 h-3.5" />
+                  )}
+                  {speakIdx === i ? "Inasikilizwa…" : "Sikiliza jibu"}
+                </button>
                 {m.playables && m.playables.length > 0 && (
                   <AiPlayableCards items={m.playables} />
                 )}
@@ -350,7 +399,7 @@ export default function AiAgentPanel({
             }
           }}
           rows={1}
-          placeholder="Uliza… mfano: Tengeneza picha ya ng'ombe mjini"
+          placeholder="Uliza… mfano: Tengeneza picha / sikiliza jibu"
           className="flex-1 resize-none rounded-xl bg-slate-950 border border-slate-700 px-3 py-2.5 text-sm text-white focus:border-violet-500 focus:outline-none"
         />
         <button
