@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { ensureElitePlexContent } from "@/lib/eliteplex";
 import { sanitizeContentForClient } from "@/lib/stream-token";
+import { ensureUserSchema } from "@/lib/db-migrate";
 
 const vpnPkgSchema = z.object({
   plan: z.enum(["once", "week", "month", "timed"]),
@@ -39,19 +40,29 @@ const schema = z.object({
   vpnPackages: z.array(vpnPkgSchema).optional(),
 });
 
-async function ensureContentVpnColumn() {
-  try {
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "Content"
-      ADD COLUMN IF NOT EXISTS "vpn_packages" TEXT
-    `);
-  } catch {
-    /* ignore */
-  }
-}
+/** Safe select — avoids Prisma crash when DB lags schema */
+const CONTENT_SELECT = {
+  id: true,
+  title: true,
+  type: true,
+  description: true,
+  coverUrl: true,
+  linkUrl: true,
+  linkType: true,
+  category: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 export async function GET(req: Request) {
   try {
+    try {
+      await ensureUserSchema();
+    } catch {
+      /* ignore */
+    }
+
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
     const publishedOnly = searchParams.get("published") === "1";
@@ -76,11 +87,23 @@ export async function GET(req: Request) {
     if (type) where.type = type;
     if (publishedOnly) where.status = "published";
 
-    const items = await prisma.content.findMany({
-      where,
-      orderBy: { updatedAt: "desc" },
-      take: 200,
-    });
+    let items;
+    try {
+      items = await prisma.content.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+        take: 200,
+      });
+    } catch (e) {
+      // Fallback if points_cost / api_source missing in DB
+      console.error("content.findMany full failed, using select", e);
+      items = await prisma.content.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+        take: 200,
+        select: CONTENT_SELECT,
+      });
+    }
 
     if (adminList || mineOnly) {
       const filtered = items.filter((it) => {
@@ -93,7 +116,10 @@ export async function GET(req: Request) {
     }
 
     const safe = items.map((it) =>
-      sanitizeContentForClient(it as unknown as Record<string, unknown>)
+      sanitizeContentForClient({
+        ...(it as unknown as Record<string, unknown>),
+        pointsCost: (it as { pointsCost?: number }).pointsCost ?? 0,
+      })
     );
     return NextResponse.json({ items: safe });
   } catch (err) {
@@ -116,7 +142,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Admin only" }, { status: 403 });
     }
 
-    await ensureContentVpnColumn();
+    await ensureUserSchema();
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
@@ -136,7 +162,6 @@ export async function POST(req: Request) {
         linkType,
         category: d.category || null,
         status: d.status,
-        pointsCost: 0,
       },
     });
     return NextResponse.json({ item }, { status: 201 });

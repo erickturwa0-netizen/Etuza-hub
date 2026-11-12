@@ -20,6 +20,20 @@ export async function ensureUserSchema() {
       /* ignore */
     }
 
+    // Content columns required by Prisma schema (ignore if no permission)
+    for (const sql of [
+      `ALTER TABLE "Content" ADD COLUMN IF NOT EXISTS "points_cost" INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE "Content" ADD COLUMN IF NOT EXISTS "api_source" TEXT`,
+      `ALTER TABLE "Content" ADD COLUMN IF NOT EXISTS "vpn_packages" TEXT`,
+      `ALTER TABLE "Content" ADD COLUMN IF NOT EXISTS "stream_status" TEXT`,
+    ]) {
+      try {
+        await prisma.$executeRawUnsafe(sql);
+      } catch {
+        /* no owner / already exists */
+      }
+    }
+
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "PointLog" (
         "id" TEXT PRIMARY KEY,
