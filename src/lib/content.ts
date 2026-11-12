@@ -1,8 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { fetchPublicSeed, PUBLIC_API } from "@/lib/public-apis";
-import { contentCover } from "@/lib/covers";
 import type { Content, ContentType } from "@/types/database";
-import { ensureBongoMovies } from "@/lib/bongo-movies";
+import { contentCover } from "@/lib/covers";
 
 type RawRow = {
   id: string;
@@ -44,6 +42,7 @@ function mapRaw(c: RawRow): Content {
   };
 }
 
+/** Fast DB-only list — never call external APIs (prevents homepage hang). */
 async function listPublishedRaw(type?: ContentType): Promise<Content[]> {
   try {
     const rows = type
@@ -53,7 +52,7 @@ async function listPublishedRaw(type?: ContentType): Promise<Content[]> {
             FROM "Content"
             WHERE status = 'published' AND type = ${type}
             ORDER BY updated_at DESC
-            LIMIT 300
+            LIMIT 200
           `
       : await prisma.$queryRaw<RawRow[]>`
             SELECT id, type, title, description, cover_url, link_url, link_type,
@@ -61,7 +60,7 @@ async function listPublishedRaw(type?: ContentType): Promise<Content[]> {
             FROM "Content"
             WHERE status = 'published'
             ORDER BY updated_at DESC
-            LIMIT 500
+            LIMIT 400
           `;
     return rows.map(mapRaw);
   } catch (e) {
@@ -70,80 +69,15 @@ async function listPublishedRaw(type?: ContentType): Promise<Content[]> {
   }
 }
 
-async function seedIfEmpty(type: ContentType): Promise<Content[]> {
-  if (type === "game" || type === "vpn") return [];
-
-  if (type === "movie") {
-    try {
-      await ensureBongoMovies();
-    } catch (e) {
-      console.error("ensureBongoMovies", e);
-    }
-    return listPublishedRaw("movie");
-  }
-
-  const cfg = PUBLIC_API[type];
-  if (!cfg) return [];
-
-  try {
-    const existing = await listPublishedRaw(type);
-    if (existing.length > 0) return existing;
-
-    const seeds = await fetchPublicSeed(type);
-    if (seeds.length === 0) return [];
-
-    for (const item of seeds) {
-      try {
-        await prisma.content.create({
-          data: {
-            type,
-            title: item.title.slice(0, 200),
-            description: item.description,
-            linkUrl: item.linkUrl,
-            coverUrl: item.coverUrl || contentCover(type, item.title, null),
-            linkType: cfg.linkType,
-            category: item.category?.slice(0, 100) || null,
-            status: "published",
-          },
-        });
-      } catch {
-        /* skip */
-      }
-    }
-
-    return listPublishedRaw(type);
-  } catch (e) {
-    console.error("seedIfEmpty", type, e);
-    return [];
-  }
-}
-
+/**
+ * Public catalog for pages. DB only — no ElitePlex / iTunes / seed network calls.
+ * Seeding is Admin → Import all or /api/content movie ensure path.
+ */
 export async function getPublishedContent(
   type?: ContentType
 ): Promise<Content[]> {
   try {
-    if (type) {
-      let items = await listPublishedRaw(type);
-      if (items.length > 0) return items;
-
-      if (type === "game" || type === "vpn") return [];
-      if (type === "movie" || PUBLIC_API[type]) {
-        return seedIfEmpty(type);
-      }
-      return [];
-    }
-
-    let items = await listPublishedRaw();
-    if (items.length > 0) return items;
-
-    const types = (Object.keys(PUBLIC_API) as ContentType[]).filter(
-      (t) => t !== "game" && t !== "vpn"
-    );
-    if (!types.includes("movie" as ContentType)) {
-      types.push("movie" as ContentType);
-    }
-    await Promise.all(types.map((t) => seedIfEmpty(t)));
-    return listPublishedRaw();
+    return await listPublishedRaw(type);
   } catch (e) {
     console.error("getPublishedContent", e);
     return [];

@@ -20,14 +20,27 @@ const CATS: { href: string; title: string; iconUrl: string }[] = [
   { href: "/vpn", title: "VPN", iconUrl: CATEGORY_ICONS.vpn },
 ];
 
+async function safeContent(type: Parameters<typeof getPublishedContent>[0]) {
+  try {
+    return await Promise.race([
+      getPublishedContent(type),
+      new Promise<Awaited<ReturnType<typeof getPublishedContent>>>((resolve) =>
+        setTimeout(() => resolve([]), 8000)
+      ),
+    ]);
+  } catch {
+    return [];
+  }
+}
+
 export default async function HomePage() {
   const [movies, dramas, music, radios, games, vpns] = await Promise.all([
-    getPublishedContent("movie"),
-    getPublishedContent("drama"),
-    getPublishedContent("music"),
-    getPublishedContent("radio"),
-    getPublishedContent("game"),
-    getPublishedContent("vpn"),
+    safeContent("movie"),
+    safeContent("drama"),
+    safeContent("music"),
+    safeContent("radio"),
+    safeContent("game"),
+    safeContent("vpn"),
   ]);
 
   const slides: HeroSlide[] = [];
@@ -71,33 +84,29 @@ export default async function HomePage() {
       </section>
 
       <section className="max-w-7xl mx-auto px-3 sm:px-5 -mt-2 sm:mt-4 relative z-10">
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
           {CATS.map((c) => (
             <Link
               key={c.href}
               href={c.href}
-              className="shrink-0 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 px-3.5 py-2 transition"
+              className="shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-white/5 border border-white/10 text-sm text-white hover:bg-white/10"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={c.iconUrl} alt="" className="w-5 h-5 object-contain" />
-              <span className="text-xs font-semibold text-white">{c.title}</span>
+              <img src={c.iconUrl} alt="" className="w-5 h-5 rounded-full object-cover" />
+              {c.title}
             </Link>
           ))}
         </div>
+        <div className="mt-4">
+          <AiAgentCard />
+        </div>
       </section>
-
-      <div className="max-w-7xl mx-auto px-3 sm:px-5 mt-5">
-        <AiAgentCard />
-      </div>
 
       {trending.length > 0 && (
         <MediaRow title="Trending Now" href="/movies" items={trending} />
       )}
       {movies.length > 0 && (
         <MediaRow title="Movies" href="/movies" items={movies.slice(0, 14)} />
-      )}
-      {dramas.length > 0 && (
-        <MediaRow title="Popular Tamthilia" href="/drama" items={dramas.slice(0, 14)} />
       )}
 
       <section className="max-w-7xl mx-auto px-3 sm:px-5 pt-6 pb-2">
@@ -107,27 +116,30 @@ export default async function HomePage() {
             See All <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
-        <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x scrollbar-none">
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
           {PINNED_CHANNELS.slice(0, 12).map((ch) => (
             <Link
               key={ch.id}
               href={`/watch/live?url=${encodeURIComponent(ch.url)}&title=${encodeURIComponent(ch.title)}`}
-              className="snap-start shrink-0 w-[100px] sm:w-[120px] group"
+              className="shrink-0 w-[88px] text-center"
             >
-              <div className="aspect-square rounded-xl border border-white/10 bg-gradient-to-b from-slate-900 to-black overflow-hidden flex items-center justify-center p-3 transition group-hover:border-red-500/40 group-hover:scale-[1.03]">
+              <div className="w-[88px] h-[88px] rounded-2xl bg-slate-900 border border-white/10 overflow-hidden flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={ch.logo || contentCover("tv", ch.title, null)}
                   alt={ch.title}
-                  className="w-full h-full object-contain"
+                  className="w-full h-full object-cover"
                 />
               </div>
-              <p className="text-[11px] text-slate-200 mt-1.5 truncate text-center font-medium">{ch.title}</p>
+              <p className="text-[11px] text-slate-300 mt-1.5 line-clamp-2">{ch.title}</p>
             </Link>
           ))}
         </div>
       </section>
 
+      {dramas.length > 0 && (
+        <MediaRow title="Tamthilia" href="/drama" items={dramas.slice(0, 12)} />
+      )}
       {music.length > 0 && (
         <MediaRow title="Miziki" href="/music" items={music.slice(0, 12)} />
       )}
@@ -175,7 +187,10 @@ function MediaRow({
     <section className="max-w-7xl mx-auto px-3 sm:px-5 pt-6 pb-1">
       <div className="flex items-end justify-between mb-3 gap-2">
         <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">{title}</h2>
-        <Link href={href} className="text-xs sm:text-sm text-red-400 hover:text-red-300 inline-flex items-center gap-1 font-medium shrink-0">
+        <Link
+          href={href}
+          className="text-xs sm:text-sm text-red-400 hover:text-red-300 inline-flex items-center gap-1 font-medium shrink-0"
+        >
           See All <ArrowRight className="w-3.5 h-3.5" />
         </Link>
       </div>
