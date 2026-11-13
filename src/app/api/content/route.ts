@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { ensureElitePlexContent } from "@/lib/eliteplex";
+import { ensureGamesCatalog, seedRadioStations } from "@/lib/seed-catalog";
 import { sanitizeContentForClient } from "@/lib/stream-token";
 import { ensureUserSchema } from "@/lib/db-migrate";
 import { Prisma } from "@prisma/client";
@@ -18,139 +19,99 @@ const schema = z.object({
   status: z.enum(["draft", "published"]).default("published"),
 });
 
-type ContentRow = {
-  id: string;
-  title: string;
-  type: string;
-  description: string | null;
-  cover_url: string | null;
-  link_url: string;
-  link_type: string;
-  category: string | null;
-  status: string;
-  created_at: Date;
-  updated_at: Date;
-};
-
-function mapRow(r: ContentRow) {
-  return {
-    id: r.id,
-    title: r.title,
-    type: r.type,
-    description: r.description,
-    coverUrl: r.cover_url,
-    linkUrl: r.link_url,
-    linkType: r.link_type,
-    category: r.category,
-    status: r.status,
-    pointsCost: 0,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-  };
-}
-
-async function listContentRaw(opts: {
-  type?: string | null;
-  publishedOnly?: boolean;
-}) {
-  const clauses: Prisma.Sql[] = [];
-  if (opts.type) clauses.push(Prisma.sql`type = ${opts.type}`);
-  if (opts.publishedOnly) clauses.push(Prisma.sql`status = 'published'`);
-  const where =
-    clauses.length > 0
-      ? Prisma.sql`WHERE ${Prisma.join(clauses, " AND ")}`
-      : Prisma.empty;
-
-  const rows = await prisma.$queryRaw<ContentRow[]>`
-    SELECT id, title, type, description, cover_url, link_url, link_type,
-           category, status, created_at, updated_at
-    FROM "Content"
-    ${where}
-    ORDER BY updated_at DESC
-    LIMIT 200
-  `;
-  return rows.map(mapRow);
-}
+export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    try {
-      await ensureUserSchema();
-    } catch {
-      /* ignore */
-    }
-
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
-    const publishedOnly = searchParams.get("published") === "1";
-    const mineOnly = searchParams.get("mine") === "1";
-    const adminList = searchParams.get("admin") === "1";
+    const q = searchParams.get("q");
 
-    const session = adminList || mineOnly ? await getSession() : null;
-    if (adminList && (!session || session.role !== "admin")) {
-      return NextResponse.json({ error: "Admin only", items: [] }, { status: 403 });
-    }
+    await ensureUserSchema();
 
-    if (!mineOnly && !adminList && (type === "movie" || type === "drama")) {
+    if (type === "movie" || type === "drama") {
       try {
         await ensureElitePlexContent(type);
       } catch (e) {
         console.error("ensureElitePlexContent", type, e);
       }
     }
-
-    let items;
-    try {
-      items = await listContentRaw({ type, publishedOnly });
-    } catch (e) {
-      console.error("listContentRaw", e);
-      // last resort: prisma without pointsCost via select
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const where: any = {};
-      if (type) where.type = type;
-      if (publishedOnly) where.status = "published";
-      items = await prisma.content.findMany({
-        where,
-        orderBy: { updatedAt: "desc" },
-        take: 200,
-        select: {
-          id: true,
-          title: true,
-          type: true,
-          description: true,
-          coverUrl: true,
-          linkUrl: true,
-          linkType: true,
-          category: true,
-          status: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
+    if (type === "game") {
+      try {
+        await ensureGamesCatalog();
+      } catch (e) {
+        console.error("ensureGamesCatalog", e);
+      }
+    }
+    if (type === "radio") {
+      try {
+        const rows = await prisma.$queryRaw<{ c: bigint }[]>`
+          SELECT COUNT(*)::bigint AS c FROM "Content"
+          WHERE type = 'radio' AND status = 'published'
+        `;
+        if (Number(rows[0]?.c || 0) < 5) await seedRadioStations();
+      } catch (e) {
+        console.error("ensureRadio", e);
+      }
     }
 
-    if (adminList || mineOnly) {
-      const filtered = items.filter((it) => {
-        const cat = (it.category || "").toLowerCase();
-        if (cat.includes("eliteplex")) return false;
-        if (cat.startsWith("api-")) return false;
-        return true;
-      });
-      return NextResponse.json({ items: filtered });
+    // Raw SQL avoids Prisma schema drift (points_cost etc.)
+    const params: unknown[] = [];
+    let where = `WHERE status = 'published'`;
+    if (type) {
+      params.push(type);
+      where += ` AND type = $${params.length}`;
+    }
+    if (q) {
+      params.push(`%${q}%`);
+      where += ` AND (title ILIKE $${params.length} OR COALESCE(category,'') ILIKE $${params.length})`;
     }
 
-    const safe = items.map((it) =>
-      sanitizeContentForClient({
-        ...(it as unknown as Record<string, unknown>),
-        pointsCost: 0,
-      })
-    );
-    return NextResponse.json({ items: safe });
+    const sql = `
+      SELECT id, title, type, description, cover_url, link_url, link_type,
+             category, status, created_at, updated_at
+      FROM "Content"
+      ${where}
+      ORDER BY updated_at DESC
+      LIMIT 200
+    `;
+
+    const rows = (await prisma.$queryRawUnsafe(sql, ...params)) as {
+      id: string;
+      title: string;
+      type: string;
+      description: string | null;
+      cover_url: string | null;
+      link_url: string;
+      link_type: string;
+      category: string | null;
+      status: string;
+      created_at: Date;
+      updated_at: Date;
+    }[];
+
+    const items = rows.map((r) => {
+      const mapped = {
+        id: r.id,
+        title: r.title,
+        type: r.type,
+        description: r.description,
+        coverUrl: r.cover_url,
+        linkUrl: r.link_url,
+        linkType: r.link_type,
+        category: r.category,
+        status: r.status,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      };
+      return sanitizeContentForClient(mapped);
+    });
+
+    return NextResponse.json({ items });
   } catch (err) {
-    console.error("GET /api/content", err);
-    const message = err instanceof Error ? err.message : String(err);
+    console.error("content GET", err);
     return NextResponse.json(
-      { error: "Failed", detail: message.slice(0, 500), items: [] },
+      { items: [], error: err instanceof Error ? err.message : String(err) },
       { status: 500 }
     );
   }
@@ -159,24 +120,16 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Login required" }, { status: 401 });
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (session.role !== "admin") {
-      return NextResponse.json({ error: "Admin only" }, { status: 403 });
-    }
-
     await ensureUserSchema();
     const body = await req.json();
-    const parsed = schema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json({ error: "Data si sahihi" }, { status: 400 });
-    }
-    const d = parsed.data;
+    const d = schema.parse(body);
     const linkType =
-      d.type === "game" || d.type === "vpn" ? "download" : d.linkType;
+      d.type === "game" || d.type === "vpn" ? d.linkType : d.linkType;
 
-    const item = await prisma.content.create({
+    const row = await prisma.content.create({
       data: {
         type: d.type,
         title: d.title,
@@ -188,9 +141,12 @@ export async function POST(req: Request) {
         status: d.status,
       },
     });
-    return NextResponse.json({ item }, { status: 201 });
+    return NextResponse.json({ item: row });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (err instanceof z.ZodError) {
+      return NextResponse.json({ error: err.flatten() }, { status: 400 });
+    }
+    console.error(err);
+    return NextResponse.json({ error: "Failed" }, { status: 500 });
   }
 }
