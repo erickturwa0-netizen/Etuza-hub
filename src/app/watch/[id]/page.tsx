@@ -46,6 +46,7 @@ export default async function WatchPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  if (!id || id.length < 4) notFound();
 
   let item: {
     id: string;
@@ -57,8 +58,8 @@ export default async function WatchPage({
     coverUrl: string | null;
     category: string | null;
     status: string;
-    priceMode?: string;
-    priceTzs?: number;
+    priceMode?: string | null;
+    priceTzs?: number | null;
     fileUrl?: string | null;
   } | null = null;
 
@@ -88,8 +89,8 @@ export default async function WatchPage({
         id: r.id,
         title: r.title,
         description: r.description,
-        linkUrl: r.link_url,
-        linkType: r.link_type,
+        linkUrl: r.link_url || "",
+        linkType: r.link_type || "stream",
         type: r.type,
         coverUrl: r.cover_url,
         category: r.category,
@@ -100,7 +101,21 @@ export default async function WatchPage({
   } catch (e) {
     console.error("watch page raw", e);
     try {
-      item = await prisma.content.findUnique({ where: { id } });
+      const found = await prisma.content.findUnique({ where: { id } });
+      if (found) {
+        item = {
+          id: found.id,
+          title: found.title,
+          description: found.description,
+          linkUrl: found.linkUrl || "",
+          linkType: found.linkType || "stream",
+          type: found.type,
+          coverUrl: found.coverUrl,
+          category: found.category,
+          status: found.status,
+          fileUrl: (found as { fileUrl?: string | null }).fileUrl ?? null,
+        };
+      }
     } catch (e2) {
       console.error("watch page prisma", e2);
     }
@@ -112,9 +127,6 @@ export default async function WatchPage({
   const backHref = getBackHref(item.type);
   const contentKey = `${item.type}:${item.id}`;
   const isDownload = item.linkType === "download" || item.type === "vpn";
-  const isWebGame =
-    item.linkType !== "download" &&
-    (item.linkType === "stream" || isWebGameUrl(link));
   const isGameDownload = item.type === "game" && isDownload;
   const usePointsGate =
     item.type === "movie" ||
@@ -182,13 +194,27 @@ export default async function WatchPage({
     if (item.type === "music" || item.type === "radio") {
       return <AudioPlayer src={link} title={item.title} />;
     }
-    // movie / drama / tv — video stream (YouTube etc.)
-    return <StreamPlayer src={link} title={item.title} poster={item.coverUrl} />;
+    return (
+      <StreamPlayer
+        src={link}
+        title={item.title}
+        poster={item.coverUrl}
+        contentKey={contentKey}
+      />
+    );
   })();
 
   const gated = usePointsGate ? (
-    <WatchPaywallGate contentId={item.id} contentType={item.type}>
-      <PreRollGate>{body}</PreRollGate>
+    <WatchPaywallGate
+      contentId={item.id}
+      contentType={item.type}
+      title={item.title}
+      priceMode={item.priceMode}
+      priceTzs={item.priceTzs}
+    >
+      <PreRollGate contentKey={contentKey} title={item.title}>
+        {body}
+      </PreRollGate>
     </WatchPaywallGate>
   ) : (
     body
