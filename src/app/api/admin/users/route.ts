@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const session = await getSession();
@@ -10,24 +12,64 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        points: true,
-        inviteCode: true,
-        referredById: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    // Raw SQL — schema may lack fullName / inviteCode columns that older code expected
+    try {
+      const rows = await prisma.$queryRaw<
+        {
+          id: string;
+          email: string;
+          name: string | null;
+          role: string;
+          points: number;
+          created_at: Date;
+        }[]
+      >`
+        SELECT id, email, name, role, points, created_at
+        FROM "User"
+        ORDER BY created_at DESC
+        LIMIT 500
+      `;
 
-    return NextResponse.json({ users });
+      const users = rows.map((u) => ({
+        id: u.id,
+        email: u.email,
+        fullName: u.name,
+        name: u.name,
+        role: u.role,
+        points: u.points,
+        createdAt: u.created_at,
+      }));
+
+      return NextResponse.json({ users, count: users.length });
+    } catch (rawErr) {
+      console.error("users raw", rawErr);
+      // Fallback minimal prisma select
+      const users = await prisma.user.findMany({
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          points: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 500,
+      });
+      return NextResponse.json({
+        users: users.map((u) => ({
+          ...u,
+          fullName: u.name,
+        })),
+        count: users.length,
+      });
+    }
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Failed to load users" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to load users", users: [] },
+      { status: 500 }
+    );
   }
 }
 
@@ -38,7 +80,6 @@ const patchSchema = z.object({
   role: z.enum(["user", "admin"]).optional(),
 });
 
-/** Admin: set / add points or change role */
 export async function PATCH(req: Request) {
   try {
     const session = await getSession();
@@ -53,46 +94,29 @@ export async function PATCH(req: Request) {
     }
 
     const { userId, points, addPoints, role } = parsed.data;
-    const data: { points?: number | { increment: number }; role?: string } = {};
 
-    if (typeof points === "number") data.points = points;
-    else if (typeof addPoints === "number") data.points = { increment: addPoints };
-    if (role) data.role = role;
-
-    if (!Object.keys(data).length) {
-      return NextResponse.json({ error: "Hakuna mabadiliko" }, { status: 400 });
+    if (typeof points === "number") {
+      await prisma.$executeRaw`
+        UPDATE "User" SET points = ${points}, updated_at = NOW() WHERE id = ${userId}
+      `;
+    } else if (typeof addPoints === "number") {
+      await prisma.$executeRaw`
+        UPDATE "User" SET points = points + ${addPoints}, updated_at = NOW() WHERE id = ${userId}
+      `;
+    }
+    if (role) {
+      await prisma.$executeRaw`
+        UPDATE "User" SET role = ${role}, updated_at = NOW() WHERE id = ${userId}
+      `;
     }
 
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data,
-      select: {
-        id: true,
-        email: true,
-        points: true,
-        role: true,
-      },
-    });
+    const rows = await prisma.$queryRaw<
+      { id: string; email: string; points: number; role: string }[]
+    >`
+      SELECT id, email, points, role FROM "User" WHERE id = ${userId} LIMIT 1
+    `;
 
-    if (typeof points === "number" || typeof addPoints === "number") {
-      const amount =
-        typeof addPoints === "number"
-          ? addPoints
-          : typeof points === "number"
-            ? points
-            : 0;
-      await prisma.pointLog.create({
-        data: {
-          userId,
-          amount: typeof addPoints === "number" ? addPoints : 0,
-          reason: "admin_adjust",
-          meta: `Admin ${session.email} · set=${points ?? "—"} add=${addPoints ?? "—"}`,
-        },
-      }).catch(() => {});
-      void amount;
-    }
-
-    return NextResponse.json({ user });
+    return NextResponse.json({ user: rows[0] || null });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Failed" }, { status: 500 });
