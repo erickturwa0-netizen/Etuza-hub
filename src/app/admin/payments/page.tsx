@@ -111,8 +111,12 @@ export default function AdminPaymentsPage() {
         paidCategories: Array.from(paidSet),
       }),
     });
-    const data = await res.json();
-    if (!res.ok) setError(data.error || "Imeshindikana");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok)
+      setError(
+        (data.error || "Imeshindikana") +
+          (data.hint ? " — " + data.hint : "")
+      );
     else setMsg("Mipangilio imehifadhiwa ✓");
     setSaving(false);
   }
@@ -155,10 +159,14 @@ export default function AdminPaymentsPage() {
     <div className="space-y-6 max-w-3xl">
       <h1 className="text-2xl font-bold text-white">Malipo</h1>
       {error && (
-        <div className="px-3 py-2 rounded-xl bg-red-500/10 text-red-300 text-sm">{error}</div>
+        <div className="px-3 py-2 rounded-xl bg-red-500/10 text-red-300 text-sm break-all">
+          {error}
+        </div>
       )}
       {msg && (
-        <div className="px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-300 text-sm">{msg}</div>
+        <div className="px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-300 text-sm">
+          {msg}
+        </div>
       )}
 
       <div className="glass-card p-5 space-y-4">
@@ -166,19 +174,25 @@ export default function AdminPaymentsPage() {
           <input
             type="checkbox"
             checked={settings.enabled}
-            onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
+            onChange={(e) =>
+              setSettings({ ...settings, enabled: e.target.checked })
+            }
           />
           Washa malipo
         </label>
         <input
           value={settings.payPhone}
-          onChange={(e) => setSettings({ ...settings, payPhone: e.target.value })}
+          onChange={(e) =>
+            setSettings({ ...settings, payPhone: e.target.value })
+          }
           placeholder="Namba ya kupokea"
           className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm"
         />
         <select
           value={settings.payNetwork}
-          onChange={(e) => setSettings({ ...settings, payNetwork: e.target.value })}
+          onChange={(e) =>
+            setSettings({ ...settings, payNetwork: e.target.value })
+          }
           className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm"
         >
           {NETWORKS.map((n) => (
@@ -192,7 +206,10 @@ export default function AdminPaymentsPage() {
             type="number"
             value={settings.priceOnce}
             onChange={(e) =>
-              setSettings({ ...settings, priceOnce: Number(e.target.value) || 0 })
+              setSettings({
+                ...settings,
+                priceOnce: Number(e.target.value) || 0,
+              })
             }
             placeholder="Bei once"
             className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm"
@@ -201,7 +218,10 @@ export default function AdminPaymentsPage() {
             type="number"
             value={settings.priceWeek}
             onChange={(e) =>
-              setSettings({ ...settings, priceWeek: Number(e.target.value) || 0 })
+              setSettings({
+                ...settings,
+                priceWeek: Number(e.target.value) || 0,
+              })
             }
             placeholder="Bei wiki"
             className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm"
@@ -210,7 +230,10 @@ export default function AdminPaymentsPage() {
             type="number"
             value={settings.priceMonth}
             onChange={(e) =>
-              setSettings({ ...settings, priceMonth: Number(e.target.value) || 0 })
+              setSettings({
+                ...settings,
+                priceMonth: Number(e.target.value) || 0,
+              })
             }
             placeholder="Bei mwezi"
             className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm"
@@ -219,7 +242,10 @@ export default function AdminPaymentsPage() {
             type="number"
             value={settings.priceYear}
             onChange={(e) =>
-              setSettings({ ...settings, priceYear: Number(e.target.value) || 0 })
+              setSettings({
+                ...settings,
+                priceYear: Number(e.target.value) || 0,
+              })
             }
             placeholder="Bei mwaka"
             className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm"
@@ -244,7 +270,9 @@ export default function AdminPaymentsPage() {
         </div>
         <textarea
           value={settings.instructions || ""}
-          onChange={(e) => setSettings({ ...settings, instructions: e.target.value })}
+          onChange={(e) =>
+            setSettings({ ...settings, instructions: e.target.value })
+          }
           rows={3}
           placeholder="Maelekezo ya malipo"
           className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm"
@@ -301,7 +329,10 @@ export default function AdminPaymentsPage() {
       <div className="space-y-3">
         <h2 className="font-semibold text-white">Recent</h2>
         {recent.slice(0, 15).map((r) => (
-          <div key={r.id} className="text-sm text-slate-400 border-b border-slate-800 py-2">
+          <div
+            key={r.id}
+            className="text-sm text-slate-400 border-b border-slate-800 py-2"
+          >
             {r.user?.email} · {r.amount} · {r.status}
           </div>
         ))}
