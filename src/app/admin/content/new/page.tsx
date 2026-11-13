@@ -114,14 +114,45 @@ export default function NewContentPage() {
       const domain = domainFromTitle(title);
       if (url) {
         setCoverUrl(url);
-        setAutoCoverMsg(`Logo: ${domain} ✓ (hunter.io)`);
+        setAutoCoverMsg(`Logo: ${domain} ✓`);
       } else {
-        setAutoCoverMsg("Hakuna logo — andika jina (mf. Vodacom)");
+        setAutoCoverMsg("Hakuna logo — andika jina");
       }
     }, 500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, type]);
+
+  // Game link → auto cover (og:image) + optional title
+  useEffect(() => {
+    if (type !== "game") return;
+    const url = linkUrl.trim();
+    if (!/^https?:\/\//i.test(url)) return;
+    if (coverUrl.startsWith("data:")) return;
+    const timer = setTimeout(async () => {
+      try {
+        setAutoCoverMsg("Inatafuta cover ya game…");
+        const res = await fetch(
+          `/api/admin/og-image?url=${encodeURIComponent(url)}`,
+          { credentials: "include" }
+        );
+        const data = await res.json();
+        if (data.image) {
+          setCoverUrl(data.image);
+          if (data.title && title.trim().length < 2) {
+            setTitle(String(data.title).slice(0, 120));
+          }
+          setAutoCoverMsg("Cover ya game ✓");
+        } else {
+          setAutoCoverMsg(data.error || "Hakuna cover — weka manual");
+        }
+      } catch {
+        setAutoCoverMsg("Imeshindwa kupata cover");
+      }
+    }, 700);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkUrl, type]);
 
   function pickTmdb(m: TmdbHit) {
     setTitle(m.title + (m.year ? ` (${m.year})` : ""));
@@ -198,7 +229,7 @@ export default function NewContentPage() {
           description: description || null,
           linkUrl: finalLink,
           coverUrl: coverUrl || null,
-          linkType,
+          linkType: type === "game" ? "stream" : linkType,
           category: category || null,
           status,
           protocol: protocol || null,
@@ -242,7 +273,7 @@ export default function NewContentPage() {
         <div>
           <h1 className="text-2xl font-bold">Add Content</h1>
           <p className="text-sm text-slate-500">
-            Radio/VPN: logo auto kutoka title
+            Game: cover auto kutoka link · Radio/VPN: logo kutoka title
           </p>
         </div>
       </div>
@@ -261,7 +292,7 @@ export default function NewContentPage() {
                 type="button"
                 onClick={() => {
                   setType(t);
-                  setLinkType(t === "game" || t === "vpn" ? "download" : "stream");
+                  setLinkType(t === "vpn" ? "download" : "stream");
                 }}
                 className={`px-3 py-2 rounded-lg text-sm font-medium border ${
                   type === t
@@ -317,7 +348,7 @@ export default function NewContentPage() {
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
             placeholder={type === "vpn" || type === "radio" ? "mf. Vodacom Unlimited" : ""}
           />
-          {(type === "radio" || type === "vpn" || type === "music") && (
+          {(type === "radio" || type === "vpn" || type === "music" || type === "game") && (
             <div className="mt-2 flex items-center gap-3 rounded-xl border border-sky-800/40 bg-sky-950/20 p-3">
               {coverUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -326,8 +357,10 @@ export default function NewContentPage() {
                 <div className="w-12 h-12 rounded-lg bg-slate-800" />
               )}
               <div className="min-w-0 flex-1">
-                <p className="text-xs text-sky-200 font-medium">Cover auto (logos.hunter.io)</p>
-                <p className="text-[11px] text-slate-400 truncate">{autoCoverMsg || "Andika title…"}</p>
+                <p className="text-xs text-sky-200 font-medium">
+                  {type === "game" ? "Cover auto (kutoka link)" : "Cover auto"}
+                </p>
+                <p className="text-[11px] text-slate-400 truncate">{autoCoverMsg || "Andika title / link…"}</p>
               </div>
             </div>
           )}
@@ -340,11 +373,20 @@ export default function NewContentPage() {
 
         {type !== "vpn" && (
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1.5">Stream / Download link</label>
-            <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm" />
-            <button type="button" onClick={chimbaLinks} disabled={resolving} className="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-700 text-sm text-white">
-              <Wand2 className="w-4 h-4" /> {resolving ? "…" : "Chimba MediaFire"}
-            </button>
+            <label className="block text-sm font-medium text-slate-400 mb-1.5">
+              {type === "game" ? "Game link (online)" : "Stream / Download link"}
+            </label>
+            <input
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm"
+              placeholder={type === "game" ? "https://tokyodrift.mindblown.ai/" : ""}
+            />
+            {type !== "game" && (
+              <button type="button" onClick={chimbaLinks} disabled={resolving} className="mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-700 text-sm text-white">
+                <Wand2 className="w-4 h-4" /> {resolving ? "…" : "Chimba MediaFire"}
+              </button>
+            )}
           </div>
         )}
 
@@ -359,25 +401,13 @@ export default function NewContentPage() {
                 </label>
                 {p.enabled && (
                   <>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[11px] text-slate-500">Bei (TZS)</label>
-                        <input type="number" value={p.priceTzs} onChange={(e) => updatePkg(p.plan, { priceTzs: Number(e.target.value) || 0 })} className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
-                      </div>
-                      {p.plan === "timed" && (
-                        <div>
-                          <label className="text-[11px] text-slate-500">Siku</label>
-                          <input type="number" min={1} value={p.accessDays || 3} onChange={(e) => updatePkg(p.plan, { accessDays: Number(e.target.value) || 1 })} className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
-                        </div>
-                      )}
-                    </div>
+                    <input type="number" value={p.priceTzs} onChange={(e) => updatePkg(p.plan, { priceTzs: Number(e.target.value) || 0 })} className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" placeholder="Bei TZS" />
                     <input value={p.protocol} onChange={(e) => updatePkg(p.plan, { protocol: e.target.value })} placeholder="Protocol" className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
                     <input type="file" className="w-full text-xs text-slate-400" onChange={async (e) => {
                       const f = e.target.files?.[0];
                       if (!f) return;
                       try { updatePkg(p.plan, { fileUrl: await readDataUrl(f, 1_800_000) }); } catch (err) { setError(err instanceof Error ? err.message : "File"); }
                     }} />
-                    <input value={p.fileUrl.startsWith("data:") ? "(file imepakiwa)" : p.fileUrl} onChange={(e) => { if (!e.target.value.startsWith("(")) updatePkg(p.plan, { fileUrl: e.target.value }); }} placeholder="au link https://…" className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm" />
                     <textarea value={p.configText} onChange={(e) => updatePkg(p.plan, { configText: e.target.value })} rows={2} className="w-full px-2 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm font-mono" />
                   </>
                 )}
@@ -417,7 +447,7 @@ export default function NewContentPage() {
 
         <div className="grid grid-cols-2 gap-4">
           <select value={linkType} onChange={(e) => setLinkType(e.target.value as "stream" | "download")} className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm">
-            <option value="stream">Stream</option>
+            <option value="stream">Stream (cheza online)</option>
             <option value="download">Download</option>
           </select>
           <select value={status} onChange={(e) => setStatus(e.target.value as "draft" | "published")} className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm">
