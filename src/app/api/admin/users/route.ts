@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { z } from "zod";
+import { ensureUserSchema } from "@/lib/db-migrate";
 
 export const dynamic = "force-dynamic";
 
@@ -15,89 +16,20 @@ type UserRow = {
   createdAt: string | Date;
 };
 
-async function listUsersResilient(): Promise<{ users: UserRow[]; debug?: string }> {
-  // 1) Discover actual columns on "User" / users
-  let cols: string[] = [];
-  try {
-    const colRows = await prisma.$queryRaw<{ column_name: string }[]>`
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name IN ('User', 'users')
-    `;
-    cols = colRows.map((c) => c.column_name);
-  } catch (e) {
-    console.error("users cols", e);
-  }
-
-  const has = (c: string) => cols.length === 0 || cols.includes(c);
-  const nameCol = has("name")
-    ? "name"
-    : has("full_name")
-      ? "full_name"
-      : has("fullName")
-        ? '"fullName"'
-        : null;
-  const pointsCol = has("points") ? "points" : null;
-  const roleCol = has("role") ? "role" : null;
-  const createdCol = has("created_at")
-    ? "created_at"
-    : has("createdAt")
-      ? '"createdAt"'
-      : null;
-  const table = cols.some((c) => true) && cols.length
-    ? // prefer exact Prisma map
-      (await prisma.$queryRaw<{ t: string }[]>`
-        SELECT table_name AS t FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name IN ('User', 'users')
-        LIMIT 1
-      `.then((r) => r[0]?.t || "User").catch(() => "User"))
-    : "User";
-
-  // 2) Minimal SELECT that always works if table exists
-  const selectParts = [
-    "id",
-    "email",
-    nameCol ? `${nameCol} AS name` : "NULL::text AS name",
-    roleCol ? `${roleCol} AS role` : "'user'::text AS role",
-    pointsCol ? `${pointsCol} AS points` : "0::int AS points",
-    createdCol ? `${createdCol} AS created_at` : "NOW() AS created_at",
-  ];
-
-  try {
-    const sql = `SELECT ${selectParts.join(", ")} FROM "${table}" ORDER BY ${createdCol || "id"} DESC LIMIT 500`;
-    const rows = (await prisma.$queryRawUnsafe(sql)) as {
-      id: string;
-      email: string;
-      name: string | null;
-      role: string;
-      points: number;
-      created_at: Date;
-    }[];
-
-    const users: UserRow[] = rows.map((u) => ({
-      id: String(u.id),
-      email: String(u.email || ""),
-      fullName: u.name ?? null,
-      name: u.name ?? null,
-      role: String(u.role || "user"),
-      points: Number(u.points || 0),
-      createdAt: u.created_at,
-    }));
-
-    return {
-      users,
-      debug: `table=${table} cols=${cols.slice(0, 20).join(",") || "unknown"}`,
-    };
-  } catch (e1) {
-    console.error("users dynamic sql", e1);
-  }
-
-  // 3) Hardcoded common shapes
+async function listUsers(): Promise<{ users: UserRow[]; hint?: string }> {
+  // Prefer COALESCE so either name or full_name works
   const attempts = [
+    `SELECT id, email,
+            COALESCE(NULLIF(name,''), NULLIF(full_name,''), email) AS name,
+            COALESCE(role, 'user') AS role,
+            COALESCE(points, 0) AS points,
+            COALESCE(created_at, NOW()) AS created_at
+     FROM "User"
+     ORDER BY COALESCE(created_at, NOW()) DESC
+     LIMIT 500`,
     `SELECT id, email, name, role, points, created_at FROM "User" ORDER BY created_at DESC LIMIT 500`,
-    `SELECT id, email, name, role, points, created_at FROM users ORDER BY created_at DESC LIMIT 500`,
-    `SELECT id, email, role, points FROM "User" LIMIT 500`,
+    `SELECT id, email, full_name AS name, role, points, created_at FROM "User" ORDER BY created_at DESC LIMIT 500`,
+    `SELECT id, email, full_name AS name, role, 0 AS points, NOW() AS created_at FROM "User" LIMIT 500`,
     `SELECT id, email FROM "User" LIMIT 500`,
   ];
 
@@ -107,22 +39,22 @@ async function listUsersResilient(): Promise<{ users: UserRow[]; debug?: string 
         string,
         unknown
       >[];
-      const users: UserRow[] = rows.map((u) => ({
-        id: String(u.id),
-        email: String(u.email || ""),
-        fullName: (u.name as string) || (u.full_name as string) || null,
-        name: (u.name as string) || (u.full_name as string) || null,
-        role: String(u.role || "user"),
-        points: Number(u.points || 0),
-        createdAt: (u.created_at as Date) || (u.createdAt as Date) || new Date(),
-      }));
-      return { users, debug: `ok via ${sql.slice(0, 40)}` };
+      return {
+        users: rows.map((u) => ({
+          id: String(u.id),
+          email: String(u.email || ""),
+          fullName: (u.name as string) || null,
+          name: (u.name as string) || null,
+          role: String(u.role || "user"),
+          points: Number(u.points || 0),
+          createdAt: (u.created_at as Date) || new Date(),
+        })),
+      };
     } catch (e) {
-      console.error("users attempt", sql.slice(0, 50), e);
+      console.error("listUsers attempt", e);
     }
   }
 
-  // 4) Prisma client last resort
   try {
     const users = await prisma.user.findMany({
       select: {
@@ -146,19 +78,19 @@ async function listUsersResilient(): Promise<{ users: UserRow[]; debug?: string 
         points: u.points,
         createdAt: u.createdAt,
       })),
-      debug: "prisma findMany",
     };
   } catch (e) {
-    console.error("users prisma", e);
     return {
       users: [],
-      debug: e instanceof Error ? e.message : String(e),
+      hint: e instanceof Error ? e.message : String(e),
     };
   }
 }
 
 export async function GET() {
   try {
+    await ensureUserSchema();
+
     const session = await getSession();
     if (!session) {
       return NextResponse.json(
@@ -166,43 +98,34 @@ export async function GET() {
         { status: 401 }
       );
     }
-    // Allow admin role OR known bootstrap emails if role missing in token
-    const isAdmin =
-      session.role === "admin" ||
-      session.role === "ADMIN" ||
-      (session.email || "").toLowerCase().includes("admin");
 
+    let isAdmin = session.role === "admin" || session.role === "ADMIN";
     if (!isAdmin) {
-      // Still try: maybe DB says admin even if JWT is stale
       try {
-        const rows = await prisma.$queryRaw<{ role: string }[]>`
-          SELECT role FROM "User" WHERE id = ${session.userId} LIMIT 1
-        `;
-        if ((rows[0]?.role || "").toLowerCase() !== "admin") {
-          return NextResponse.json(
-            { error: "Unauthorized", users: [] },
-            { status: 401 }
-          );
-        }
-      } catch {
-        return NextResponse.json(
-          { error: "Unauthorized", users: [] },
-          { status: 401 }
+        const rows = await prisma.$queryRawUnsafe<{ role: string }[]>(
+          `SELECT role FROM "User" WHERE id = $1 LIMIT 1`,
+          session.userId
         );
+        isAdmin = (rows[0]?.role || "").toLowerCase() === "admin";
+      } catch {
+        isAdmin = false;
       }
     }
+    if (!isAdmin) {
+      return NextResponse.json(
+        { error: "Unauthorized", users: [] },
+        { status: 401 }
+      );
+    }
 
-    const { users, debug } = await listUsersResilient();
-
+    const { users, hint } = await listUsers();
     return NextResponse.json({
       users,
       count: users.length,
-      debug: process.env.NODE_ENV === "production" ? undefined : debug,
-      // Always expose short debug for admin troubleshooting
-      hint: users.length ? undefined : debug,
+      hint: users.length ? undefined : hint,
     });
   } catch (err) {
-    console.error("users GET fatal", err);
+    console.error("users GET", err);
     return NextResponse.json(
       {
         error: "Failed to load users",
@@ -223,6 +146,7 @@ const patchSchema = z.object({
 
 export async function PATCH(req: Request) {
   try {
+    await ensureUserSchema();
     const session = await getSession();
     if (!session || session.role !== "admin") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -239,56 +163,33 @@ export async function PATCH(req: Request) {
     try {
       if (typeof points === "number") {
         await prisma.$executeRawUnsafe(
-          `UPDATE "User" SET points = $1, updated_at = NOW() WHERE id = $2`,
+          `UPDATE "User" SET points = $1 WHERE id = $2`,
           points,
           userId
         );
       } else if (typeof addPoints === "number") {
         await prisma.$executeRawUnsafe(
-          `UPDATE "User" SET points = COALESCE(points,0) + $1, updated_at = NOW() WHERE id = $2`,
+          `UPDATE "User" SET points = COALESCE(points,0) + $1 WHERE id = $2`,
           addPoints,
           userId
         );
       }
       if (role) {
         await prisma.$executeRawUnsafe(
-          `UPDATE "User" SET role = $1, updated_at = NOW() WHERE id = $2`,
+          `UPDATE "User" SET role = $1 WHERE id = $2`,
           role,
           userId
         );
       }
     } catch (e) {
-      // try without updated_at
-      try {
-        if (typeof points === "number") {
-          await prisma.$executeRawUnsafe(
-            `UPDATE "User" SET points = $1 WHERE id = $2`,
-            points,
-            userId
-          );
-        } else if (typeof addPoints === "number") {
-          await prisma.$executeRawUnsafe(
-            `UPDATE "User" SET points = COALESCE(points,0) + $1 WHERE id = $2`,
-            addPoints,
-            userId
-          );
-        }
-        if (role) {
-          await prisma.$executeRawUnsafe(
-            `UPDATE "User" SET role = $1 WHERE id = $2`,
-            role,
-            userId
-          );
-        }
-      } catch (e2) {
-        console.error("users PATCH", e2);
-        return NextResponse.json({ error: "Failed to update" }, { status: 500 });
-      }
+      console.error("users PATCH", e);
+      return NextResponse.json({ error: "Failed to update" }, { status: 500 });
     }
 
-    const { users } = await listUsersResilient();
-    const user = users.find((u) => u.id === userId) || null;
-    return NextResponse.json({ user });
+    const { users } = await listUsers();
+    return NextResponse.json({
+      user: users.find((u) => u.id === userId) || null,
+    });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Failed" }, { status: 500 });
