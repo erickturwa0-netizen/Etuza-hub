@@ -34,6 +34,10 @@ function isWebGameUrl(url: string) {
     u.includes("poki.com") ||
     u.includes("itch.io") ||
     u.includes("gamejolt.com") ||
+    u.includes("mindblown.ai") ||
+    u.includes("vector.game") ||
+    u.includes("slope-game") ||
+    u.includes("freetogame.com") ||
     u.includes("html5") ||
     (u.includes("play.google") === false &&
       (/\/embed|\/game\//i.test(u) || u.endsWith(".html")))
@@ -100,25 +104,6 @@ export default async function WatchPage({
     }
   } catch (e) {
     console.error("watch page raw", e);
-    try {
-      const found = await prisma.content.findUnique({ where: { id } });
-      if (found) {
-        item = {
-          id: found.id,
-          title: found.title,
-          description: found.description,
-          linkUrl: found.linkUrl || "",
-          linkType: found.linkType || "stream",
-          type: found.type,
-          coverUrl: found.coverUrl,
-          category: found.category,
-          status: found.status,
-          fileUrl: (found as { fileUrl?: string | null }).fileUrl ?? null,
-        };
-      }
-    } catch (e2) {
-      console.error("watch page prisma", e2);
-    }
   }
 
   if (!item || item.status === "draft") notFound();
@@ -166,7 +151,10 @@ export default async function WatchPage({
         </>
       );
     }
-    if (item.type === "game" && isWebGameUrl(link)) {
+    if (
+      item.type === "game" &&
+      (item.linkType === "stream" || isWebGameUrl(link))
+    ) {
       return <WebGamePlayer src={link} title={item.title} />;
     }
     if (item.type === "game") {
