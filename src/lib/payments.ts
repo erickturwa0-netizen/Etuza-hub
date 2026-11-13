@@ -164,89 +164,107 @@ const DEFAULT_ROW: PaymentSettingsRow = {
   vpnPackages: null,
 };
 
-export async function ensurePaymentColumns() {
-  try {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "PaymentSettings" (
-        "id" TEXT PRIMARY KEY,
-        "enabled" BOOLEAN NOT NULL DEFAULT false,
-        "pay_phone" TEXT NOT NULL DEFAULT '',
-        "pay_network" TEXT NOT NULL DEFAULT 'vodacom',
-        "price_week" INTEGER NOT NULL DEFAULT 2000,
-        "price_month" INTEGER NOT NULL DEFAULT 5000,
-        "price_year" INTEGER NOT NULL DEFAULT 40000,
-        "price_once" INTEGER NOT NULL DEFAULT 1000,
-        "instructions" TEXT,
-        "paid_categories" TEXT NOT NULL DEFAULT 'movie,drama,tv,music,radio,game',
-        "show_packages" BOOLEAN NOT NULL DEFAULT false,
-        "points_ads_enabled" BOOLEAN NOT NULL DEFAULT true,
-        "vpn_packages" TEXT
-      )
-    `);
-  } catch (e) {
-    console.error("create PaymentSettings", e);
-  }
-  for (const sql of [
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "enabled" BOOLEAN DEFAULT false`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "pay_phone" TEXT DEFAULT ''`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "pay_network" TEXT DEFAULT 'vodacom'`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "price_week" INTEGER DEFAULT 2000`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "price_month" INTEGER DEFAULT 5000`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "price_year" INTEGER DEFAULT 40000`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "price_once" INTEGER DEFAULT 1000`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "instructions" TEXT`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "paid_categories" TEXT`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "show_packages" BOOLEAN DEFAULT false`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "points_ads_enabled" BOOLEAN DEFAULT true`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "vpn_packages" TEXT`,
-  ]) {
-    try {
-      await prisma.$executeRawUnsafe(sql);
-    } catch {
-      /* ignore */
-    }
-  }
+const SETTINGS_KEY = "payment_settings";
+
+/** Simple key-value store — avoids PaymentSettings column hell */
+async function ensureAppSettingsTable() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "AppSettings" (
+      "key" TEXT PRIMARY KEY,
+      "value" TEXT NOT NULL,
+      "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
 }
 
-function mapRow(r: Record<string, unknown>): PaymentSettingsRow {
+function normalize(raw: Partial<PaymentSettingsRow> | null | undefined): PaymentSettingsRow {
+  const r = raw || {};
   return {
-    id: String(r.id || "default"),
-    enabled: Boolean(r.enabled),
-    payPhone: String(r.pay_phone ?? r.payPhone ?? ""),
-    payNetwork: String(r.pay_network ?? r.payNetwork ?? "vodacom"),
-    priceWeek: Number(r.price_week ?? r.priceWeek ?? 2000),
-    priceMonth: Number(r.price_month ?? r.priceMonth ?? 5000),
-    priceYear: Number(r.price_year ?? r.priceYear ?? 40000),
-    priceOnce: Number(r.price_once ?? r.priceOnce ?? 1000),
-    instructions: (r.instructions as string) ?? null,
-    paidCategories: String(
-      r.paid_categories ?? r.paidCategories ?? CONTENT_TYPES.join(",")
-    ),
-    showPackages: Boolean(r.show_packages ?? r.showPackages ?? false),
-    pointsAdsEnabled: Boolean(
-      r.points_ads_enabled ?? r.pointsAdsEnabled ?? true
-    ),
-    vpnPackages: (r.vpn_packages as string) ?? (r.vpnPackages as string) ?? null,
+    id: "default",
+    enabled: !!r.enabled,
+    payPhone: String(r.payPhone ?? ""),
+    payNetwork: String(r.payNetwork ?? "vodacom"),
+    priceWeek: Number(r.priceWeek ?? 2000) || 2000,
+    priceMonth: Number(r.priceMonth ?? 5000) || 5000,
+    priceYear: Number(r.priceYear ?? 40000) || 40000,
+    priceOnce: Number(r.priceOnce ?? 1000) || 1000,
+    instructions: r.instructions ?? null,
+    paidCategories: String(r.paidCategories ?? CONTENT_TYPES.join(",")),
+    showPackages: !!r.showPackages,
+    pointsAdsEnabled: r.pointsAdsEnabled !== false,
+    vpnPackages: r.vpnPackages ?? null,
   };
 }
 
-export async function getPaymentSettings(): Promise<PaymentSettingsRow> {
-  await ensurePaymentColumns();
+/** Legacy PaymentSettings table read (if exists) */
+async function readLegacyPaymentSettings(): Promise<PaymentSettingsRow | null> {
   try {
     const rows = (await prisma.$queryRawUnsafe(
       `SELECT * FROM "PaymentSettings" WHERE id = 'default' LIMIT 1`
     )) as Record<string, unknown>[];
-    if (rows[0]) return mapRow(rows[0]);
-  } catch (e) {
-    console.error("getPaymentSettings", e);
-  }
-  try {
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO "PaymentSettings" (id) VALUES ('default') ON CONFLICT (id) DO NOTHING`
-    );
+    if (!rows[0]) return null;
+    const r = rows[0];
+    return normalize({
+      enabled: Boolean(r.enabled),
+      payPhone: String(r.pay_phone ?? r.payPhone ?? ""),
+      payNetwork: String(r.pay_network ?? r.payNetwork ?? "vodacom"),
+      priceWeek: Number(r.price_week ?? r.priceWeek ?? 2000),
+      priceMonth: Number(r.price_month ?? r.priceMonth ?? 5000),
+      priceYear: Number(r.price_year ?? r.priceYear ?? 40000),
+      priceOnce: Number(r.price_once ?? r.priceOnce ?? 1000),
+      instructions: (r.instructions as string) ?? null,
+      paidCategories: String(
+        r.paid_categories ?? r.paidCategories ?? CONTENT_TYPES.join(",")
+      ),
+      showPackages: Boolean(r.show_packages ?? r.showPackages ?? false),
+      pointsAdsEnabled: Boolean(
+        r.points_ads_enabled ?? r.pointsAdsEnabled ?? true
+      ),
+      vpnPackages:
+        (r.vpn_packages as string) ?? (r.vpnPackages as string) ?? null,
+    });
   } catch {
-    /* ignore */
+    return null;
   }
+}
+
+export async function ensurePaymentColumns() {
+  try {
+    await ensureAppSettingsTable();
+  } catch (e) {
+    console.error("ensureAppSettingsTable", e);
+  }
+}
+
+export async function getPaymentSettings(): Promise<PaymentSettingsRow> {
+  await ensurePaymentColumns();
+
+  // 1) AppSettings JSON
+  try {
+    const rows = (await prisma.$queryRawUnsafe(
+      `SELECT value FROM "AppSettings" WHERE key = $1 LIMIT 1`,
+      SETTINGS_KEY
+    )) as { value: string }[];
+    if (rows[0]?.value) {
+      const parsed = JSON.parse(rows[0].value) as Partial<PaymentSettingsRow>;
+      return normalize(parsed);
+    }
+  } catch (e) {
+    console.error("getPaymentSettings AppSettings", e);
+  }
+
+  // 2) Legacy table
+  const legacy = await readLegacyPaymentSettings();
+  if (legacy) {
+    // migrate to AppSettings for next time
+    try {
+      await savePaymentSettings(legacy);
+    } catch {
+      /* ignore */
+    }
+    return legacy;
+  }
+
   return { ...DEFAULT_ROW };
 }
 
@@ -255,45 +273,94 @@ export async function savePaymentSettings(
 ): Promise<PaymentSettingsRow> {
   await ensurePaymentColumns();
   const cur = await getPaymentSettings();
-  const next: PaymentSettingsRow = { ...cur, ...patch, id: "default" };
+  const next = normalize({ ...cur, ...patch });
+  const json = JSON.stringify(next);
 
-  // Use tagged template (parameterized) — more reliable than Unsafe + $1
-  await prisma.$executeRaw`
-    INSERT INTO "PaymentSettings" (
-      id, enabled, pay_phone, pay_network,
-      price_week, price_month, price_year, price_once,
-      instructions, paid_categories, show_packages, points_ads_enabled, vpn_packages
-    ) VALUES (
-      'default',
-      ${next.enabled},
-      ${next.payPhone || ""},
-      ${next.payNetwork || "vodacom"},
-      ${next.priceWeek},
-      ${next.priceMonth},
-      ${next.priceYear},
-      ${next.priceOnce},
-      ${next.instructions},
-      ${next.paidCategories || CONTENT_TYPES.join(",")},
-      ${next.showPackages},
-      ${next.pointsAdsEnabled},
-      ${next.vpnPackages}
-    )
-    ON CONFLICT (id) DO UPDATE SET
-      enabled = EXCLUDED.enabled,
-      pay_phone = EXCLUDED.pay_phone,
-      pay_network = EXCLUDED.pay_network,
-      price_week = EXCLUDED.price_week,
-      price_month = EXCLUDED.price_month,
-      price_year = EXCLUDED.price_year,
-      price_once = EXCLUDED.price_once,
-      instructions = EXCLUDED.instructions,
-      paid_categories = EXCLUDED.paid_categories,
-      show_packages = EXCLUDED.show_packages,
-      points_ads_enabled = EXCLUDED.points_ads_enabled,
-      vpn_packages = EXCLUDED.vpn_packages
-  `;
+  // Primary path: AppSettings key-value
+  try {
+    await prisma.$executeRaw`
+      INSERT INTO "AppSettings" (key, value, updated_at)
+      VALUES (${SETTINGS_KEY}, ${json}, NOW())
+      ON CONFLICT (key) DO UPDATE SET
+        value = EXCLUDED.value,
+        updated_at = NOW()
+    `;
+    return next;
+  } catch (e1) {
+    console.error("save AppSettings tagged", e1);
+  }
 
-  return next;
+  try {
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "AppSettings" (key, value, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
+      SETTINGS_KEY,
+      json
+    );
+    return next;
+  } catch (e2) {
+    console.error("save AppSettings unsafe", e2);
+  }
+
+  // Fallback: try minimal PaymentSettings write
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "PaymentSettings" (
+        "id" TEXT PRIMARY KEY,
+        "enabled" BOOLEAN DEFAULT false,
+        "pay_phone" TEXT DEFAULT '',
+        "pay_network" TEXT DEFAULT 'vodacom',
+        "price_week" INTEGER DEFAULT 2000,
+        "price_month" INTEGER DEFAULT 5000,
+        "price_year" INTEGER DEFAULT 40000,
+        "price_once" INTEGER DEFAULT 1000,
+        "instructions" TEXT,
+        "paid_categories" TEXT,
+        "show_packages" BOOLEAN DEFAULT false,
+        "points_ads_enabled" BOOLEAN DEFAULT true,
+        "vpn_packages" TEXT
+      )
+    `);
+    await prisma.$executeRaw`
+      INSERT INTO "PaymentSettings" (
+        id, enabled, pay_phone, pay_network,
+        price_week, price_month, price_year, price_once,
+        instructions, paid_categories, show_packages, points_ads_enabled, vpn_packages
+      ) VALUES (
+        'default',
+        ${next.enabled},
+        ${next.payPhone},
+        ${next.payNetwork},
+        ${next.priceWeek},
+        ${next.priceMonth},
+        ${next.priceYear},
+        ${next.priceOnce},
+        ${next.instructions},
+        ${next.paidCategories},
+        ${next.showPackages},
+        ${next.pointsAdsEnabled},
+        ${next.vpnPackages}
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        enabled = EXCLUDED.enabled,
+        pay_phone = EXCLUDED.pay_phone,
+        pay_network = EXCLUDED.pay_network,
+        price_week = EXCLUDED.price_week,
+        price_month = EXCLUDED.price_month,
+        price_year = EXCLUDED.price_year,
+        price_once = EXCLUDED.price_once,
+        instructions = EXCLUDED.instructions,
+        paid_categories = EXCLUDED.paid_categories,
+        show_packages = EXCLUDED.show_packages,
+        points_ads_enabled = EXCLUDED.points_ads_enabled,
+        vpn_packages = EXCLUDED.vpn_packages
+    `;
+    return next;
+  } catch (e3) {
+    console.error("save PaymentSettings fallback", e3);
+    throw e3;
+  }
 }
 
 export function priceForPlan(
@@ -355,12 +422,14 @@ export async function userHasAccess(userId: string, contentId: string) {
     const rows = await prisma.userAccess.findMany({
       where: {
         userId,
-        OR: contentId ? [{ contentId }, { contentId: null }] : [{ contentId: null }],
+        OR: contentId
+          ? [{ contentId }, { contentId: null }]
+          : [{ contentId: null }],
       },
     });
     for (const a of rows) {
-      if (!(a as { expiresAt?: Date | null }).expiresAt || (a as { expiresAt?: Date }).expiresAt! > now)
-        return true;
+      const exp = (a as { expiresAt?: Date | null }).expiresAt;
+      if (!exp || exp > now) return true;
     }
   } catch {
     /* ignore */
