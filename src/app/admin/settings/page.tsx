@@ -1,23 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  Film,
-  Tv,
-  Radio,
-  Gamepad2,
-  Shield,
-  Music,
-  Settings,
-  Clapperboard,
-  Bot,
-  Plus,
-  Trash2,
-  Save,
-  Sparkles,
-} from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { Sparkles, Save, Trash2, Download, Activity } from "lucide-react";
 
-type Source = {
+type ApiSource = {
   id: string;
   category: string;
   name: string;
@@ -28,76 +14,97 @@ type Source = {
 };
 
 const LABELS: Record<string, string> = {
-  movie: "Movie",
-  drama: "Tamthilia / Anime",
-  tv: "TV / Live",
+  movie: "Movies",
+  drama: "Tamthilia",
+  tv: "TV",
   radio: "Radio",
-  music: "Music",
-  game: "Game",
+  music: "Miziki",
+  game: "Games",
   vpn: "VPN",
   ai: "AI",
   other: "Other",
 };
 
-const ICONS: Record<string, typeof Film> = {
-  movie: Film,
-  drama: Clapperboard,
-  tv: Tv,
-  radio: Radio,
-  music: Music,
-  game: Gamepad2,
-  vpn: Shield,
-  ai: Bot,
-  other: Settings,
-};
-
 function previewType(url: string): string {
   const u = url.toLowerCase();
-  if (/\/ai\/|freeimage|horde|nicevoice|sonu|wrmgpt|wan|mureka/.test(u)) return "ai";
-  if (/anime|crunchyroll|gogo|anilist|series|tamthilia/.test(u)) return "drama";
-  if (/movie|tmdb|film|cinema|moviebox/.test(u)) return "movie";
-  if (/iptv|\.m3u|live-?tv|channel|modobo|epg/.test(u)) return "tv";
-  if (/radio|radio-browser/.test(u)) return "radio";
-  if (/music|itunes|spotify|track|song|freetouse|ytm/.test(u)) return "music";
-  if (/game|freetogame/.test(u)) return "game";
-  if (/vpn|v2ray|clash|wireguard/.test(u)) return "vpn";
+  if (u.includes("/ai/") || u.includes("wormgpt") || u.includes("sonu") || u.includes("horde") || u.includes("nicevoice") || u.includes("wan-"))
+    return "ai";
+  if (u.includes("music") || u.includes("itunes") || u.includes("shazam"))
+    return "music";
+  if (u.includes("movie") || u.includes("tmdb") || u.includes("vidsrc") || u.includes("eliteplex"))
+    return "movie";
+  if (u.includes("series") || u.includes("drama") || u.includes("anime") || u.includes("crunchy"))
+    return "drama";
+  if (u.includes("radio")) return "radio";
+  if (u.includes("tv") || u.includes("iptv") || u.includes("channel")) return "tv";
+  if (u.includes("game")) return "game";
   return "other";
 }
 
 export default function AdminSettingsPage() {
-  const [sources, setSources] = useState<Source[]>([]);
+  const [sources, setSources] = useState<ApiSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
-
   const [newUrl, setNewUrl] = useState("");
   const [newSample, setNewSample] = useState("");
   const [newName, setNewName] = useState("");
+  const [probeMsg, setProbeMsg] = useState("");
+  const [probing, setProbing] = useState(false);
+  const probeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const preview = useMemo(() => previewType(newUrl), [newUrl]);
+  const preview = previewType(newUrl);
 
   async function load() {
     setLoading(true);
-    setError("");
     try {
       const res = await fetch("/api/admin/api-sources", { credentials: "include" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
       setSources(data.sources || []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
+    } catch {
+      setError("Imeshindwa kupakia API sources");
     }
     setLoading(false);
   }
 
   useEffect(() => {
-    void load();
+    load();
   }, []);
 
-  function update(id: string, patch: Partial<Source>) {
-    setSources((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  }
+  // Auto-probe API when URL is pasted
+  useEffect(() => {
+    const url = newUrl.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      setProbeMsg("");
+      return;
+    }
+    if (probeRef.current) clearTimeout(probeRef.current);
+    probeRef.current = setTimeout(async () => {
+      setProbing(true);
+      setProbeMsg("Inajaribu API…");
+      try {
+        const res = await fetch(
+          `/api/admin/api-probe?url=${encodeURIComponent(url)}`,
+          { credentials: "include" }
+        );
+        const data = await res.json();
+        if (data.sample) setNewSample(data.sample);
+        setProbeMsg(
+          data.message ||
+            (data.alive ? `Hai ✓ ${data.status}` : `Dead ✗ ${data.status || 0}`)
+        );
+      } catch (e) {
+        setProbeMsg(
+          e instanceof Error ? `Dead — ${e.message}` : "Dead — network error"
+        );
+      }
+      setProbing(false);
+    }, 800);
+    return () => {
+      if (probeRef.current) clearTimeout(probeRef.current);
+    };
+  }, [newUrl]);
 
   async function saveAll() {
     setSaving(true);
@@ -157,9 +164,10 @@ export default function AdminSettingsPage() {
       setNewUrl("");
       setNewSample("");
       setNewName("");
+      setProbeMsg("");
       setMsg(
         added
-          ? `Imeongezwa kama: ${LABELS[added.category] || added.category} — URL + sample zimehifadhiwa`
+          ? `Imeongezwa kama: ${LABELS[added.category] || added.category}`
           : "API imeongezwa"
       );
       await load();
@@ -191,33 +199,42 @@ export default function AdminSettingsPage() {
     setSaving(true);
     setMsg("");
     try {
-      await fetch("/api/admin/api-sources", { credentials: "include" });
       const res = await fetch("/api/admin/import-all", {
         method: "POST",
         credentials: "include",
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Import failed");
-      setMsg(data.message || "Import imekamilika");
+      setMsg(data.message || JSON.stringify(data));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import failed");
     }
     setSaving(false);
   }
 
+  async function probeNow() {
+    const url = newUrl.trim();
+    if (!url) return;
+    setProbing(true);
+    try {
+      const res = await fetch(
+        `/api/admin/api-probe?url=${encodeURIComponent(url)}`,
+        { credentials: "include" }
+      );
+      const data = await res.json();
+      if (data.sample) setNewSample(data.sample);
+      setProbeMsg(data.message || "");
+    } catch (e) {
+      setProbeMsg(e instanceof Error ? e.message : "Probe failed");
+    }
+    setProbing(false);
+  }
+
   return (
-    <div className="max-w-3xl mx-auto space-y-6 p-4">
-      <div>
-        <h1 className="text-xl font-bold text-white">Settings · API Sources</h1>
-        <p className="text-sm text-slate-400 mt-1">
-          Weka <strong>URL</strong> na <strong>jibu/code</strong> la API (JSON). Mfumo
-          hugundua aina (AI / movie / TV…) na data inaenda sehemu sahihi. Movie, music,
-          radio zilizopo <strong>hazifutwi</strong>.
-        </p>
-      </div>
+    <div className="space-y-5 max-w-2xl pb-24">
+      <h1 className="text-2xl font-bold text-white">Settings · API Sources</h1>
 
       {msg && (
-        <p className="text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3 py-2">
+        <p className="text-sm text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-3 py-2">
           {msg}
         </p>
       )}
@@ -229,7 +246,7 @@ export default function AdminSettingsPage() {
 
       <div className="rounded-2xl border border-violet-500/30 bg-violet-950/20 p-4 space-y-3">
         <p className="text-sm font-semibold text-violet-200 flex items-center gap-2">
-          <Sparkles className="w-4 h-4" /> Ongeza API (URL + code/jibu)
+          <Sparkles className="w-4 h-4" /> Ongeza API
         </p>
 
         <label className="text-xs text-slate-400 space-y-1 block">
@@ -237,36 +254,48 @@ export default function AdminSettingsPage() {
           <input
             value={newUrl}
             onChange={(e) => setNewUrl(e.target.value)}
-            placeholder="https://api.omegatech.app/api/ai/sonu3?action=generate&prompt=Sad+song"
+            placeholder="https://api.omegatech.app/api/..."
             className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2.5 text-sm text-white font-mono"
           />
         </label>
 
         {newUrl.trim() && (
-          <p className="text-xs text-cyan-300/90">
-            Itatambuliwa kama: <strong>{LABELS[preview] || preview}</strong>
-            {preview === "ai"
-              ? " → AI Agent / tools"
-              : preview === "music"
-                ? " → Miziki"
-                : preview === "movie"
-                  ? " → Movies"
-                  : " → sehemu inayofaa"}
-          </p>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-cyan-300">
+              Aina: <strong>{LABELS[preview] || preview}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={probeNow}
+              disabled={probing}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 text-slate-200"
+            >
+              <Activity className="w-3 h-3" />
+              {probing ? "…" : "Jaribu sasa"}
+            </button>
+            {probeMsg && (
+              <span
+                className={
+                  probeMsg.includes("Hai") || probeMsg.includes("hai")
+                    ? "text-emerald-400"
+                    : "text-amber-300"
+                }
+              >
+                {probeMsg}
+              </span>
+            )}
+          </div>
         )}
 
         <label className="text-xs text-slate-400 space-y-1 block">
-          <span>2. Jibu / code la API (bandika JSON chini ya URL)</span>
+          <span>2. Jibu la API (auto kutoka URL — unaweza kuhariri)</span>
           <textarea
             value={newSample}
             onChange={(e) => setNewSample(e.target.value)}
             rows={10}
-            placeholder={`Status: 200\n{\n  "statusCode": 200,\n  "success": true,\n  "taskId": "...",\n  "status": "pending",\n  "message": "Poll ?action=result&taskId=..."\n}`}
+            placeholder="Bandika URL hapo juu — jibu litaonekana hapa kiotomatiki…"
             className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2.5 text-xs text-slate-200 font-mono leading-relaxed"
           />
-          <span className="text-[10px] text-slate-500">
-            Mfano: taskId, pending, poll action=result — ili mfumo ujue jinsi ya kusoma jibu
-          </span>
         </label>
 
         <label className="text-xs text-slate-400 space-y-1 block">
@@ -274,58 +303,65 @@ export default function AdminSettingsPage() {
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Mfano: Omegatech Sonu3 Music"
+            placeholder="Mfano: Omegatech Sonu3"
             className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-white"
           />
         </label>
 
         <button
           type="button"
+          onClick={addSource}
           disabled={saving}
-          onClick={() => void addSource()}
-          className="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center gap-2"
+          className="w-full py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold"
         >
-          <Plus className="w-4 h-4" /> Ongeza API
+          {saving ? "…" : "Ongeza API"}
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={saveAll}
+          disabled={saving}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm"
+        >
+          <Save className="w-4 h-4" /> Hifadhi zote
+        </button>
+        <button
+          type="button"
+          onClick={importAll}
+          disabled={saving}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-700 text-white text-sm"
+        >
+          <Download className="w-4 h-4" /> Import all
         </button>
       </div>
 
       {loading ? (
-        <p className="text-slate-500 text-sm">Inapakia…</p>
+        <p className="text-sm text-slate-500">Inapakia…</p>
       ) : (
-        <div className="space-y-3">
-          <p className="text-xs text-slate-500 uppercase tracking-wide">
-            APIs zilizosajiliwa ({sources.length})
-          </p>
+        <div className="space-y-2">
           {sources.map((s) => {
-            const Icon = ICONS[s.category] || Settings;
-            const hasSample = Boolean(s.notes && s.notes.length > 20);
+            const hasSample = !!(s.notes && s.notes.length > 20);
             return (
               <div
                 key={s.id}
-                className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 space-y-2"
+                className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 space-y-1"
               >
-                <div className="flex items-center gap-3 flex-wrap">
-                  <Icon className="w-5 h-5 text-violet-400 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-white text-sm truncate">{s.name}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm text-white font-medium">{s.name}</p>
                     <p className="text-[11px] text-slate-500">
                       {LABELS[s.category] || s.category}
                       {s.urlSet ? " · URL ✓" : " · URL hapana"}
                       {hasSample ? " · sample ✓" : ""}
+                      {s.enabled ? " · ON" : " · OFF"}
                     </p>
                   </div>
-                  <label className="flex items-center gap-2 text-xs text-slate-400">
-                    <input
-                      type="checkbox"
-                      checked={s.enabled}
-                      onChange={(e) => update(s.id, { enabled: e.target.checked })}
-                    />
-                    On
-                  </label>
                   <button
                     type="button"
-                    onClick={() => void remove(s.id)}
-                    className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10"
+                    onClick={() => remove(s.id)}
+                    className="p-2 rounded-lg text-red-300 hover:bg-red-500/10"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -338,25 +374,6 @@ export default function AdminSettingsPage() {
           })}
         </div>
       )}
-
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          disabled={saving}
-          onClick={() => void saveAll()}
-          className="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center gap-2"
-        >
-          <Save className="w-4 h-4" /> Hifadhi
-        </button>
-        <button
-          type="button"
-          disabled={saving}
-          onClick={() => void importAll()}
-          className="px-4 py-2.5 rounded-xl border border-slate-700 text-slate-200 text-sm disabled:opacity-50"
-        >
-          Import all
-        </button>
-      </div>
     </div>
   );
 }

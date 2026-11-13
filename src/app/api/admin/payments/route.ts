@@ -46,113 +46,64 @@ export async function GET() {
     let settings = DEFAULT_SETTINGS;
     try {
       const s = await getPaymentSettings();
-      settings = {
-        ...DEFAULT_SETTINGS,
-        ...s,
-        vpnPackages: s.vpnPackages ?? null,
-      };
+      settings = { ...DEFAULT_SETTINGS, ...s };
     } catch (e) {
       console.error("getPaymentSettings", e);
     }
 
     let pending: unknown[] = [];
     let recent: unknown[] = [];
-
     try {
-      pending = await prisma.paymentRequest.findMany({
-        where: { status: "pending" },
-        orderBy: { createdAt: "desc" },
-        take: 50,
-        include: {
-          user: { select: { email: true, name: true } },
-        },
-      });
-      recent = await prisma.paymentRequest.findMany({
-        where: { status: { not: "pending" } },
-        orderBy: { updatedAt: "desc" },
-        take: 30,
-        include: {
-          user: { select: { email: true, name: true } },
-        },
-      });
+      const rows = await prisma.$queryRaw<
+        {
+          id: string;
+          amount: number;
+          status: string;
+          content_type: string;
+          notes: string | null;
+          created_at: Date;
+          email: string | null;
+          name: string | null;
+        }[]
+      >`
+        SELECT p.id, p.amount, p.status, p.content_type, p.notes,
+               p.created_at, u.email, u.name
+        FROM "PaymentRequest" p
+        LEFT JOIN "User" u ON u.id = p.user_id
+        ORDER BY p.created_at DESC
+        LIMIT 80
+      `;
+      pending = rows
+        .filter((r) => r.status === "pending")
+        .map((r) => ({
+          id: r.id,
+          amount: r.amount,
+          status: r.status,
+          plan: r.content_type,
+          createdAt: r.created_at,
+          senderPhone: "",
+          senderNetwork: "",
+          screenshotUrl: "",
+          user: { email: r.email, fullName: r.name },
+          content: null,
+        }));
+      recent = rows
+        .filter((r) => r.status !== "pending")
+        .map((r) => ({
+          id: r.id,
+          amount: r.amount,
+          status: r.status,
+          plan: r.content_type,
+          createdAt: r.created_at,
+          senderPhone: "",
+          senderNetwork: "",
+          screenshotUrl: "",
+          user: { email: r.email, fullName: r.name },
+          content: null,
+        }));
     } catch (e) {
-      console.error("paymentRequest list", e);
-      try {
-        const rows = await prisma.$queryRaw<
-          {
-            id: string;
-            amount: number;
-            status: string;
-            content_type: string;
-            notes: string | null;
-            created_at: Date;
-            email: string | null;
-            name: string | null;
-          }[]
-        >`
-          SELECT p.id, p.amount, p.status, p.content_type, p.notes,
-                 p.created_at, u.email, u.name
-          FROM "PaymentRequest" p
-          LEFT JOIN "User" u ON u.id = p.user_id
-          ORDER BY p.created_at DESC
-          LIMIT 80
-        `;
-        pending = rows
-          .filter((r) => r.status === "pending")
-          .map((r) => ({
-            id: r.id,
-            amount: r.amount,
-            status: r.status,
-            contentType: r.content_type,
-            notes: r.notes,
-            createdAt: r.created_at,
-            plan: r.content_type,
-            senderPhone: "",
-            senderNetwork: "",
-            screenshotUrl: "",
-            user: { email: r.email, fullName: r.name },
-            content: null,
-          }));
-        recent = rows
-          .filter((r) => r.status !== "pending")
-          .map((r) => ({
-            id: r.id,
-            amount: r.amount,
-            status: r.status,
-            contentType: r.content_type,
-            notes: r.notes,
-            createdAt: r.created_at,
-            plan: r.content_type,
-            senderPhone: "",
-            senderNetwork: "",
-            screenshotUrl: "",
-            user: { email: r.email, fullName: r.name },
-            content: null,
-          }));
-      } catch (e2) {
-        console.error("paymentRequest raw", e2);
-      }
+      console.error("paymentRequest", e);
     }
-
-    const mapReq = (r: Record<string, unknown>) => {
-      const user = r.user as
-        | { email?: string; name?: string; fullName?: string }
-        | null;
-      return {
-        ...r,
-        plan: r.plan || r.contentType || "once",
-        senderPhone: r.senderPhone || "",
-        senderNetwork: r.senderNetwork || "",
-        screenshotUrl: r.screenshotUrl || "",
-        user: user
-          ? {
-              email: user.email,
-              fullName: user.fullName || user.name || null,
-            }
-          : { email: "—", fullName: null },
-        content: r.content || null,
-      };
-    };
 
     return NextResponse.json({
       settings: {
@@ -161,18 +112,13 @@ export async function GET() {
           typeof settings.vpnPackages === "string" ? settings.vpnPackages : null
         ),
       },
-      pending: (pending as Record<string, unknown>[]).map(mapReq),
-      recent: (recent as Record<string, unknown>[]).map(mapReq),
+      pending,
+      recent,
     });
   } catch (err) {
     console.error("admin payments GET", err);
     return NextResponse.json(
-      {
-        settings: DEFAULT_SETTINGS,
-        pending: [],
-        recent: [],
-        error: err instanceof Error ? err.message : String(err),
-      },
+      { settings: DEFAULT_SETTINGS, pending: [], recent: [] },
       { status: 200 }
     );
   }
@@ -226,30 +172,26 @@ export async function PUT(req: Request) {
           ? d.vpnPackages
           : JSON.stringify(d.vpnPackages);
 
-    try {
-      const settings = await savePaymentSettings(patch);
-      return NextResponse.json({
-        settings: {
-          ...settings,
-          vpnPackages: parseVpnPackages(settings.vpnPackages),
-        },
-      });
-    } catch (e) {
-      console.error("paymentSettings save", e);
-      return NextResponse.json(
-        {
-          error: "Imeshindikana kuhifadhi",
-          hint: e instanceof Error ? e.message : String(e),
-        },
-        { status: 500 }
-      );
-    }
+    const settings = await savePaymentSettings(patch);
+    return NextResponse.json({
+      settings: {
+        ...settings,
+        vpnPackages: parseVpnPackages(settings.vpnPackages),
+      },
+      ok: true,
+    });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.flatten() }, { status: 400 });
     }
-    console.error(err);
-    return NextResponse.json({ error: "Failed" }, { status: 500 });
+    console.error("payments PUT", err);
+    return NextResponse.json(
+      {
+        error: "Imeshindikana kuhifadhi",
+        hint: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -262,24 +204,17 @@ export async function POST(req: Request) {
   try {
     const auth = await requireAdmin();
     if ("error" in auth && auth.error) return auth.error;
-
     const body = await req.json();
     const { id, action } = reviewSchema.parse(body);
     const status = action === "approve" ? "approved" : "rejected";
-
     try {
-      await prisma.paymentRequest.update({
-        where: { id },
-        data: { status },
-      });
-    } catch {
-      await prisma.$executeRawUnsafe(
-        `UPDATE "PaymentRequest" SET status = $1 WHERE id = $2`,
-        status,
-        id
-      );
+      await prisma.$executeRaw`
+        UPDATE "PaymentRequest" SET status = ${status} WHERE id = ${id}
+      `;
+    } catch (e) {
+      console.error(e);
+      return NextResponse.json({ error: "Failed" }, { status: 500 });
     }
-
     return NextResponse.json({ ok: true, status });
   } catch (err) {
     console.error(err);
