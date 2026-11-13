@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { z } from "zod";
 import { ensureUserSchema } from "@/lib/db-migrate";
+import {
+  attachPointsToUsers,
+  setUserPoints,
+  addUserPoints,
+} from "@/lib/user-points";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +22,6 @@ type UserRow = {
 };
 
 async function listUsers(): Promise<{ users: UserRow[]; hint?: string }> {
-  // Prefer COALESCE so either name or full_name works
   const attempts = [
     `SELECT id, email,
             COALESCE(NULLIF(name,''), NULLIF(full_name,''), email) AS name,
@@ -30,6 +34,7 @@ async function listUsers(): Promise<{ users: UserRow[]; hint?: string }> {
     `SELECT id, email, name, role, points, created_at FROM "User" ORDER BY created_at DESC LIMIT 500`,
     `SELECT id, email, full_name AS name, role, points, created_at FROM "User" ORDER BY created_at DESC LIMIT 500`,
     `SELECT id, email, full_name AS name, role, 0 AS points, NOW() AS created_at FROM "User" LIMIT 500`,
+    `SELECT id, email, name, role, 0 AS points, NOW() AS created_at FROM "User" LIMIT 500`,
     `SELECT id, email FROM "User" LIMIT 500`,
   ];
 
@@ -39,17 +44,17 @@ async function listUsers(): Promise<{ users: UserRow[]; hint?: string }> {
         string,
         unknown
       >[];
-      return {
-        users: rows.map((u) => ({
-          id: String(u.id),
-          email: String(u.email || ""),
-          fullName: (u.name as string) || null,
-          name: (u.name as string) || null,
-          role: String(u.role || "user"),
-          points: Number(u.points || 0),
-          createdAt: (u.created_at as Date) || new Date(),
-        })),
-      };
+      let users: UserRow[] = rows.map((u) => ({
+        id: String(u.id),
+        email: String(u.email || ""),
+        fullName: (u.name as string) || null,
+        name: (u.name as string) || null,
+        role: String(u.role || "user"),
+        points: Number(u.points || 0),
+        createdAt: (u.created_at as Date) || new Date(),
+      }));
+      users = await attachPointsToUsers(users);
+      return { users };
     } catch (e) {
       console.error("listUsers attempt", e);
     }
@@ -68,17 +73,16 @@ async function listUsers(): Promise<{ users: UserRow[]; hint?: string }> {
       orderBy: { createdAt: "desc" },
       take: 500,
     });
-    return {
-      users: users.map((u) => ({
-        id: u.id,
-        email: u.email,
-        fullName: u.name,
-        name: u.name,
-        role: u.role,
-        points: u.points,
-        createdAt: u.createdAt,
-      })),
-    };
+    const mapped = users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      fullName: u.name,
+      name: u.name,
+      role: u.role,
+      points: u.points,
+      createdAt: u.createdAt,
+    }));
+    return { users: await attachPointsToUsers(mapped) };
   } catch (e) {
     return {
       users: [],
@@ -89,7 +93,11 @@ async function listUsers(): Promise<{ users: UserRow[]; hint?: string }> {
 
 export async function GET() {
   try {
-    await ensureUserSchema();
+    try {
+      await ensureUserSchema();
+    } catch {
+      /* may lack DDL perms */
+    }
 
     const session = await getSession();
     if (!session) {
@@ -146,7 +154,6 @@ const patchSchema = z.object({
 
 export async function PATCH(req: Request) {
   try {
-    await ensureUserSchema();
     const session = await getSession();
     if (!session || session.role !== "admin") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -160,38 +167,52 @@ export async function PATCH(req: Request) {
 
     const { userId, points, addPoints, role } = parsed.data;
 
+    let newPoints: number | null = null;
     try {
       if (typeof points === "number") {
-        await prisma.$executeRawUnsafe(
-          `UPDATE "User" SET points = $1 WHERE id = $2`,
-          points,
-          userId
-        );
+        newPoints = await setUserPoints(userId, points);
       } else if (typeof addPoints === "number") {
-        await prisma.$executeRawUnsafe(
-          `UPDATE "User" SET points = COALESCE(points,0) + $1 WHERE id = $2`,
-          addPoints,
-          userId
-        );
+        newPoints = await addUserPoints(userId, addPoints);
       }
-      if (role) {
+    } catch (e) {
+      console.error("points update", e);
+      return NextResponse.json(
+        {
+          error: "Imeshindikana kuongeza points",
+          hint: e instanceof Error ? e.message : String(e),
+        },
+        { status: 500 }
+      );
+    }
+
+    if (role) {
+      try {
         await prisma.$executeRawUnsafe(
           `UPDATE "User" SET role = $1 WHERE id = $2`,
           role,
           userId
         );
+      } catch (e) {
+        console.error("role update", e);
       }
-    } catch (e) {
-      console.error("users PATCH", e);
-      return NextResponse.json({ error: "Failed to update" }, { status: 500 });
     }
 
     const { users } = await listUsers();
+    const user = users.find((u) => u.id === userId) || null;
     return NextResponse.json({
-      user: users.find((u) => u.id === userId) || null,
+      user: user
+        ? { ...user, points: newPoints ?? user.points }
+        : { id: userId, points: newPoints },
+      points: newPoints,
     });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Failed" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Failed",
+        hint: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
   }
 }
