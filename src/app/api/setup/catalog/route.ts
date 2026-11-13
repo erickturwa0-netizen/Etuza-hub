@@ -4,7 +4,6 @@ import { rebuildCatalog } from "@/lib/seed-catalog";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/** Public one-shot catalog rebuild (Bongo off, movies+radio+games on) */
 export async function GET() {
   try {
     const result = await rebuildCatalog();
