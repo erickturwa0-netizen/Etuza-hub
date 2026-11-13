@@ -164,20 +164,12 @@ const DEFAULT_ROW: PaymentSettingsRow = {
   vpnPackages: null,
 };
 
-const SETTINGS_KEY = "payment_settings";
+/** Fixed id in existing ApiSource table — no CREATE TABLE needed */
+const PAY_SOURCE_ID = "sys_payment_settings";
 
-/** Simple key-value store — avoids PaymentSettings column hell */
-async function ensureAppSettingsTable() {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "AppSettings" (
-      "key" TEXT PRIMARY KEY,
-      "value" TEXT NOT NULL,
-      "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-}
-
-function normalize(raw: Partial<PaymentSettingsRow> | null | undefined): PaymentSettingsRow {
+function normalize(
+  raw: Partial<PaymentSettingsRow> | null | undefined
+): PaymentSettingsRow {
   const r = raw || {};
   return {
     id: "default",
@@ -196,73 +188,54 @@ function normalize(raw: Partial<PaymentSettingsRow> | null | undefined): Payment
   };
 }
 
-/** Legacy PaymentSettings table read (if exists) */
-async function readLegacyPaymentSettings(): Promise<PaymentSettingsRow | null> {
+export async function ensurePaymentColumns() {
+  // intentionally empty — DB user cannot CREATE TABLE (permission denied for schema public)
+}
+
+export async function getPaymentSettings(): Promise<PaymentSettingsRow> {
+  // 1) ApiSource row (works with existing INSERT/UPDATE permissions)
+  try {
+    const rows = (await prisma.$queryRawUnsafe(
+      `SELECT notes FROM "ApiSource" WHERE id = $1 LIMIT 1`,
+      PAY_SOURCE_ID
+    )) as { notes: string | null }[];
+    if (rows[0]?.notes) {
+      const parsed = JSON.parse(rows[0].notes) as Partial<PaymentSettingsRow>;
+      return normalize(parsed);
+    }
+  } catch (e) {
+    console.error("getPayment ApiSource", e);
+  }
+
+  // 2) Legacy PaymentSettings if table already exists (read-only attempt)
   try {
     const rows = (await prisma.$queryRawUnsafe(
       `SELECT * FROM "PaymentSettings" WHERE id = 'default' LIMIT 1`
     )) as Record<string, unknown>[];
-    if (!rows[0]) return null;
-    const r = rows[0];
-    return normalize({
-      enabled: Boolean(r.enabled),
-      payPhone: String(r.pay_phone ?? r.payPhone ?? ""),
-      payNetwork: String(r.pay_network ?? r.payNetwork ?? "vodacom"),
-      priceWeek: Number(r.price_week ?? r.priceWeek ?? 2000),
-      priceMonth: Number(r.price_month ?? r.priceMonth ?? 5000),
-      priceYear: Number(r.price_year ?? r.priceYear ?? 40000),
-      priceOnce: Number(r.price_once ?? r.priceOnce ?? 1000),
-      instructions: (r.instructions as string) ?? null,
-      paidCategories: String(
-        r.paid_categories ?? r.paidCategories ?? CONTENT_TYPES.join(",")
-      ),
-      showPackages: Boolean(r.show_packages ?? r.showPackages ?? false),
-      pointsAdsEnabled: Boolean(
-        r.points_ads_enabled ?? r.pointsAdsEnabled ?? true
-      ),
-      vpnPackages:
-        (r.vpn_packages as string) ?? (r.vpnPackages as string) ?? null,
-    });
+    if (rows[0]) {
+      const r = rows[0];
+      return normalize({
+        enabled: Boolean(r.enabled),
+        payPhone: String(r.pay_phone ?? r.payPhone ?? ""),
+        payNetwork: String(r.pay_network ?? r.payNetwork ?? "vodacom"),
+        priceWeek: Number(r.price_week ?? r.priceWeek ?? 2000),
+        priceMonth: Number(r.price_month ?? r.priceMonth ?? 5000),
+        priceYear: Number(r.price_year ?? r.priceYear ?? 40000),
+        priceOnce: Number(r.price_once ?? r.priceOnce ?? 1000),
+        instructions: (r.instructions as string) ?? null,
+        paidCategories: String(
+          r.paid_categories ?? r.paidCategories ?? CONTENT_TYPES.join(",")
+        ),
+        showPackages: Boolean(r.show_packages ?? r.showPackages ?? false),
+        pointsAdsEnabled: Boolean(
+          r.points_ads_enabled ?? r.pointsAdsEnabled ?? true
+        ),
+        vpnPackages:
+          (r.vpn_packages as string) ?? (r.vpnPackages as string) ?? null,
+      });
+    }
   } catch {
-    return null;
-  }
-}
-
-export async function ensurePaymentColumns() {
-  try {
-    await ensureAppSettingsTable();
-  } catch (e) {
-    console.error("ensureAppSettingsTable", e);
-  }
-}
-
-export async function getPaymentSettings(): Promise<PaymentSettingsRow> {
-  await ensurePaymentColumns();
-
-  // 1) AppSettings JSON
-  try {
-    const rows = (await prisma.$queryRawUnsafe(
-      `SELECT value FROM "AppSettings" WHERE key = $1 LIMIT 1`,
-      SETTINGS_KEY
-    )) as { value: string }[];
-    if (rows[0]?.value) {
-      const parsed = JSON.parse(rows[0].value) as Partial<PaymentSettingsRow>;
-      return normalize(parsed);
-    }
-  } catch (e) {
-    console.error("getPaymentSettings AppSettings", e);
-  }
-
-  // 2) Legacy table
-  const legacy = await readLegacyPaymentSettings();
-  if (legacy) {
-    // migrate to AppSettings for next time
-    try {
-      await savePaymentSettings(legacy);
-    } catch {
-      /* ignore */
-    }
-    return legacy;
+    /* table may not exist */
   }
 
   return { ...DEFAULT_ROW };
@@ -271,94 +244,65 @@ export async function getPaymentSettings(): Promise<PaymentSettingsRow> {
 export async function savePaymentSettings(
   patch: Partial<PaymentSettingsRow>
 ): Promise<PaymentSettingsRow> {
-  await ensurePaymentColumns();
   const cur = await getPaymentSettings();
   const next = normalize({ ...cur, ...patch });
   const json = JSON.stringify(next);
 
-  // Primary path: AppSettings key-value
+  // Write into existing ApiSource table only (no DDL)
   try {
     await prisma.$executeRaw`
-      INSERT INTO "AppSettings" (key, value, updated_at)
-      VALUES (${SETTINGS_KEY}, ${json}, NOW())
-      ON CONFLICT (key) DO UPDATE SET
-        value = EXCLUDED.value,
-        updated_at = NOW()
+      INSERT INTO "ApiSource" (id, category, name, url, enabled, notes)
+      VALUES (
+        ${PAY_SOURCE_ID},
+        ${"other"},
+        ${"Payment Settings"},
+        ${""},
+        ${true},
+        ${json}
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        notes = EXCLUDED.notes,
+        name = EXCLUDED.name,
+        enabled = true
     `;
     return next;
   } catch (e1) {
-    console.error("save AppSettings tagged", e1);
+    console.error("save payment ApiSource tagged", e1);
   }
 
   try {
     await prisma.$executeRawUnsafe(
-      `INSERT INTO "AppSettings" (key, value, updated_at)
-       VALUES ($1, $2, NOW())
-       ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
-      SETTINGS_KEY,
+      `INSERT INTO "ApiSource" (id, category, name, url, enabled, notes)
+       VALUES ($1, 'other', 'Payment Settings', '', true, $2)
+       ON CONFLICT (id) DO UPDATE SET notes = $2, enabled = true`,
+      PAY_SOURCE_ID,
       json
     );
     return next;
   } catch (e2) {
-    console.error("save AppSettings unsafe", e2);
+    console.error("save payment ApiSource unsafe", e2);
   }
 
-  // Fallback: try minimal PaymentSettings write
+  // Prisma client fallback
   try {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "PaymentSettings" (
-        "id" TEXT PRIMARY KEY,
-        "enabled" BOOLEAN DEFAULT false,
-        "pay_phone" TEXT DEFAULT '',
-        "pay_network" TEXT DEFAULT 'vodacom',
-        "price_week" INTEGER DEFAULT 2000,
-        "price_month" INTEGER DEFAULT 5000,
-        "price_year" INTEGER DEFAULT 40000,
-        "price_once" INTEGER DEFAULT 1000,
-        "instructions" TEXT,
-        "paid_categories" TEXT,
-        "show_packages" BOOLEAN DEFAULT false,
-        "points_ads_enabled" BOOLEAN DEFAULT true,
-        "vpn_packages" TEXT
-      )
-    `);
-    await prisma.$executeRaw`
-      INSERT INTO "PaymentSettings" (
-        id, enabled, pay_phone, pay_network,
-        price_week, price_month, price_year, price_once,
-        instructions, paid_categories, show_packages, points_ads_enabled, vpn_packages
-      ) VALUES (
-        'default',
-        ${next.enabled},
-        ${next.payPhone},
-        ${next.payNetwork},
-        ${next.priceWeek},
-        ${next.priceMonth},
-        ${next.priceYear},
-        ${next.priceOnce},
-        ${next.instructions},
-        ${next.paidCategories},
-        ${next.showPackages},
-        ${next.pointsAdsEnabled},
-        ${next.vpnPackages}
-      )
-      ON CONFLICT (id) DO UPDATE SET
-        enabled = EXCLUDED.enabled,
-        pay_phone = EXCLUDED.pay_phone,
-        pay_network = EXCLUDED.pay_network,
-        price_week = EXCLUDED.price_week,
-        price_month = EXCLUDED.price_month,
-        price_year = EXCLUDED.price_year,
-        price_once = EXCLUDED.price_once,
-        instructions = EXCLUDED.instructions,
-        paid_categories = EXCLUDED.paid_categories,
-        show_packages = EXCLUDED.show_packages,
-        points_ads_enabled = EXCLUDED.points_ads_enabled,
-        vpn_packages = EXCLUDED.vpn_packages
-    `;
+    await prisma.apiSource.upsert({
+      where: { id: PAY_SOURCE_ID },
+      create: {
+        id: PAY_SOURCE_ID,
+        category: "other",
+        name: "Payment Settings",
+        url: "",
+        enabled: true,
+        notes: json,
+      },
+      update: {
+        notes: json,
+        enabled: true,
+      },
+    });
     return next;
   } catch (e3) {
-    console.error("save PaymentSettings fallback", e3);
+    console.error("save payment prisma upsert", e3);
     throw e3;
   }
 }
