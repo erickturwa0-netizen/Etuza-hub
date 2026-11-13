@@ -4,8 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import {
   getPaymentSettings,
-  expiresForPlan,
+  savePaymentSettings,
   parseVpnPackages,
+  CONTENT_TYPES,
 } from "@/lib/payments";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ const DEFAULT_SETTINGS = {
   priceYear: 40000,
   priceOnce: 1000,
   instructions: null as string | null,
-  paidCategories: "movie,drama,tv,music,radio,game",
+  paidCategories: CONTENT_TYPES.join(","),
   showPackages: false,
   pointsAdsEnabled: true,
   vpnPackages: null as string | null,
@@ -48,7 +49,7 @@ export async function GET() {
       settings = {
         ...DEFAULT_SETTINGS,
         ...s,
-        vpnPackages: (s as { vpnPackages?: string | null }).vpnPackages ?? null,
+        vpnPackages: s.vpnPackages ?? null,
       };
     } catch (e) {
       console.error("getPaymentSettings", e);
@@ -58,7 +59,6 @@ export async function GET() {
     let recent: unknown[] = [];
 
     try {
-      // Avoid include:content — schema may not have content relation
       pending = await prisma.paymentRequest.findMany({
         where: { status: "pending" },
         orderBy: { createdAt: "desc" },
@@ -81,7 +81,6 @@ export async function GET() {
         const rows = await prisma.$queryRaw<
           {
             id: string;
-            user_id: string;
             amount: number;
             status: string;
             content_type: string;
@@ -91,7 +90,7 @@ export async function GET() {
             name: string | null;
           }[]
         >`
-          SELECT p.id, p.user_id, p.amount, p.status, p.content_type, p.notes,
+          SELECT p.id, p.amount, p.status, p.content_type, p.notes,
                  p.created_at, u.email, u.name
           FROM "PaymentRequest" p
           LEFT JOIN "User" u ON u.id = p.user_id
@@ -107,6 +106,10 @@ export async function GET() {
             contentType: r.content_type,
             notes: r.notes,
             createdAt: r.created_at,
+            plan: r.content_type,
+            senderPhone: "",
+            senderNetwork: "",
+            screenshotUrl: "",
             user: { email: r.email, fullName: r.name },
             content: null,
           }));
@@ -119,6 +122,10 @@ export async function GET() {
             contentType: r.content_type,
             notes: r.notes,
             createdAt: r.created_at,
+            plan: r.content_type,
+            senderPhone: "",
+            senderNetwork: "",
+            screenshotUrl: "",
             user: { email: r.email, fullName: r.name },
             content: null,
           }));
@@ -127,9 +134,10 @@ export async function GET() {
       }
     }
 
-    // Normalize user.fullName for UI that expects fullName
     const mapReq = (r: Record<string, unknown>) => {
-      const user = r.user as { email?: string; name?: string; fullName?: string } | null;
+      const user = r.user as
+        | { email?: string; name?: string; fullName?: string }
+        | null;
       return {
         ...r,
         plan: r.plan || r.contentType || "once",
@@ -199,38 +207,43 @@ export async function PUT(req: Request) {
           ? d.paidCategories.join(",")
           : undefined;
 
-    const data: Record<string, unknown> = {};
-    if (d.enabled !== undefined) data.enabled = d.enabled;
-    if (d.payPhone !== undefined) data.payPhone = d.payPhone;
-    if (d.payNetwork !== undefined) data.payNetwork = d.payNetwork;
-    if (d.priceWeek !== undefined) data.priceWeek = d.priceWeek;
-    if (d.priceMonth !== undefined) data.priceMonth = d.priceMonth;
-    if (d.priceYear !== undefined) data.priceYear = d.priceYear;
-    if (d.priceOnce !== undefined) data.priceOnce = d.priceOnce;
-    if (d.instructions !== undefined) data.instructions = d.instructions;
-    if (paid !== undefined) data.paidCategories = paid;
-    if (d.showPackages !== undefined) data.showPackages = d.showPackages;
+    const patch: Parameters<typeof savePaymentSettings>[0] = {};
+    if (d.enabled !== undefined) patch.enabled = d.enabled;
+    if (d.payPhone !== undefined) patch.payPhone = d.payPhone;
+    if (d.payNetwork !== undefined) patch.payNetwork = d.payNetwork;
+    if (d.priceWeek !== undefined) patch.priceWeek = d.priceWeek;
+    if (d.priceMonth !== undefined) patch.priceMonth = d.priceMonth;
+    if (d.priceYear !== undefined) patch.priceYear = d.priceYear;
+    if (d.priceOnce !== undefined) patch.priceOnce = d.priceOnce;
+    if (d.instructions !== undefined) patch.instructions = d.instructions;
+    if (paid !== undefined) patch.paidCategories = paid;
+    if (d.showPackages !== undefined) patch.showPackages = d.showPackages;
     if (d.pointsAdsEnabled !== undefined)
-      data.pointsAdsEnabled = d.pointsAdsEnabled;
+      patch.pointsAdsEnabled = d.pointsAdsEnabled;
     if (d.vpnPackages !== undefined)
-      data.vpnPackages =
+      patch.vpnPackages =
         typeof d.vpnPackages === "string"
           ? d.vpnPackages
           : JSON.stringify(d.vpnPackages);
 
     try {
-      await prisma.paymentSettings.upsert({
-        where: { id: "default" },
-        create: { id: "default", ...data },
-        update: data,
+      const settings = await savePaymentSettings(patch);
+      return NextResponse.json({
+        settings: {
+          ...settings,
+          vpnPackages: parseVpnPackages(settings.vpnPackages),
+        },
       });
     } catch (e) {
-      console.error("paymentSettings upsert", e);
-      return NextResponse.json({ error: "Imeshindikana kuhifadhi" }, { status: 500 });
+      console.error("paymentSettings save", e);
+      return NextResponse.json(
+        {
+          error: "Imeshindikana kuhifadhi",
+          hint: e instanceof Error ? e.message : String(e),
+        },
+        { status: 500 }
+      );
     }
-
-    const settings = await getPaymentSettings().catch(() => DEFAULT_SETTINGS);
-    return NextResponse.json({ settings });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.flatten() }, { status: 400 });
@@ -254,10 +267,18 @@ export async function POST(req: Request) {
     const { id, action } = reviewSchema.parse(body);
     const status = action === "approve" ? "approved" : "rejected";
 
-    await prisma.paymentRequest.update({
-      where: { id },
-      data: { status },
-    });
+    try {
+      await prisma.paymentRequest.update({
+        where: { id },
+        data: { status },
+      });
+    } catch {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "PaymentRequest" SET status = $1 WHERE id = $2`,
+        status,
+        id
+      );
+    }
 
     return NextResponse.json({ ok: true, status });
   } catch (err) {
