@@ -164,7 +164,6 @@ const DEFAULT_ROW: PaymentSettingsRow = {
   vpnPackages: null,
 };
 
-/** Fixed id in existing ApiSource table — no CREATE TABLE needed */
 const PAY_SOURCE_ID = "sys_payment_settings";
 
 function normalize(
@@ -189,25 +188,22 @@ function normalize(
 }
 
 export async function ensurePaymentColumns() {
-  // intentionally empty — DB user cannot CREATE TABLE (permission denied for schema public)
+  /* no DDL — permission denied for schema public */
 }
 
 export async function getPaymentSettings(): Promise<PaymentSettingsRow> {
-  // 1) ApiSource row (works with existing INSERT/UPDATE permissions)
   try {
     const rows = (await prisma.$queryRawUnsafe(
       `SELECT notes FROM "ApiSource" WHERE id = $1 LIMIT 1`,
       PAY_SOURCE_ID
     )) as { notes: string | null }[];
     if (rows[0]?.notes) {
-      const parsed = JSON.parse(rows[0].notes) as Partial<PaymentSettingsRow>;
-      return normalize(parsed);
+      return normalize(JSON.parse(rows[0].notes) as Partial<PaymentSettingsRow>);
     }
   } catch (e) {
     console.error("getPayment ApiSource", e);
   }
 
-  // 2) Legacy PaymentSettings if table already exists (read-only attempt)
   try {
     const rows = (await prisma.$queryRawUnsafe(
       `SELECT * FROM "PaymentSettings" WHERE id = 'default' LIMIT 1`
@@ -235,10 +231,49 @@ export async function getPaymentSettings(): Promise<PaymentSettingsRow> {
       });
     }
   } catch {
-    /* table may not exist */
+    /* ignore */
   }
 
   return { ...DEFAULT_ROW };
+}
+
+async function upsertApiSourceNotes(id: string, name: string, notes: string) {
+  // Prisma client first — handles created_at/updated_at automatically
+  try {
+    await prisma.apiSource.upsert({
+      where: { id },
+      create: {
+        id,
+        category: "other",
+        name,
+        url: "",
+        enabled: true,
+        notes,
+      },
+      update: {
+        notes,
+        enabled: true,
+        name,
+      },
+    });
+    return;
+  } catch (e) {
+    console.error("apiSource upsert client", e);
+  }
+
+  // Raw with timestamps
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "ApiSource" (id, category, name, url, enabled, notes, created_at, updated_at)
+     VALUES ($1, 'other', $2, '', true, $3, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET
+       notes = EXCLUDED.notes,
+       name = EXCLUDED.name,
+       enabled = true,
+       updated_at = NOW()`,
+    id,
+    name,
+    notes
+  );
 }
 
 export async function savePaymentSettings(
@@ -248,62 +283,12 @@ export async function savePaymentSettings(
   const next = normalize({ ...cur, ...patch });
   const json = JSON.stringify(next);
 
-  // Write into existing ApiSource table only (no DDL)
   try {
-    await prisma.$executeRaw`
-      INSERT INTO "ApiSource" (id, category, name, url, enabled, notes)
-      VALUES (
-        ${PAY_SOURCE_ID},
-        ${"other"},
-        ${"Payment Settings"},
-        ${""},
-        ${true},
-        ${json}
-      )
-      ON CONFLICT (id) DO UPDATE SET
-        notes = EXCLUDED.notes,
-        name = EXCLUDED.name,
-        enabled = true
-    `;
+    await upsertApiSourceNotes(PAY_SOURCE_ID, "Payment Settings", json);
     return next;
-  } catch (e1) {
-    console.error("save payment ApiSource tagged", e1);
-  }
-
-  try {
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO "ApiSource" (id, category, name, url, enabled, notes)
-       VALUES ($1, 'other', 'Payment Settings', '', true, $2)
-       ON CONFLICT (id) DO UPDATE SET notes = $2, enabled = true`,
-      PAY_SOURCE_ID,
-      json
-    );
-    return next;
-  } catch (e2) {
-    console.error("save payment ApiSource unsafe", e2);
-  }
-
-  // Prisma client fallback
-  try {
-    await prisma.apiSource.upsert({
-      where: { id: PAY_SOURCE_ID },
-      create: {
-        id: PAY_SOURCE_ID,
-        category: "other",
-        name: "Payment Settings",
-        url: "",
-        enabled: true,
-        notes: json,
-      },
-      update: {
-        notes: json,
-        enabled: true,
-      },
-    });
-    return next;
-  } catch (e3) {
-    console.error("save payment prisma upsert", e3);
-    throw e3;
+  } catch (e) {
+    console.error("savePaymentSettings", e);
+    throw e;
   }
 }
 

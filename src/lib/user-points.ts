@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 
-/** Fallback store when User.points column is missing or not writable */
 const POINTS_SOURCE_ID = "sys_user_points";
 
 type PointsMap = Record<string, number>;
@@ -23,38 +22,34 @@ async function readMap(): Promise<PointsMap> {
 
 async function writeMap(map: PointsMap): Promise<void> {
   const json = JSON.stringify(map);
+
   try {
-    await prisma.$executeRaw`
-      INSERT INTO "ApiSource" (id, category, name, url, enabled, notes)
-      VALUES (
-        ${POINTS_SOURCE_ID},
-        ${"other"},
-        ${"User Points Store"},
-        ${""},
-        ${true},
-        ${json}
-      )
-      ON CONFLICT (id) DO UPDATE SET notes = EXCLUDED.notes
-    `;
+    await prisma.apiSource.upsert({
+      where: { id: POINTS_SOURCE_ID },
+      create: {
+        id: POINTS_SOURCE_ID,
+        category: "other",
+        name: "User Points Store",
+        url: "",
+        enabled: true,
+        notes: json,
+      },
+      update: { notes: json },
+    });
     return;
   } catch (e) {
-    console.error("writePointsMap tagged", e);
+    console.error("writePointsMap client", e);
   }
-  await prisma.apiSource.upsert({
-    where: { id: POINTS_SOURCE_ID },
-    create: {
-      id: POINTS_SOURCE_ID,
-      category: "other",
-      name: "User Points Store",
-      url: "",
-      enabled: true,
-      notes: json,
-    },
-    update: { notes: json },
-  });
+
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "ApiSource" (id, category, name, url, enabled, notes, created_at, updated_at)
+     VALUES ($1, 'other', 'User Points Store', '', true, $2, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET notes = $2, updated_at = NOW()`,
+    POINTS_SOURCE_ID,
+    json
+  );
 }
 
-/** Try DB column first; fall back to ApiSource JSON map */
 export async function getUserPoints(userId: string): Promise<number> {
   try {
     const rows = (await prisma.$queryRawUnsafe(
@@ -77,19 +72,25 @@ export async function setUserPoints(
 ): Promise<number> {
   const value = Math.max(0, Math.floor(points));
 
-  // 1) Prefer real column
   try {
     await prisma.$executeRawUnsafe(
       `UPDATE "User" SET points = $1 WHERE id = $2`,
       value,
       userId
     );
+    // also mirror to map so list always sees it
+    try {
+      const map = await readMap();
+      map[userId] = value;
+      await writeMap(map);
+    } catch {
+      /* ignore mirror */
+    }
     return value;
   } catch (e) {
     console.error("setUserPoints column", e);
   }
 
-  // 2) ApiSource JSON map
   const map = await readMap();
   map[userId] = value;
   await writeMap(map);
@@ -104,7 +105,6 @@ export async function addUserPoints(
   return setUserPoints(userId, current + delta);
 }
 
-/** Merge points into user list rows */
 export async function attachPointsToUsers<
   T extends { id: string; points?: number }
 >(users: T[]): Promise<(T & { points: number })[]> {
@@ -118,12 +118,10 @@ export async function attachPointsToUsers<
   return users.map((u) => {
     const fromCol = Number(u.points);
     const fromMap = Number(map[u.id]);
-    // Prefer higher of the two if both exist (admin may have set either)
     let points = 0;
-    if (Number.isFinite(fromCol) && fromCol > 0) points = fromCol;
-    if (Number.isFinite(fromMap) && fromMap > points) points = fromMap;
-    if (!points && Number.isFinite(fromCol)) points = fromCol || 0;
-    if (!points && Number.isFinite(fromMap)) points = fromMap || 0;
+    if (Number.isFinite(fromMap) && fromMap > 0) points = fromMap;
+    else if (Number.isFinite(fromCol)) points = fromCol || 0;
+    else if (Number.isFinite(fromMap)) points = fromMap || 0;
     return { ...u, points };
   });
 }
