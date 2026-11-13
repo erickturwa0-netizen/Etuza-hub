@@ -164,7 +164,6 @@ const DEFAULT_ROW: PaymentSettingsRow = {
   vpnPackages: null,
 };
 
-/** Create PaymentSettings table + columns (works without Prisma model) */
 export async function ensurePaymentColumns() {
   try {
     await prisma.$executeRawUnsafe(`
@@ -187,7 +186,6 @@ export async function ensurePaymentColumns() {
   } catch (e) {
     console.error("create PaymentSettings", e);
   }
-
   for (const sql of [
     `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "enabled" BOOLEAN DEFAULT false`,
     `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "pay_phone" TEXT DEFAULT ''`,
@@ -197,21 +195,10 @@ export async function ensurePaymentColumns() {
     `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "price_year" INTEGER DEFAULT 40000`,
     `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "price_once" INTEGER DEFAULT 1000`,
     `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "instructions" TEXT`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "paid_categories" TEXT DEFAULT 'movie,drama,tv,music,radio,game'`,
+    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "paid_categories" TEXT`,
     `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "show_packages" BOOLEAN DEFAULT false`,
     `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "points_ads_enabled" BOOLEAN DEFAULT true`,
     `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "vpn_packages" TEXT`,
-    // legacy camelCase columns some deploys may have used
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "payPhone" TEXT`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "payNetwork" TEXT`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "priceWeek" INTEGER`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "priceMonth" INTEGER`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "priceYear" INTEGER`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "priceOnce" INTEGER`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "paidCategories" TEXT`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "showPackages" BOOLEAN`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "pointsAdsEnabled" BOOLEAN`,
-    `ALTER TABLE "PaymentSettings" ADD COLUMN IF NOT EXISTS "vpnPackages" TEXT`,
   ]) {
     try {
       await prisma.$executeRawUnsafe(sql);
@@ -251,21 +238,15 @@ export async function getPaymentSettings(): Promise<PaymentSettingsRow> {
     )) as Record<string, unknown>[];
     if (rows[0]) return mapRow(rows[0]);
   } catch (e) {
-    console.error("getPaymentSettings select", e);
+    console.error("getPaymentSettings", e);
   }
-
-  // insert default
   try {
     await prisma.$executeRawUnsafe(
-      `INSERT INTO "PaymentSettings" (id, enabled, pay_phone, pay_network, price_week, price_month, price_year, price_once, paid_categories, show_packages, points_ads_enabled)
-       VALUES ('default', false, '', 'vodacom', 2000, 5000, 40000, 1000, $1, false, true)
-       ON CONFLICT (id) DO NOTHING`,
-      CONTENT_TYPES.join(",")
+      `INSERT INTO "PaymentSettings" (id) VALUES ('default') ON CONFLICT (id) DO NOTHING`
     );
-  } catch (e) {
-    console.error("getPaymentSettings insert", e);
+  } catch {
+    /* ignore */
   }
-
   return { ...DEFAULT_ROW };
 }
 
@@ -274,51 +255,43 @@ export async function savePaymentSettings(
 ): Promise<PaymentSettingsRow> {
   await ensurePaymentColumns();
   const cur = await getPaymentSettings();
-  const next: PaymentSettingsRow = {
-    ...cur,
-    ...patch,
-    id: "default",
-  };
+  const next: PaymentSettingsRow = { ...cur, ...patch, id: "default" };
 
-  try {
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO "PaymentSettings" (
-         id, enabled, pay_phone, pay_network,
-         price_week, price_month, price_year, price_once,
-         instructions, paid_categories, show_packages, points_ads_enabled, vpn_packages
-       ) VALUES (
-         'default', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
-       )
-       ON CONFLICT (id) DO UPDATE SET
-         enabled = EXCLUDED.enabled,
-         pay_phone = EXCLUDED.pay_phone,
-         pay_network = EXCLUDED.pay_network,
-         price_week = EXCLUDED.price_week,
-         price_month = EXCLUDED.price_month,
-         price_year = EXCLUDED.price_year,
-         price_once = EXCLUDED.price_once,
-         instructions = EXCLUDED.instructions,
-         paid_categories = EXCLUDED.paid_categories,
-         show_packages = EXCLUDED.show_packages,
-         points_ads_enabled = EXCLUDED.points_ads_enabled,
-         vpn_packages = EXCLUDED.vpn_packages`,
-      next.enabled,
-      next.payPhone || "",
-      next.payNetwork || "vodacom",
-      next.priceWeek,
-      next.priceMonth,
-      next.priceYear,
-      next.priceOnce,
-      next.instructions,
-      next.paidCategories || CONTENT_TYPES.join(","),
-      next.showPackages,
-      next.pointsAdsEnabled,
-      next.vpnPackages
-    );
-  } catch (e) {
-    console.error("savePaymentSettings", e);
-    throw e;
-  }
+  // Use tagged template (parameterized) — more reliable than Unsafe + $1
+  await prisma.$executeRaw`
+    INSERT INTO "PaymentSettings" (
+      id, enabled, pay_phone, pay_network,
+      price_week, price_month, price_year, price_once,
+      instructions, paid_categories, show_packages, points_ads_enabled, vpn_packages
+    ) VALUES (
+      'default',
+      ${next.enabled},
+      ${next.payPhone || ""},
+      ${next.payNetwork || "vodacom"},
+      ${next.priceWeek},
+      ${next.priceMonth},
+      ${next.priceYear},
+      ${next.priceOnce},
+      ${next.instructions},
+      ${next.paidCategories || CONTENT_TYPES.join(",")},
+      ${next.showPackages},
+      ${next.pointsAdsEnabled},
+      ${next.vpnPackages}
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      enabled = EXCLUDED.enabled,
+      pay_phone = EXCLUDED.pay_phone,
+      pay_network = EXCLUDED.pay_network,
+      price_week = EXCLUDED.price_week,
+      price_month = EXCLUDED.price_month,
+      price_year = EXCLUDED.price_year,
+      price_once = EXCLUDED.price_once,
+      instructions = EXCLUDED.instructions,
+      paid_categories = EXCLUDED.paid_categories,
+      show_packages = EXCLUDED.show_packages,
+      points_ads_enabled = EXCLUDED.points_ads_enabled,
+      vpn_packages = EXCLUDED.vpn_packages
+  `;
 
   return next;
 }
@@ -357,22 +330,40 @@ export function expiresForPlan(
   accessDays?: number | null
 ): Date | null {
   const d = new Date(from);
-  switch (plan) {
-    case "week":
-      d.setDate(d.getDate() + 7);
-      return d;
-    case "month":
-      d.setDate(d.getDate() + 30);
-      return d;
-    case "year":
-      d.setFullYear(d.getFullYear() + 1);
-      return d;
-    case "timed":
-      d.setDate(d.getDate() + (accessDays && accessDays > 0 ? accessDays : 7));
-      return d;
-    case "once":
-      return null;
-    default:
-      return null;
+  if (plan === "timed" && accessDays && accessDays > 0) {
+    d.setDate(d.getDate() + accessDays);
+    return d;
   }
+  if (plan === "week") {
+    d.setDate(d.getDate() + 7);
+    return d;
+  }
+  if (plan === "month") {
+    d.setMonth(d.getMonth() + 1);
+    return d;
+  }
+  if (plan === "year") {
+    d.setFullYear(d.getFullYear() + 1);
+    return d;
+  }
+  return null;
+}
+
+export async function userHasAccess(userId: string, contentId: string) {
+  try {
+    const now = new Date();
+    const rows = await prisma.userAccess.findMany({
+      where: {
+        userId,
+        OR: contentId ? [{ contentId }, { contentId: null }] : [{ contentId: null }],
+      },
+    });
+    for (const a of rows) {
+      if (!(a as { expiresAt?: Date | null }).expiresAt || (a as { expiresAt?: Date }).expiresAt! > now)
+        return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
