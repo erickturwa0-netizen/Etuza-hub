@@ -9,7 +9,7 @@ const TAG = "music-videos-enabled-v3";
  */
 export async function ensureMusicVideos(): Promise<number> {
   const src = await prisma.apiSource.findUnique({
-    where: { category: "music-video" },
+    where: { id: "sys_music_video" },
   });
 
   if (src?.notes === TAG) return 0;
@@ -40,8 +40,9 @@ export async function ensureMusicVideos(): Promise<number> {
   }
 
   await prisma.apiSource.upsert({
-    where: { category: "music-video" },
+    where: { id: "sys_music_video" },
     create: {
+      id: "sys_music_video",
       category: "music-video",
       name: "Music Videos (ytm.vrma.dev)",
       url: "https://ytm.vrma.dev/search?q=Diamond+Platnumz&type=videos",
