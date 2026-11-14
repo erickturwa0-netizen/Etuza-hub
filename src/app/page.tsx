@@ -3,6 +3,8 @@ import { ArrowRight, Play } from "lucide-react";
 import ContentCard from "@/components/ContentCard";
 import HomeHeroSlideshow, { type HeroSlide } from "@/components/HomeHeroSlideshow";
 import AiAgentCard from "@/components/AiAgentCard";
+import NewContentBanner from "@/components/NewContentBanner";
+import { getNewContentBanner } from "@/lib/catalog-sync";
 import { getPublishedContent } from "@/lib/content";
 import { contentCover } from "@/lib/covers";
 import { PINNED_CHANNELS } from "@/lib/iptv";
@@ -34,6 +36,7 @@ async function safeContent(type: Parameters<typeof getPublishedContent>[0]) {
 }
 
 export default async function HomePage() {
+  const banner = await getNewContentBanner().catch(() => null);
   const [movies, dramas, music, radios, games, vpns] = await Promise.all([
     safeContent("movie"),
     safeContent("drama"),
@@ -82,6 +85,12 @@ export default async function HomePage() {
       <section className="w-full">
         <HomeHeroSlideshow slides={slides} />
       </section>
+
+      {banner?.titles?.length ? (
+        <div className="max-w-7xl mx-auto px-3 sm:px-5 pt-3 relative z-10">
+          <NewContentBanner titles={banner.titles} />
+        </div>
+      ) : null}
 
       <section className="max-w-7xl mx-auto px-3 sm:px-5 -mt-2 sm:mt-4 relative z-10">
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
