@@ -187,11 +187,44 @@ function normalize(
   };
 }
 
+function mapPaymentRow(r: Record<string, unknown>): PaymentSettingsRow {
+  return normalize({
+    enabled: Boolean(r.enabled),
+    payPhone: String(r.pay_phone ?? r.payPhone ?? ""),
+    payNetwork: String(r.pay_network ?? r.payNetwork ?? "vodacom"),
+    priceWeek: Number(r.price_week ?? r.priceWeek ?? 2000),
+    priceMonth: Number(r.price_month ?? r.priceMonth ?? 5000),
+    priceYear: Number(r.price_year ?? r.priceYear ?? 40000),
+    priceOnce: Number(r.price_once ?? r.priceOnce ?? 1000),
+    instructions: (r.instructions as string) ?? null,
+    paidCategories: String(
+      r.paid_categories ?? r.paidCategories ?? CONTENT_TYPES.join(",")
+    ),
+    showPackages: Boolean(r.show_packages ?? r.showPackages ?? false),
+    pointsAdsEnabled: Boolean(
+      r.points_ads_enabled ?? r.pointsAdsEnabled ?? true
+    ),
+    vpnPackages:
+      (r.vpn_packages as string) ?? (r.vpnPackages as string) ?? null,
+  });
+}
+
 export async function ensurePaymentColumns() {
-  /* no DDL — permission denied for schema public */
+  /* DDL only via Prisma Console owner — app role has no CREATE */
 }
 
 export async function getPaymentSettings(): Promise<PaymentSettingsRow> {
+  // 1) PaymentSettings table (after owner CREATE)
+  try {
+    const rows = (await prisma.$queryRawUnsafe(
+      `SELECT * FROM "PaymentSettings" WHERE id = 'default' LIMIT 1`
+    )) as Record<string, unknown>[];
+    if (rows[0]) return mapPaymentRow(rows[0]);
+  } catch {
+    /* table may not exist yet */
+  }
+
+  // 2) ApiSource JSON fallback
   try {
     const rows = (await prisma.$queryRawUnsafe(
       `SELECT notes FROM "ApiSource" WHERE id = $1 LIMIT 1`,
@@ -204,76 +237,7 @@ export async function getPaymentSettings(): Promise<PaymentSettingsRow> {
     console.error("getPayment ApiSource", e);
   }
 
-  try {
-    const rows = (await prisma.$queryRawUnsafe(
-      `SELECT * FROM "PaymentSettings" WHERE id = 'default' LIMIT 1`
-    )) as Record<string, unknown>[];
-    if (rows[0]) {
-      const r = rows[0];
-      return normalize({
-        enabled: Boolean(r.enabled),
-        payPhone: String(r.pay_phone ?? r.payPhone ?? ""),
-        payNetwork: String(r.pay_network ?? r.payNetwork ?? "vodacom"),
-        priceWeek: Number(r.price_week ?? r.priceWeek ?? 2000),
-        priceMonth: Number(r.price_month ?? r.priceMonth ?? 5000),
-        priceYear: Number(r.price_year ?? r.priceYear ?? 40000),
-        priceOnce: Number(r.price_once ?? r.priceOnce ?? 1000),
-        instructions: (r.instructions as string) ?? null,
-        paidCategories: String(
-          r.paid_categories ?? r.paidCategories ?? CONTENT_TYPES.join(",")
-        ),
-        showPackages: Boolean(r.show_packages ?? r.showPackages ?? false),
-        pointsAdsEnabled: Boolean(
-          r.points_ads_enabled ?? r.pointsAdsEnabled ?? true
-        ),
-        vpnPackages:
-          (r.vpn_packages as string) ?? (r.vpnPackages as string) ?? null,
-      });
-    }
-  } catch {
-    /* ignore */
-  }
-
   return { ...DEFAULT_ROW };
-}
-
-async function upsertApiSourceNotes(id: string, name: string, notes: string) {
-  // Prisma client first — handles created_at/updated_at automatically
-  try {
-    await prisma.apiSource.upsert({
-      where: { id },
-      create: {
-        id,
-        category: "other",
-        name,
-        url: "",
-        enabled: true,
-        notes,
-      },
-      update: {
-        notes,
-        enabled: true,
-        name,
-      },
-    });
-    return;
-  } catch (e) {
-    console.error("apiSource upsert client", e);
-  }
-
-  // Raw with timestamps
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO "ApiSource" (id, category, name, url, enabled, notes, created_at, updated_at)
-     VALUES ($1, 'other', $2, '', true, $3, NOW(), NOW())
-     ON CONFLICT (id) DO UPDATE SET
-       notes = EXCLUDED.notes,
-       name = EXCLUDED.name,
-       enabled = true,
-       updated_at = NOW()`,
-    id,
-    name,
-    notes
-  );
 }
 
 export async function savePaymentSettings(
@@ -281,14 +245,67 @@ export async function savePaymentSettings(
 ): Promise<PaymentSettingsRow> {
   const cur = await getPaymentSettings();
   const next = normalize({ ...cur, ...patch });
-  const json = JSON.stringify(next);
 
+  // 1) Try PaymentSettings table
   try {
-    await upsertApiSourceNotes(PAY_SOURCE_ID, "Payment Settings", json);
+    await prisma.$executeRaw`
+      INSERT INTO "PaymentSettings" (
+        id, enabled, pay_phone, pay_network,
+        price_week, price_month, price_year, price_once,
+        instructions, paid_categories, show_packages, points_ads_enabled, vpn_packages
+      ) VALUES (
+        'default',
+        ${next.enabled},
+        ${next.payPhone},
+        ${next.payNetwork},
+        ${next.priceWeek},
+        ${next.priceMonth},
+        ${next.priceYear},
+        ${next.priceOnce},
+        ${next.instructions},
+        ${next.paidCategories},
+        ${next.showPackages},
+        ${next.pointsAdsEnabled},
+        ${next.vpnPackages}
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        enabled = EXCLUDED.enabled,
+        pay_phone = EXCLUDED.pay_phone,
+        pay_network = EXCLUDED.pay_network,
+        price_week = EXCLUDED.price_week,
+        price_month = EXCLUDED.price_month,
+        price_year = EXCLUDED.price_year,
+        price_once = EXCLUDED.price_once,
+        instructions = EXCLUDED.instructions,
+        paid_categories = EXCLUDED.paid_categories,
+        show_packages = EXCLUDED.show_packages,
+        points_ads_enabled = EXCLUDED.points_ads_enabled,
+        vpn_packages = EXCLUDED.vpn_packages
+    `;
     return next;
-  } catch (e) {
-    console.error("savePaymentSettings", e);
-    throw e;
+  } catch (e1) {
+    console.error("save PaymentSettings table", e1);
+  }
+
+  // 2) ApiSource fallback
+  const json = JSON.stringify(next);
+  try {
+    await prisma.apiSource.upsert({
+      where: { id: PAY_SOURCE_ID },
+      create: {
+        id: PAY_SOURCE_ID,
+        category: "other",
+        name: "Payment Settings",
+        url: "",
+        enabled: true,
+        notes: json,
+      },
+      update: { notes: json, enabled: true },
+    });
+    return next;
+  } catch (e2) {
+    console.error("save payment ApiSource", e2);
+    throw e2;
   }
 }
 
@@ -357,8 +374,7 @@ export async function userHasAccess(userId: string, contentId: string) {
       },
     });
     for (const a of rows) {
-      const exp = (a as { expiresAt?: Date | null }).expiresAt;
-      if (!exp || exp > now) return true;
+      if (!a.expiresAt || a.expiresAt > now) return true;
     }
   } catch {
     /* ignore */

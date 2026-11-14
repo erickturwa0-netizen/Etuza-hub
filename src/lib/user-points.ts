@@ -22,7 +22,6 @@ async function readMap(): Promise<PointsMap> {
 
 async function writeMap(map: PointsMap): Promise<void> {
   const json = JSON.stringify(map);
-
   try {
     await prisma.apiSource.upsert({
       where: { id: POINTS_SOURCE_ID },
@@ -36,20 +35,13 @@ async function writeMap(map: PointsMap): Promise<void> {
       },
       update: { notes: json },
     });
-    return;
   } catch (e) {
-    console.error("writePointsMap client", e);
+    console.error("writePointsMap", e);
+    throw e;
   }
-
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO "ApiSource" (id, category, name, url, enabled, notes, created_at, updated_at)
-     VALUES ($1, 'other', 'User Points Store', '', true, $2, NOW(), NOW())
-     ON CONFLICT (id) DO UPDATE SET notes = $2, updated_at = NOW()`,
-    POINTS_SOURCE_ID,
-    json
-  );
 }
 
+/** DB already has User.points — use it first */
 export async function getUserPoints(userId: string): Promise<number> {
   try {
     const rows = (await prisma.$queryRawUnsafe(
@@ -60,7 +52,7 @@ export async function getUserPoints(userId: string): Promise<number> {
       return Number(rows[0].points) || 0;
     }
   } catch {
-    /* column missing */
+    /* ignore */
   }
   const map = await readMap();
   return Number(map[userId] ?? 0) || 0;
@@ -78,14 +70,6 @@ export async function setUserPoints(
       value,
       userId
     );
-    // also mirror to map so list always sees it
-    try {
-      const map = await readMap();
-      map[userId] = value;
-      await writeMap(map);
-    } catch {
-      /* ignore mirror */
-    }
     return value;
   } catch (e) {
     console.error("setUserPoints column", e);
@@ -108,20 +92,8 @@ export async function addUserPoints(
 export async function attachPointsToUsers<
   T extends { id: string; points?: number }
 >(users: T[]): Promise<(T & { points: number })[]> {
-  let map: PointsMap = {};
-  try {
-    map = await readMap();
-  } catch {
-    /* ignore */
-  }
-
-  return users.map((u) => {
-    const fromCol = Number(u.points);
-    const fromMap = Number(map[u.id]);
-    let points = 0;
-    if (Number.isFinite(fromMap) && fromMap > 0) points = fromMap;
-    else if (Number.isFinite(fromCol)) points = fromCol || 0;
-    else if (Number.isFinite(fromMap)) points = fromMap || 0;
-    return { ...u, points };
-  });
+  return users.map((u) => ({
+    ...u,
+    points: Number(u.points ?? 0) || 0,
+  }));
 }
