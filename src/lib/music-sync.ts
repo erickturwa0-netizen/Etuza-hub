@@ -4,6 +4,8 @@ import { contentCover } from "@/lib/covers";
 
 const TAG = "music-auto-scrape-v2";
 const MIN_SONGS = 40;
+const MUSIC_SCRAPE_ID = "sys_music_scrape";
+const MUSIC_SOURCE_ID = "sys_music_source";
 
 /**
  * Auto-scrape when music catalog is thin.
@@ -17,9 +19,23 @@ export async function ensureMusicCatalog(): Promise<{
     where: { type: "music", status: "published" },
   });
 
-  const meta = await prisma.apiSource.findUnique({
-    where: { category: "music-scrape" },
-  });
+  let meta: { notes: string | null } | null = null;
+  try {
+    meta = await prisma.apiSource.findUnique({
+      where: { id: MUSIC_SCRAPE_ID },
+    });
+  } catch {
+    try {
+      const rows = (await prisma.$queryRawUnsafe(
+        `SELECT notes FROM "ApiSource" WHERE id = $1 OR category = $2 LIMIT 1`,
+        MUSIC_SCRAPE_ID,
+        "music-scrape"
+      )) as { notes: string | null }[];
+      meta = rows[0] || null;
+    } catch {
+      meta = null;
+    }
+  }
 
   let lastAt = 0;
   try {
@@ -73,49 +89,88 @@ export async function syncNewMusic(): Promise<{ added: number; total: number }> 
 
   for (let i = 0; i < toInsert.length; i += BATCH) {
     const batch = toInsert.slice(i, i + BATCH);
-    await prisma.content.createMany({
-      data: batch.map((item) => ({
-        type: "music",
-        title: item.title.slice(0, 200),
-        description: item.description,
-        linkUrl: item.linkUrl,
-        coverUrl: item.coverUrl || contentCover("music", item.title, null),
-        linkType: "stream",
-        category: item.category?.slice(0, 100) || "Music",
-        status: "published",
-      })),
-      skipDuplicates: true,
-    });
-    added += batch.length;
+    try {
+      await prisma.content.createMany({
+        data: batch.map((item) => ({
+          type: "music",
+          title: item.title.slice(0, 200),
+          description: item.description,
+          linkUrl: item.linkUrl,
+          coverUrl: item.coverUrl || contentCover("music", item.title, null),
+          linkType: "stream",
+          category: item.category?.slice(0, 100) || "Music",
+          status: "published",
+        })),
+        skipDuplicates: true,
+      });
+      added += batch.length;
+    } catch (e) {
+      console.error("music createMany", e);
+      // Fallback: insert one by one without optional columns
+      for (const item of batch) {
+        try {
+          await prisma.$executeRawUnsafe(
+            `INSERT INTO "Content" (id, type, title, description, link_url, cover_url, link_type, category, status, created_at, updated_at)
+             VALUES ($1, 'music', $2, $3, $4, $5, 'stream', $6, 'published', NOW(), NOW())
+             ON CONFLICT DO NOTHING`,
+            `music_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+            item.title.slice(0, 200),
+            item.description || null,
+            item.linkUrl,
+            item.coverUrl || contentCover("music", item.title, null),
+            item.category?.slice(0, 100) || "Music"
+          );
+          added += 1;
+        } catch {
+          /* skip row */
+        }
+      }
+    }
   }
 
-  await prisma.apiSource.upsert({
-    where: { category: "music-scrape" },
-    create: {
-      category: "music-scrape",
-      name: "Music auto-scrape",
-      url: "itunes+ytm+freetouse",
-      notes: JSON.stringify({ at: new Date().toISOString(), tag: TAG, added }),
-      enabled: true,
-    },
-    update: {
-      notes: JSON.stringify({ at: new Date().toISOString(), tag: TAG, added }),
-      enabled: true,
-      url: "itunes+ytm+freetouse",
-    },
+  const notes = JSON.stringify({
+    at: new Date().toISOString(),
+    tag: TAG,
+    added,
   });
 
-  await prisma.apiSource.upsert({
-    where: { category: "music" },
-    create: {
-      category: "music",
-      name: "Music multi-source",
-      url: "https://ytm.vrma.dev/search?q=Diamond+Platnumz&type=videos",
-      notes: TAG,
-      enabled: true,
-    },
-    update: { enabled: true, notes: TAG },
-  });
+  try {
+    await prisma.apiSource.upsert({
+      where: { id: MUSIC_SCRAPE_ID },
+      create: {
+        id: MUSIC_SCRAPE_ID,
+        category: "music-scrape",
+        name: "Music auto-scrape",
+        url: "itunes+ytm+freetouse",
+        notes,
+        enabled: true,
+      },
+      update: {
+        notes,
+        enabled: true,
+        url: "itunes+ytm+freetouse",
+      },
+    });
+  } catch (e) {
+    console.error("music scrape meta", e);
+  }
+
+  try {
+    await prisma.apiSource.upsert({
+      where: { id: MUSIC_SOURCE_ID },
+      create: {
+        id: MUSIC_SOURCE_ID,
+        category: "music",
+        name: "Music multi-source",
+        url: "https://ytm.vrma.dev/search?q=Diamond+Platnumz&type=videos",
+        notes: TAG,
+        enabled: true,
+      },
+      update: { enabled: true, notes: TAG },
+    });
+  } catch (e) {
+    console.error("music source meta", e);
+  }
 
   const total = await prisma.content.count({
     where: { type: "music", status: "published" },
