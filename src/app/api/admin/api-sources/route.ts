@@ -32,7 +32,6 @@ function newId(prefix = "api") {
     .slice(2, 10)}`;
 }
 
-const TMDB_KEY = process.env.TMDB_API_KEY || "";
 const ELITEPLEX_SERIES = "https://eliteplex-api.vercel.app/api/series";
 const IPTV_M3U = "https://iptv-org.github.io/iptv/index.m3u";
 const MODOBO_TV = "https://cdn.apisfast.top/api/v1/channels";
@@ -102,45 +101,61 @@ async function createApiSource(data: {
   notes?: string | null;
 }) {
   const id = newId("src");
+  const payload = {
+    id,
+    category: data.category,
+    name: data.name,
+    url: data.url || "",
+    enabled: data.enabled ?? true,
+    notes: data.notes ?? null,
+  };
   try {
-    return await prisma.apiSource.create({
-      data: {
-        id,
-        category: data.category,
-        name: data.name,
-        url: data.url || "",
-        enabled: data.enabled ?? true,
-        notes: data.notes ?? null,
-      },
-    });
+    return await prisma.apiSource.create({ data: payload });
   } catch (e1) {
-    console.error("apiSource.create", e1);
-    // Raw SQL fallback (DB may lack prisma defaults)
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO "ApiSource" (id, category, name, url, enabled, notes, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-       ON CONFLICT (id) DO UPDATE SET
-         category = EXCLUDED.category,
-         name = EXCLUDED.name,
-         url = EXCLUDED.url,
-         enabled = EXCLUDED.enabled,
-         notes = EXCLUDED.notes,
-         updated_at = NOW()`,
-      id,
-      data.category,
-      data.name,
-      data.url || "",
-      data.enabled ?? true,
-      data.notes ?? null
-    );
-    return {
-      id,
-      category: data.category,
-      name: data.name,
-      url: data.url || "",
-      enabled: data.enabled ?? true,
-      notes: data.notes ?? null,
-    };
+    const msg = e1 instanceof Error ? e1.message : String(e1);
+    console.error("apiSource.create", msg);
+    if (/unique|category/i.test(msg)) {
+      try {
+        const existing = await prisma.apiSource.findFirst({
+          where: { category: data.category },
+        });
+        if (existing) {
+          return await prisma.apiSource.update({
+            where: { id: existing.id },
+            data: {
+              name: data.name,
+              url: data.url || existing.url,
+              enabled: data.enabled ?? true,
+              notes: data.notes ?? existing.notes,
+            },
+          });
+        }
+      } catch (e2) {
+        console.error("apiSource.update by category", e2);
+      }
+    }
+    try {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "ApiSource" (id, category, name, url, enabled, notes, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           url = EXCLUDED.url,
+           enabled = EXCLUDED.enabled,
+           notes = EXCLUDED.notes,
+           updated_at = NOW()`,
+        id,
+        data.category,
+        data.name,
+        data.url || "",
+        data.enabled ?? true,
+        data.notes ?? null
+      );
+      return payload;
+    } catch (e3) {
+      console.error("apiSource raw", e3);
+      throw e1;
+    }
   }
 }
 
@@ -267,7 +282,6 @@ export async function PUT(req: Request) {
       if (url && (!category || d.autoDetect !== false)) {
         const det = detectApiCategoryFromUrl(url);
         if (!category) category = det.category;
-        // refine from sample JSON in notes
         if (d.notes) {
           try {
             const sample = JSON.parse(
