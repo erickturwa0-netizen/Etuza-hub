@@ -26,15 +26,17 @@ export const API_CATEGORIES = [
 
 export type ApiCategory = (typeof API_CATEGORIES)[number];
 
+function newId(prefix = "api") {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+}
+
 const TMDB_KEY = process.env.TMDB_API_KEY || "";
-const ELITEPLEX_MOVIES = "https://eliteplex-api.vercel.app/api/movies";
 const ELITEPLEX_SERIES = "https://eliteplex-api.vercel.app/api/series";
 const IPTV_M3U = "https://iptv-org.github.io/iptv/index.m3u";
 const MODOBO_TV = "https://cdn.apisfast.top/api/v1/channels";
 const EASYAPI_TV = "https://easyapi.sh/live-tv/api/v1/channel-visibility";
-const TMDB_POPULAR = TMDB_KEY
-  ? `https://api.themoviedb.org/3/movie/popular?api_key=${TMDB_KEY}&language=en-US&page=1`
-  : "";
 
 const DEFAULTS: {
   category: ApiCategory;
@@ -79,7 +81,9 @@ const DEFAULTS: {
   {
     category: "game",
     name: "FreeToGame Browser",
-    url: PUBLIC_API.game?.url || "https://www.freetogame.com/api/games?platform=browser&sort-by=popularity",
+    url:
+      PUBLIC_API.game?.url ||
+      "https://www.freetogame.com/api/games?platform=browser&sort-by=popularity",
     notes: "FreeToGame",
   },
   {
@@ -90,20 +94,79 @@ const DEFAULTS: {
   },
 ];
 
+async function createApiSource(data: {
+  category: string;
+  name: string;
+  url: string;
+  enabled?: boolean;
+  notes?: string | null;
+}) {
+  const id = newId("src");
+  try {
+    return await prisma.apiSource.create({
+      data: {
+        id,
+        category: data.category,
+        name: data.name,
+        url: data.url || "",
+        enabled: data.enabled ?? true,
+        notes: data.notes ?? null,
+      },
+    });
+  } catch (e1) {
+    console.error("apiSource.create", e1);
+    // Raw SQL fallback (DB may lack prisma defaults)
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO "ApiSource" (id, category, name, url, enabled, notes, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         category = EXCLUDED.category,
+         name = EXCLUDED.name,
+         url = EXCLUDED.url,
+         enabled = EXCLUDED.enabled,
+         notes = EXCLUDED.notes,
+         updated_at = NOW()`,
+      id,
+      data.category,
+      data.name,
+      data.url || "",
+      data.enabled ?? true,
+      data.notes ?? null
+    );
+    return {
+      id,
+      category: data.category,
+      name: data.name,
+      url: data.url || "",
+      enabled: data.enabled ?? true,
+      notes: data.notes ?? null,
+    };
+  }
+}
+
 async function ensureDefaults() {
-  await ensureUserSchema();
+  try {
+    await ensureUserSchema();
+  } catch {
+    /* ignore */
+  }
   for (const d of DEFAULTS) {
-    const rows = await prisma.apiSource.findMany({ where: { category: d.category } });
-    if (rows.length === 0) {
-      await prisma.apiSource.create({
-        data: {
+    try {
+      const rows = await prisma.apiSource.findMany({
+        where: { category: d.category },
+        take: 1,
+      });
+      if (rows.length === 0) {
+        await createApiSource({
           category: d.category,
           name: d.name,
           url: d.url,
-          enabled: true,
           notes: d.notes,
-        },
-      });
+          enabled: true,
+        });
+      }
+    } catch (e) {
+      console.error("ensureDefaults", d.category, e);
     }
   }
 }
@@ -147,7 +210,13 @@ export async function GET() {
     });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Failed", sources: [] }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: err instanceof Error ? err.message : "Failed",
+        sources: [],
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -172,31 +241,43 @@ export async function PUT(req: Request) {
     if (!session || session.role !== "admin") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    await ensureUserSchema();
+    try {
+      await ensureUserSchema();
+    } catch {
+      /* ignore */
+    }
+
     const body = await req.json();
     const list = Array.isArray(body.sources) ? body.sources : [body];
-    const updated = [];
+    const updated: ReturnType<typeof maskRow>[] = [];
+    const errors: string[] = [];
+
     for (const raw of list) {
       const parsed = itemSchema.safeParse(raw);
-      if (!parsed.success) continue;
+      if (!parsed.success) {
+        errors.push(parsed.error.issues.map((i) => i.message).join("; "));
+        continue;
+      }
       const d = parsed.data;
       const url = isMaskedUrl(d.url) ? undefined : d.url;
 
-      let category = d.category;
+      let category = d.category as ApiCategory | undefined;
       let name = d.name?.trim();
+
       if (url && (!category || d.autoDetect !== false)) {
         const det = detectApiCategoryFromUrl(url);
         if (!category) category = det.category;
-      }
-      if (d.notes && (!category || category === "other")) {
-        try {
-          const j = JSON.parse(
-            d.notes.replace(/^Status:\s*\d+\s*/i, "").trim()
-          );
-          category = refineCategoryFromPayload(j, category || "other");
-        } catch {
-          if (/taskId|horde|kudos|sonu|mureka|wrmgpt/i.test(d.notes || "")) {
-            category = "ai";
+        // refine from sample JSON in notes
+        if (d.notes) {
+          try {
+            const sample = JSON.parse(
+              d.notes.replace(/^Status:\s*\d+\s*/i, "").trim()
+            );
+            category = refineCategoryFromPayload(sample, category || "other");
+          } catch {
+            if (/taskId|horde|kudos|sonu|mureka|wrmgpt|nicevoice|wan-fast/i.test(d.notes)) {
+              category = "ai";
+            }
           }
         }
       }
@@ -204,57 +285,90 @@ export async function PUT(req: Request) {
       if (!name && url) name = suggestNameFromUrl(url, category);
       if (!name) name = category;
 
-      if (d.id) {
-        const row = await prisma.apiSource.update({
-          where: { id: d.id },
-          data: {
-            category,
-            name,
-            ...(url !== undefined ? { url } : {}),
-            ...(d.enabled !== undefined ? { enabled: d.enabled } : {}),
-            ...(d.notes !== undefined ? { notes: d.notes } : {}),
-          },
-        });
-        updated.push(maskRow(row));
-      } else {
-        if (!url) continue;
-        const row = await prisma.apiSource.create({
-          data: {
+      try {
+        if (d.id) {
+          const row = await prisma.apiSource.update({
+            where: { id: d.id },
+            data: {
+              category,
+              name,
+              ...(url !== undefined ? { url } : {}),
+              ...(d.enabled !== undefined ? { enabled: d.enabled } : {}),
+              ...(d.notes !== undefined ? { notes: d.notes } : {}),
+            },
+          });
+          updated.push(maskRow(row));
+        } else {
+          if (!url) {
+            errors.push("URL inahitajika");
+            continue;
+          }
+          const row = await createApiSource({
             category,
             name,
             url,
             enabled: d.enabled ?? true,
             notes: d.notes || null,
-          },
-        });
-        let importNote = "";
-        if (category !== "ai") {
-          try {
-            const imp = await importFromApiSource({
-              url,
-              category,
-              notes: d.notes,
-            });
-            importNote = imp.imported
-              ? `imported:${imp.imported}`
-              : imp.error
-                ? `err:${imp.error}`
-                : "imported:0";
-          } catch (e) {
-            console.error("importFromApiSource", e);
+          });
+
+          let importNote = "";
+          if (category !== "ai" && category !== "other") {
+            try {
+              const imp = await importFromApiSource({
+                url,
+                category,
+                notes: d.notes,
+              });
+              importNote = imp.imported
+                ? `imported:${imp.imported}`
+                : imp.error
+                  ? `err:${imp.error}`
+                  : "imported:0";
+            } catch (e) {
+              console.error("importFromApiSource", e);
+              importNote = "err:import-failed";
+            }
+          } else if (category === "ai") {
+            importNote = "ai-capability-registered";
           }
+
+          updated.push({
+            ...maskRow(row as Parameters<typeof maskRow>[0]),
+            notes: [row.notes, importNote].filter(Boolean).join(" | ").slice(0, 500),
+          });
         }
-        updated.push({
-          ...maskRow(row),
-          notes: [row.notes, importNote].filter(Boolean).join(" | ").slice(0, 500),
-        });
+      } catch (e) {
+        console.error("save source", e);
+        errors.push(e instanceof Error ? e.message : String(e));
       }
     }
-    await ensureDefaults();
-    return NextResponse.json({ sources: updated });
+
+    try {
+      await ensureDefaults();
+    } catch {
+      /* ignore */
+    }
+
+    if (!updated.length && errors.length) {
+      return NextResponse.json(
+        { error: errors[0] || "Failed to save", sources: [], hint: errors.join(" | ") },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      sources: updated,
+      hint: errors.length ? errors.join(" | ") : undefined,
+    });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Failed to save" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: err instanceof Error ? err.message : "Failed to save",
+        sources: [],
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -277,6 +391,9 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Failed to delete" }, { status: 500 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to delete" },
+      { status: 500 }
+    );
   }
 }

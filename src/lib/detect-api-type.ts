@@ -15,7 +15,7 @@ export type DetectedApiCategory =
 
 const RULES: { re: RegExp; category: DetectedApiCategory; label: string }[] = [
   {
-    re: /\/ai\/|freeimage|horde|nicevoice|sonu|wrmgpt|wormgpt|wan-fast|\/ai\b|openai|inception/i,
+    re: /\/ai\/|freeimage|horde|nicevoice|sonu|wrmgpt|wormgpt|wan-fast|\/ai\b|openai|inception|elevenlabs|voice|image.?gen|video.?gen|mureka|replicate/i,
     category: "ai",
     label: "AI",
   },
@@ -91,8 +91,9 @@ export function refineCategoryFromPayload(
     if (/previewurl|trackname|artistname|itunes/.test(s)) return "music";
     if (/station|bitrate|codec/.test(s)) return "radio";
     if (
-      /kudos|horde|image_url|audio_url|tasksn|taskid/.test(s) &&
-      /ai|prompt/.test(s)
+      /kudos|horde|image_url|audio_url|tasksn|taskid|video_url|mureka|elevenlabs/.test(
+        s
+      )
     )
       return "ai";
     if (/imdb|poster_path|release_date|runtime/.test(s)) return "movie";
@@ -102,20 +103,26 @@ export function refineCategoryFromPayload(
   return fallback;
 }
 
-export function suggestNameFromUrl(url: string, category: string): string {
+export function suggestNameFromUrl(
+  url: string,
+  category: DetectedApiCategory
+): string {
   try {
-    const u = new URL(url.startsWith("http") ? url : `https://${url}`);
-    const host = u.hostname.replace(/^www\./, "");
-    const path = u.pathname.split("/").filter(Boolean).slice(0, 3).join("/");
-    const base = path || host;
-    const cat =
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    const path = new URL(url).pathname.split("/").filter(Boolean).slice(0, 3);
+    const label =
       category === "drama"
-        ? "Anime/Tamthilia"
-        : category === "ai"
-          ? "AI"
-          : category;
-    return `${cat} · ${base}`.slice(0, 80);
+        ? "Tamthilia"
+        : category === "movie"
+          ? "Movies"
+          : category === "ai"
+            ? "AI"
+            : category;
+    return `${label} · ${host}${path.length ? " / " + path.join("/") : ""}`.slice(
+      0,
+      80
+    );
   } catch {
-    return `API · ${category}`;
+    return category;
   }
 }
