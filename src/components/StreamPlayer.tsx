@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { detectSocial } from "@/lib/social-embed";
+import {
+  parseEmbed,
+  buildProviders,
+  providerLabel,
+} from "@/lib/embed-servers";
 import { Play, ExternalLink, RefreshCw, Server } from "lucide-react";
 import { usePlaybackCharge } from "@/components/PreRollGate";
 
@@ -44,39 +49,6 @@ function markStream(contentId: string, status: "ok" | "bad") {
   }).catch(() => {});
 }
 
-function parseEmbed(url: string): { id: string; kind: "movie" | "tv" } | null {
-  try {
-    const u = url.trim();
-    const mMovie = u.match(
-      /(?:vidsrc\.[\w.]+|vsembed\.ru|2embed\.[\w.]+|embed\.su|multiembed\.mov|moviesapi\.club|vidlink\.pro|autoembed\.[\w.]+|player\.videasy\.net|embedsito\.[\w.]+|vidsrc\.icu|vidsrc\.nl)[\/\?](?:embed\/?)?(?:movie|film)\/?(\d+)/i
-    );
-    if (mMovie) return { id: mMovie[1], kind: "movie" };
-    const mTv = u.match(
-      /(?:vidsrc\.[\w.]+|vsembed\.ru|2embed\.[\w.]+|embed\.su|vidlink\.pro|autoembed\.[\w.]+)[\/\?](?:embed\/?)?(?:tv|series)\/?(\d+)/i
-    );
-    if (mTv) return { id: mTv[1], kind: "tv" };
-  } catch {
-    /* ignore */
-  }
-  return null;
-}
-
-function buildProviders(id: string, kind: "movie" | "tv"): string[] {
-  if (kind === "tv") {
-    return [
-      `https://vidsrc.to/embed/tv/${id}`,
-      `https://vidsrc.xyz/embed/tv/${id}`,
-      `https://vidsrc.me/embed/tv/${id}`,
-    ];
-  }
-  return [
-    `https://vidsrc.to/embed/movie/${id}`,
-    `https://vidsrc.xyz/embed/movie/${id}`,
-    `https://vidsrc.me/embed/movie/${id}`,
-    `https://vidsrc.pm/embed/movie/${id}`,
-  ];
-}
-
 export default function StreamPlayer({
   src,
   poster,
@@ -98,11 +70,13 @@ export default function StreamPlayer({
 
   const parsed = useMemo(() => parseEmbed(raw), [raw]);
   const providers = useMemo(
-    () => (parsed ? buildProviders(parsed.id, parsed.kind) : []),
+    () =>
+      parsed ? buildProviders(parsed.id, parsed.kind, parsed.imdb) : [],
     [parsed]
   );
   const [providerIdx, setProviderIdx] = useState(0);
   const [error, setError] = useState("");
+  const [showAll, setShowAll] = useState(false);
 
   const onRealPlay = useCallback(() => {
     try {
@@ -118,11 +92,15 @@ export default function StreamPlayer({
     if (providers.length) {
       return providers[Math.min(providerIdx, providers.length - 1)];
     }
-    if (/vidsrc\.|vsembed/i.test(raw) && parsed) {
-      return buildProviders(parsed.id, parsed.kind)[0];
+    if (/vidsrc\.|vsembed|2embed|embed\.su|vidlink|autoembed/i.test(raw) && parsed) {
+      return buildProviders(parsed.id, parsed.kind, parsed.imdb)[0];
     }
-    // iframe-able http(s) pages (omegatech stream, embeds)
-    if (/^https?:\/\//i.test(raw) && !isHls(raw) && !isDirect(raw) && !blocksIframe(raw)) {
+    if (
+      /^https?:\/\//i.test(raw) &&
+      !isHls(raw) &&
+      !isDirect(raw) &&
+      !blocksIframe(raw)
+    ) {
       return raw;
     }
     return null;
@@ -158,6 +136,7 @@ export default function StreamPlayer({
   const box = "relative w-full aspect-video bg-black";
 
   if (activeEmbed) {
+    const total = Math.max(providers.length, 1);
     return (
       <div className="space-y-2 w-full max-w-full overflow-hidden">
         <div className={box}>
@@ -176,24 +155,69 @@ export default function StreamPlayer({
             onError={() => fail("Embed imeshindwa.")}
           />
         </div>
-        {providers.length > 1 && (
-          <div className="rounded-xl border border-slate-700 bg-slate-900/90 p-2.5 space-y-2">
-            <p className="text-[11px] text-amber-200/95 leading-relaxed bg-amber-500/10 border border-amber-500/25 rounded-lg px-2.5 py-2">
-              <b>Video haichezi?</b> Bonyeza <b>Badilisha server</b>.
-            </p>
+
+        <div className="rounded-xl border border-slate-700 bg-slate-900/90 p-2.5 space-y-2">
+          <p className="text-[11px] text-amber-200/95 leading-relaxed bg-amber-500/10 border border-amber-500/25 rounded-lg px-2.5 py-2">
+            <b>Video haichezi?</b> Bonyeza <b>Badilisha server</b> au chagua
+            server nyingine hapa chini ({total} servers).
+          </p>
+
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => {
-                setProviderIdx((i) => (i + 1) % providers.length);
+                setProviderIdx((i) => (i + 1) % total);
                 setError("");
               }}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-600 text-white text-[11px] font-semibold"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-600 text-white text-[11px] font-semibold"
             >
-              <RefreshCw className="w-3 h-3" /> Badilisha server ({providerIdx + 1}/
-              {providers.length})
+              <RefreshCw className="w-3 h-3" /> Badilisha server ({" "}
+              {providerIdx + 1}/{total})
             </button>
+            {providers.length > 8 && (
+              <button
+                type="button"
+                onClick={() => setShowAll((v) => !v)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-700 text-slate-200 text-[11px]"
+              >
+                <Server className="w-3 h-3" />{" "}
+                {showAll ? "Ficha orodha" : "Orodha yote"}
+              </button>
+            )}
           </div>
-        )}
+
+          {providers.length > 1 && (
+            <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+              {(showAll ? providers : providers.slice(0, 24)).map((p, i) => (
+                <button
+                  key={p + i}
+                  type="button"
+                  onClick={() => {
+                    setProviderIdx(i);
+                    setError("");
+                  }}
+                  className={`px-2 py-1 rounded-md text-[10px] border ${
+                    i === providerIdx
+                      ? "bg-violet-600 border-violet-400 text-white"
+                      : "bg-slate-800 border-slate-700 text-slate-300"
+                  }`}
+                >
+                  {providerLabel(p, i)}
+                </button>
+              ))}
+              {!showAll && providers.length > 24 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAll(true)}
+                  className="px-2 py-1 rounded-md text-[10px] border border-slate-600 text-slate-400"
+                >
+                  +{providers.length - 24} zaidi
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
         {error && <p className="text-xs text-red-300">{error}</p>}
       </div>
     );
