@@ -141,18 +141,22 @@ async function saveNewContentBanner(titles: string[]) {
     titles: titles.slice(0, 12),
     at: new Date().toISOString(),
   });
-  await prisma.apiSource.upsert({
-    where: { id: "sys_new_content_banner" },
-    create: {
-      id: "sys_new_content_banner",
-      category: "new_content_banner",
-      name: "New content banner",
-      url: "",
-      notes: payload,
-      enabled: true,
-    },
-    update: { notes: payload, enabled: true },
-  });
+  try {
+    await prisma.apiSource.upsert({
+      where: { id: "sys_new_content_banner" },
+      create: {
+        id: "sys_new_content_banner",
+        category: "new_content_banner",
+        name: "New content banner",
+        url: "",
+        notes: payload,
+        enabled: true,
+      },
+      update: { notes: payload, enabled: true },
+    });
+  } catch (e) {
+    console.error("saveNewContentBanner", e);
+  }
 }
 
 export async function getNewContentBanner(): Promise<{
@@ -209,25 +213,29 @@ export async function syncNewMovies(): Promise<{
     if (!/^\d{2,7}$/.test(id) || !title || have.has(id)) continue;
     const y = yearNum(row.year);
     if (y && y > MAX_PLAYABLE_YEAR) continue;
-    await prisma.content.create({
-      data: {
-        type: "movie",
-        title: title.slice(0, 200),
-        description: row.overview
-          ? String(row.overview).slice(0, 500)
-          : y
-            ? `Year ${y}`
-            : null,
-        linkUrl: `https://player.videasy.to/movie/${id}`,
-        coverUrl: row.poster || null,
-        linkType: "stream",
-        category: y ? `Movie · ${y}` : "Movie",
-        status: "published",
-      },
-    });
-    have.add(id);
-    added++;
-    titles.push(title);
+    try {
+      await prisma.content.create({
+        data: {
+          type: "movie",
+          title: title.slice(0, 200),
+          description: row.overview
+            ? String(row.overview).slice(0, 500)
+            : y
+              ? `Year ${y}`
+              : null,
+          linkUrl: `https://player.videasy.to/movie/${id}`,
+          coverUrl: row.poster || null,
+          linkType: "stream",
+          category: y ? `Movie · ${y}` : "Movie",
+          status: "published",
+        },
+      });
+      have.add(id);
+      added++;
+      titles.push(title);
+    } catch (e) {
+      console.error("movie create", title, e);
+    }
   }
 
   for (const m of tmdbMovies) {
@@ -241,21 +249,25 @@ export async function syncNewMovies(): Promise<{
       ? `https://image.tmdb.org/t/p/w500${m.poster_path}`
       : null;
 
-    await prisma.content.create({
-      data: {
-        type: "movie",
-        title: title.slice(0, 200),
-        description: m.overview ? String(m.overview).slice(0, 500) : null,
-        linkUrl: `https://player.videasy.to/movie/${id}`,
-        coverUrl: poster,
-        linkType: "stream",
-        category: y ? `Movie · ${y}` : "Movie",
-        status: "published",
-      },
-    });
-    have.add(id);
-    added++;
-    titles.push(title);
+    try {
+      await prisma.content.create({
+        data: {
+          type: "movie",
+          title: title.slice(0, 200),
+          description: m.overview ? String(m.overview).slice(0, 500) : null,
+          linkUrl: `https://player.videasy.to/movie/${id}`,
+          coverUrl: poster,
+          linkType: "stream",
+          category: y ? `Movie · ${y}` : "Movie",
+          status: "published",
+        },
+      });
+      have.add(id);
+      added++;
+      titles.push(title);
+    } catch (e) {
+      console.error("tmdb movie create", title, e);
+    }
   }
 
   if (titles.length) await saveNewContentBanner(titles);
@@ -299,21 +311,25 @@ export async function syncNewDrama(): Promise<{
     if (!/^\d{2,7}$/.test(id) || !title || haveIds.has(id)) continue;
     const y = yearNum(row.year);
     if (y && y > MAX_PLAYABLE_YEAR) continue;
-    await prisma.content.create({
-      data: {
-        type: "drama",
-        title: title.slice(0, 200),
-        description: row.overview ? String(row.overview).slice(0, 500) : null,
-        linkUrl: `https://player.videasy.to/tv/${id}`,
-        coverUrl: row.poster || null,
-        linkType: "stream",
-        category: y ? `Series · ${y}` : "Series",
-        status: "published",
-      },
-    });
-    haveIds.add(id);
-    added++;
-    titles.push(title);
+    try {
+      await prisma.content.create({
+        data: {
+          type: "drama",
+          title: title.slice(0, 200),
+          description: row.overview ? String(row.overview).slice(0, 500) : null,
+          linkUrl: `https://player.videasy.to/tv/${id}`,
+          coverUrl: row.poster || null,
+          linkType: "stream",
+          category: y ? `Series · ${y}` : "Series",
+          status: "published",
+        },
+      });
+      haveIds.add(id);
+      added++;
+      titles.push(title);
+    } catch (e) {
+      console.error("drama create", title, e);
+    }
   }
 
   for (const m of tmdbTv) {
@@ -325,21 +341,25 @@ export async function syncNewDrama(): Promise<{
     const poster = m.poster_path
       ? `https://image.tmdb.org/t/p/w500${m.poster_path}`
       : null;
-    await prisma.content.create({
-      data: {
-        type: "drama",
-        title: title.slice(0, 200),
-        description: m.overview ? String(m.overview).slice(0, 500) : null,
-        linkUrl: `https://player.videasy.to/tv/${id}`,
-        coverUrl: poster,
-        linkType: "stream",
-        category: y ? `Series · ${y}` : "Series",
-        status: "published",
-      },
-    });
-    haveIds.add(id);
-    added++;
-    titles.push(title);
+    try {
+      await prisma.content.create({
+        data: {
+          type: "drama",
+          title: title.slice(0, 200),
+          description: m.overview ? String(m.overview).slice(0, 500) : null,
+          linkUrl: `https://player.videasy.to/tv/${id}`,
+          coverUrl: poster,
+          linkType: "stream",
+          category: y ? `Series · ${y}` : "Series",
+          status: "published",
+        },
+      });
+      haveIds.add(id);
+      added++;
+      titles.push(title);
+    } catch (e) {
+      console.error("tmdb drama create", title, e);
+    }
   }
 
   const total = await prisma.content.count({
@@ -396,21 +416,25 @@ export async function healthCheckTv(): Promise<{
     }
   }
 
-  await prisma.apiSource.upsert({
-    where: { id: "sys_tv_live_ids" },
-    create: {
-      id: "sys_tv_live_ids",
-      category: "tv_live_ids",
-      name: "TV live channel ids",
-      url: "",
-      notes: JSON.stringify({ ids: liveIds, at: new Date().toISOString() }),
-      enabled: true,
-    },
-    update: {
-      notes: JSON.stringify({ ids: liveIds, at: new Date().toISOString() }),
-      enabled: true,
-    },
-  });
+  try {
+    await prisma.apiSource.upsert({
+      where: { id: "sys_tv_live_ids" },
+      create: {
+        id: "sys_tv_live_ids",
+        category: "tv_live_ids",
+        name: "TV live channel ids",
+        url: "",
+        notes: JSON.stringify({ ids: liveIds, at: new Date().toISOString() }),
+        enabled: true,
+      },
+      update: {
+        notes: JSON.stringify({ ids: liveIds, at: new Date().toISOString() }),
+        enabled: true,
+      },
+    });
+  } catch (e) {
+    console.error("tv live meta", e);
+  }
 
   return { live, dead };
 }
