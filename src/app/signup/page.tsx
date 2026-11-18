@@ -56,7 +56,12 @@ function SignupForm() {
         setLoading(false);
         return;
       }
-      router.push("/account");
+      // Baada ya signup: home moja kwa moja (sio points/account)
+      if (data.user?.role === "admin") {
+        router.push("/admin");
+      } else {
+        router.push("/");
+      }
     } catch {
       setError("Tatizo la mtandao. Jaribu tena.");
       setLoading(false);
@@ -74,14 +79,16 @@ function SignupForm() {
         </div>
 
         <div className="space-y-4">
-          {/* Google imefichwa kwa sasa — itaonekana baadaye */}
-          {/* <GoogleSignInButton label="Jisajili na Google" /> */}
+          <GoogleSignInButton mode="signup" />
 
-          <p className="text-xs text-slate-500 text-center rounded-xl border border-cyan-500/20 bg-cyan-950/20 px-3 py-2">
-            Baada ya kujisajili, nenda <b className="text-cyan-300">Account</b> →
-            sajili <b className="text-cyan-300">Fingerprint</b> ili uingie kwa
-            alama ya kidole.
-          </p>
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-800" />
+            </div>
+            <div className="relative flex justify-center text-[10px] uppercase tracking-wider">
+              <span className="bg-[#0a0a0f] px-2 text-slate-500">au email</span>
+            </div>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
@@ -89,10 +96,9 @@ function SignupForm() {
               <div className="relative">
                 <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
-                  type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-violet-500 focus:outline-none text-sm"
+                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white"
                   placeholder="Jina lako"
                 />
               </div>
@@ -106,8 +112,8 @@ function SignupForm() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-violet-500 focus:outline-none text-sm"
-                  placeholder="wewe@email.com"
+                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white"
+                  placeholder="email@example.com"
                 />
               </div>
             </div>
@@ -121,12 +127,12 @@ function SignupForm() {
                   minLength={6}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-violet-500 focus:outline-none text-sm"
+                  className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white"
                   placeholder="Angalau herufi 6"
                 />
                 <button
                   type="button"
-                  onClick={() => setShow((s) => !s)}
+                  onClick={() => setShow(!show)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
                 >
                   {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -134,27 +140,28 @@ function SignupForm() {
               </div>
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">
-                Invite code (si lazima)
-              </label>
+              <label className="text-xs text-slate-400 mb-1 block">Invite code (si lazima)</label>
               <div className="relative">
                 <Gift className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
-                  type="text"
                   value={invite}
                   onChange={(e) => setInvite(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-violet-500 focus:outline-none text-sm"
-                  placeholder="Code ya rafiki"
+                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white"
+                  placeholder="Code ya mwaliko"
                 />
               </div>
             </div>
 
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && (
+              <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+                {error}
+              </p>
+            )}
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-sm disabled:opacity-60 inline-flex items-center justify-center gap-2"
+              className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
             >
               <UserPlus className="w-4 h-4" />
               {loading ? "Inasajili…" : "Jisajili"}
