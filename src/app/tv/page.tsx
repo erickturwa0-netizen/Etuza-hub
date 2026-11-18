@@ -4,6 +4,7 @@ import PresenceTrackerClient from "@/components/PresenceTrackerClient";
 import TvChannelGrid from "@/components/TvChannelGrid";
 import ContentSearch from "@/components/ContentSearch";
 import AiAgentCard from "@/components/AiAgentCard";
+import type { IptvChannel } from "@/lib/iptv";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "TV – ETUZA HUB" };
@@ -14,12 +15,23 @@ export default async function TvPage({
   searchParams: Promise<{ q?: string }>;
 }) {
   const sp = await searchParams;
-  const q = (sp.q || "").trim();
-  let channels = PINNED_CHANNELS;
+  const q = (sp.q || "").trim().toLowerCase();
+  let channels: IptvChannel[] = PINNED_CHANNELS;
   try {
-    channels = await loadIptvChannels();
+    const loaded = await loadIptvChannels({ limit: 800, q: q || undefined });
+    if (Array.isArray(loaded.channels) && loaded.channels.length) {
+      channels = loaded.channels;
+    }
   } catch {
     /* use pinned */
+  }
+
+  if (q) {
+    channels = channels.filter(
+      (c) =>
+        c.title.toLowerCase().includes(q) ||
+        c.group.toLowerCase().includes(q)
+    );
   }
 
   return (
@@ -29,7 +41,9 @@ export default async function TvPage({
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
         <div>
           <h1 className="text-2xl font-bold text-white">TV Channels</h1>
-          <p className="text-xs text-slate-500">Live IPTV</p>
+          <p className="text-xs text-slate-500">
+            Live IPTV · {channels.length} channels
+          </p>
         </div>
         <div className="sm:ml-auto w-full sm:w-72">
           <Suspense fallback={null}>
@@ -37,7 +51,7 @@ export default async function TvPage({
           </Suspense>
         </div>
       </div>
-      <TvChannelGrid channels={channels} query={q} />
+      <TvChannelGrid channels={channels} />
     </main>
   );
 }
