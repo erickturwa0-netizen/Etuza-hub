@@ -15,18 +15,18 @@ function LiveInner() {
   const key = "tv:" + (title || "live").slice(0, 40);
 
   return (
-    <main className="max-w-4xl mx-auto px-4 py-6 pb-24">
+    <main className="max-w-6xl mx-auto px-2 sm:px-4 py-4 pb-24">
       <PresenceTracker section="tv" title={title} />
 
       <Link
         href="/tv"
-        className="inline-flex items-center gap-2 text-sm text-slate-400 mb-4"
+        className="inline-flex items-center gap-2 text-sm text-slate-400 mb-3"
       >
         <ArrowLeft className="w-4 h-4" />
         TV Channels
       </Link>
 
-      <h1 className="text-xl sm:text-2xl font-bold mb-4 text-white">{title}</h1>
+      <h1 className="text-lg sm:text-2xl font-bold mb-3 text-white">{title}</h1>
 
       {!url ? (
         <p className="text-sm text-red-400">Hakuna stream URL</p>
@@ -43,7 +43,7 @@ export default function LiveWatchPage() {
   return (
     <Suspense
       fallback={
-        <main className="max-w-4xl mx-auto px-4 py-10 text-slate-400 text-sm">
+        <main className="max-w-6xl mx-auto px-4 py-10 text-slate-400 text-sm">
           Inapakia…
         </main>
       }
