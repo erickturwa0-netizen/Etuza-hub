@@ -3,11 +3,22 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { POINTS } from "@/lib/points";
 import { ensureUserSchema } from "@/lib/db-migrate";
+import {
+  addUserPoints,
+  getUserPoints,
+} from "@/lib/user-points";
+import { randomBytes } from "crypto";
 
 /** Minimum seconds between ad rewards */
-const COOLDOWN_SEC = 20;
+const COOLDOWN_SEC = 15;
 
-/** Award points after user opened ad (logged-in only) */
+function newLogId() {
+  return (
+    Date.now().toString(36) + randomBytes(6).toString("hex")
+  ).slice(0, 28);
+}
+
+/** Award points after user watched ad (logged-in only) — raw SQL only */
 export async function POST() {
   const session = await getSession();
   if (!session) {
@@ -23,71 +34,88 @@ export async function POST() {
     );
   }
 
+  const userId = session.userId;
+
   try {
-    await ensureUserSchema();
-
-    const since = new Date(Date.now() - COOLDOWN_SEC * 1000);
-    let recent = null as { createdAt: Date } | null;
     try {
-      recent = await prisma.pointLog.findFirst({
-        where: {
-          userId: session.userId,
-          reason: "ad_reward",
-          createdAt: { gte: since },
-        },
-        orderBy: { createdAt: "desc" },
-        select: { createdAt: true },
-      });
+      await ensureUserSchema();
     } catch {
-      // PointLog may be missing — still allow award
-      recent = null;
+      /* ignore */
     }
 
-    if (recent) {
-      const user = await prisma.user.findUnique({
-        where: { id: session.userId },
-        select: { points: true },
-      });
-      const wait = Math.ceil(
-        (recent.createdAt.getTime() + COOLDOWN_SEC * 1000 - Date.now()) / 1000
-      );
-      return NextResponse.json({
-        ok: true,
-        points: user?.points ?? 0,
-        awarded: 0,
-        cooldown: true,
-        waitSec: Math.max(1, wait),
-        message: `Subiri sekunde ${Math.max(1, wait)} kisha jaribu tena`,
-      });
-    }
-
-    const updated = await prisma.user.update({
-      where: { id: session.userId },
-      data: { points: { increment: POINTS.AD_REWARD } },
-      select: { points: true },
-    });
-
+    // Cooldown via PointLog (raw)
     try {
-      await prisma.pointLog.create({
-        data: {
-          userId: session.userId,
-          amount: POINTS.AD_REWARD,
-          reason: "ad_reward",
-          meta: "Tazama tangazo (auto)",
-        },
-      });
+      const recent = (await prisma.$queryRawUnsafe(
+        `SELECT created_at FROM "PointLog"
+         WHERE user_id = $1 AND reason = 'ad_reward'
+           AND created_at >= NOW() - ($2 || ' seconds')::interval
+         ORDER BY created_at DESC LIMIT 1`,
+        userId,
+        String(COOLDOWN_SEC)
+      )) as { created_at: Date }[];
+
+      if (recent[0]) {
+        const pts = await getUserPoints(userId);
+        const created = new Date(recent[0].created_at).getTime();
+        const wait = Math.ceil(
+          (created + COOLDOWN_SEC * 1000 - Date.now()) / 1000
+        );
+        return NextResponse.json({
+          ok: true,
+          points: pts,
+          awarded: 0,
+          cooldown: true,
+          waitSec: Math.max(1, wait),
+          message: `Subiri sekunde ${Math.max(1, wait)} kisha jaribu tena`,
+        });
+      }
+    } catch (e) {
+      console.error("reward-ad cooldown check", e);
+      // continue — still award
+    }
+
+    // Increment points (raw SQL)
+    const newPoints = await addUserPoints(userId, POINTS.AD_REWARD);
+
+    // Log
+    try {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "PointLog" (id, user_id, amount, reason, meta, created_at)
+         VALUES ($1, $2, $3, 'ad_reward', $4, NOW())`,
+        newLogId(),
+        userId,
+        POINTS.AD_REWARD,
+        "Tazama tangazo (auto)"
+      );
     } catch (e) {
       console.error("reward-ad log", e);
     }
 
     return NextResponse.json({
       ok: true,
-      points: updated.points,
+      points: newPoints,
       awarded: POINTS.AD_REWARD,
       message: `+${POINTS.AD_REWARD} point zimeongezwa`,
     });
   } catch (e) {
     console.error("reward-ad", e);
+    // Last-resort: still try raw increment
+    try {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "User" SET points = COALESCE(points, 0) + $1 WHERE id = $2`,
+        POINTS.AD_REWARD,
+        userId
+      );
+      const pts = await getUserPoints(userId);
+      return NextResponse.json({
+        ok: true,
+        points: pts,
+        awarded: POINTS.AD_REWARD,
+        message: `+${POINTS.AD_REWARD} point zimeongezwa`,
+      });
+    } catch (e2) {
+      console.error("reward-ad fallback", e2);
+    }
     return NextResponse.json(
       { ok: false, error: "Imeshindikana kuongeza point", awarded: 0 },
       { status: 500 }
