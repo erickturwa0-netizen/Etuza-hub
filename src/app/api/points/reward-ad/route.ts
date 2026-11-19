@@ -3,22 +3,19 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { POINTS } from "@/lib/points";
 import { ensureUserSchema } from "@/lib/db-migrate";
-import {
-  addUserPoints,
-  getUserPoints,
-} from "@/lib/user-points";
+import { addUserPoints, getUserPoints } from "@/lib/user-points";
 import { randomBytes } from "crypto";
 
-/** Minimum seconds between ad rewards */
 const COOLDOWN_SEC = 15;
 
 function newLogId() {
-  return (
-    Date.now().toString(36) + randomBytes(6).toString("hex")
-  ).slice(0, 28);
+  return (Date.now().toString(36) + randomBytes(6).toString("hex")).slice(
+    0,
+    28
+  );
 }
 
-/** Award points after user watched ad (logged-in only) — raw SQL only */
+/** Award points after user watched ad — raw SQL so it always persists on Supabase */
 export async function POST() {
   const session = await getSession();
   if (!session) {
@@ -43,15 +40,15 @@ export async function POST() {
       /* ignore */
     }
 
-    // Cooldown via PointLog (raw)
+    // Cooldown
     try {
       const recent = (await prisma.$queryRawUnsafe(
         `SELECT created_at FROM "PointLog"
          WHERE user_id = $1 AND reason = 'ad_reward'
-           AND created_at >= NOW() - ($2 || ' seconds')::interval
+           AND created_at >= NOW() - make_interval(secs => $2)
          ORDER BY created_at DESC LIMIT 1`,
         userId,
-        String(COOLDOWN_SEC)
+        COOLDOWN_SEC
       )) as { created_at: Date }[];
 
       if (recent[0]) {
@@ -70,14 +67,11 @@ export async function POST() {
         });
       }
     } catch (e) {
-      console.error("reward-ad cooldown check", e);
-      // continue — still award
+      console.error("reward-ad cooldown", e);
     }
 
-    // Increment points (raw SQL)
     const newPoints = await addUserPoints(userId, POINTS.AD_REWARD);
 
-    // Log
     try {
       await prisma.$executeRawUnsafe(
         `INSERT INTO "PointLog" (id, user_id, amount, reason, meta, created_at)
@@ -99,7 +93,6 @@ export async function POST() {
     });
   } catch (e) {
     console.error("reward-ad", e);
-    // Last-resort: still try raw increment
     try {
       await prisma.$executeRawUnsafe(
         `UPDATE "User" SET points = COALESCE(points, 0) + $1 WHERE id = $2`,
