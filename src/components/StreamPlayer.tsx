@@ -71,7 +71,15 @@ export default function StreamPlayer({
   const parsed = useMemo(() => parseEmbed(raw), [raw]);
   const providers = useMemo(
     () =>
-      parsed ? buildProviders(parsed.id, parsed.kind, parsed.imdb) : [],
+      parsed
+        ? buildProviders(
+            parsed.id,
+            parsed.kind,
+            parsed.imdb,
+            parsed.season ?? 1,
+            parsed.episode ?? 1
+          )
+        : [],
     [parsed]
   );
   const [providerIdx, setProviderIdx] = useState(0);
@@ -92,48 +100,92 @@ export default function StreamPlayer({
     if (providers.length) {
       return providers[Math.min(providerIdx, providers.length - 1)];
     }
-    if (/vidsrc\.|vsembed|2embed|embed\.su|vidlink|autoembed/i.test(raw) && parsed) {
-      return buildProviders(parsed.id, parsed.kind, parsed.imdb)[0];
-    }
     if (
-      /^https?:\/\//i.test(raw) &&
-      !isHls(raw) &&
-      !isDirect(raw) &&
-      !blocksIframe(raw)
+      /vidsrc\.|vsembed|2embed|embed\.su|vidlink|autoembed|videasy/i.test(raw) &&
+      parsed
     ) {
+      return buildProviders(
+        parsed.id,
+        parsed.kind,
+        parsed.imdb,
+        parsed.season ?? 1,
+        parsed.episode ?? 1
+      )[0];
+    }
+    if (!isHls(raw) && !isDirect(raw) && /^https?:\/\//i.test(raw)) {
       return raw;
     }
     return null;
   }, [social.embedUrl, providers, providerIdx, raw, parsed]);
 
-  const fail = (msg: string) => {
-    setError(msg);
-    if (cid) markStream(cid, "bad");
-  };
+  const fail = useCallback(
+    (msg: string) => {
+      setError(msg);
+      if (cid) markStream(cid, "bad");
+    },
+    [cid]
+  );
 
   useEffect(() => {
     setError("");
-  }, [activeEmbed, raw]);
+  }, [activeEmbed, raw, providerIdx]);
 
   useEffect(() => {
     const el = videoRef.current;
     if (!el || activeEmbed) return;
-    if (!raw) return;
-    const videoUrl = isHls(raw) ? proxyHls(raw) : raw;
-    if (isHls(raw) || isDirect(raw)) {
-      el.src = videoUrl;
-    }
-  }, [raw, activeEmbed]);
+    if (!raw || (!isHls(raw) && !isDirect(raw))) return;
+
+    let hls: { destroy: () => void } | null = null;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        if (isHls(raw)) {
+          const srcUrl = proxyHls(raw);
+          const HlsMod = await import("hls.js");
+          const Hls = HlsMod.default;
+          if (cancelled) return;
+          if (Hls.isSupported()) {
+            const inst = new Hls({ enableWorker: true });
+            inst.loadSource(srcUrl);
+            inst.attachMedia(el);
+            inst.on(Hls.Events.ERROR, (_e, data) => {
+              if (data?.fatal) fail("Stream haichezi (HLS).");
+            });
+            hls = inst;
+          } else if (el.canPlayType("application/vnd.apple.mpegurl")) {
+            el.src = srcUrl;
+          } else {
+            fail("Kifaa hakiauni HLS.");
+          }
+        } else {
+          el.src = raw;
+        }
+      } catch {
+        if (!cancelled) fail("Imeshindwa kupakia video.");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try {
+        hls?.destroy();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [raw, activeEmbed, fail]);
+
+  const box =
+    "relative w-full aspect-video min-h-[220px] sm:min-h-[360px] md:min-h-[420px] lg:min-h-[480px] bg-black rounded-xl overflow-hidden";
 
   if (!raw) {
     return (
       <div className="aspect-video flex items-center justify-center bg-black text-slate-400 text-sm p-4">
-        Hakuna link ya video.
+        Hakuna link ya video
       </div>
     );
   }
-
-  const box = "relative w-full aspect-video bg-black";
 
   if (activeEmbed) {
     const total = Math.max(providers.length, 1);
@@ -141,18 +193,13 @@ export default function StreamPlayer({
       <div className="space-y-2 w-full max-w-full overflow-hidden">
         <div className={box}>
           <iframe
-            key={activeEmbed}
+            key={activeEmbed + providerIdx}
             src={activeEmbed}
-            title={title || "Player"}
             className="absolute inset-0 w-full h-full border-0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
-            referrerPolicy="no-referrer-when-downgrade"
-            onLoad={() => {
-              setTimeout(() => onRealPlay(), 1500);
-              if (cid) markStream(cid, "ok");
-            }}
-            onError={() => fail("Embed imeshindwa.")}
+            referrerPolicy="no-referrer"
+            onLoad={() => onRealPlay()}
           />
         </div>
 
@@ -186,9 +233,9 @@ export default function StreamPlayer({
             )}
           </div>
 
-          {providers.length > 1 && (
-            <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
-              {(showAll ? providers : providers.slice(0, 24)).map((p, i) => (
+          {providers.length >= 1 && (
+            <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+              {(showAll ? providers : providers.slice(0, 30)).map((p, i) => (
                 <button
                   key={p + i}
                   type="button"
@@ -205,13 +252,13 @@ export default function StreamPlayer({
                   {providerLabel(p, i)}
                 </button>
               ))}
-              {!showAll && providers.length > 24 && (
+              {!showAll && providers.length > 30 && (
                 <button
                   type="button"
                   onClick={() => setShowAll(true)}
                   className="px-2 py-1 rounded-md text-[10px] border border-slate-600 text-slate-400"
                 >
-                  +{providers.length - 24} zaidi
+                  +{providers.length - 30} zaidi
                 </button>
               )}
             </div>
